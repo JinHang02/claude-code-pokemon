@@ -1,0 +1,15 @@
+name: Feature idea
+description: A new animation, reaction or feature for the meadow
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the idea. Which Claude Code moment should it react to, and what should the Pokémon do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it be great?

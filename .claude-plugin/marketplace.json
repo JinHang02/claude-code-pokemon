@@ -1,0 +1,15 @@
+{
+  "name": "claude-code-pokemon",
+  "description": "Pokémon Journey for Claude Code: catch Pokémon, watch them react to your coding, travel through 20 landscapes, level them up and evolve them.",
+  "owner": {
+    "name": "JinHang02",
+    "url": "https://github.com/JinHang02"
+  },
+  "plugins": [
+    {
+      "name": "pokemon",
+      "source": "./plugin",
+      "description": "Your Pokémon party journeys through a pixel world above the Claude Code prompt, reacting to Claude's work."
+    }
+  ]
+}

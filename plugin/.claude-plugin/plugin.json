@@ -1,0 +1,15 @@
+{
+  "name": "pokemon",
+  "displayName": "Pokémon Journey",
+  "version": "1.0.0",
+  "description": "Your Pokémon party journeys through a pixel world above the Claude Code prompt: it runs while Claude works, cheers when tests pass, faints when they fail, levels up and evolves.",
+  "author": {
+    "name": "JinHang02",
+    "url": "https://github.com/JinHang02"
+  },
+  "homepage": "https://github.com/JinHang02/claude-code-pokemon",
+  "repository": "https://github.com/JinHang02/claude-code-pokemon",
+  "license": "MIT",
+  "keywords": ["pokemon", "pixel-art", "terminal", "companion", "pet", "fun", "statusline"],
+  "types": "./types/index.d.ts"
+}

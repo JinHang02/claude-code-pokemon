@@ -1,0 +1,33 @@
+name: Bug report
+description: Something in the meadow isn't working right
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead? Screenshots or recordings of the meadow help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we reproduce it?
+      placeholder: |
+        1. /pokemon pikachu
+        2. Ask Claude to run the tests
+        3. ...
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: The output of `claude --version`
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal and OS
+      placeholder: e.g. iTerm2 3.5 on macOS 15, or the Cursor terminal on Windows 11
+    validations:
+      required: true
