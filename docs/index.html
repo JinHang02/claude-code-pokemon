@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pokémon Journey: a Claude Code plugin with Pokémon in your terminal</title>
+    <meta
+      name="description"
+      content="A free Claude Code plugin: your Pokémon party roams a pixel world above the prompt, runs while Claude works, cheers when tests pass, faints when they fail, and evolves as you ship."
+    />
+    <link rel="canonical" href="https://jinhang02.github.io/claude-code-pokemon/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Pokémon Journey for Claude Code" />
+    <meta
+      property="og:description"
+      content="Pokémon that live above your Claude Code prompt and react to your work. Free and open source."
+    />
+    <meta property="og:url" content="https://jinhang02.github.io/claude-code-pokemon/" />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/social-preview.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#e8f1f7" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Pokémon Journey for Claude Code",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS, Linux, Windows",
+        "description": "A Claude Code plugin: a Pokémon party roams a pixel world above the prompt and reacts to Claude's work.",
+        "url": "https://jinhang02.github.io/claude-code-pokemon/",
+        "codeRepository": "https://github.com/JinHang02/claude-code-pokemon",
+        "license": "https://opensource.org/licenses/MIT",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Person", "name": "JinHang02", "url": "https://github.com/JinHang02" }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=DotGothic16&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --sky: #e8f1f7;
+        --ink: #1e2b3d;
+        --ink-soft: #4a5a70;
+        --paper: #fbfdff;
+        --red: #d42a20;
+        --red-dark: #a51d15;
+        --grass: #3d8b37;
+        --yellow: #ffcb05;
+        --frame: #2b3850;
+        --pixel: 'DotGothic16', ui-sans-serif, system-ui, sans-serif;
+        --body: 'Atkinson Hyperlegible', ui-sans-serif, system-ui, sans-serif;
+        --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--sky);
+        color: var(--ink);
+        font: 400 1.0625rem/1.6 var(--body);
+      }
+      img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        image-rendering: pixelated;
+      }
+      a {
+        color: inherit;
+      }
+      :focus-visible {
+        outline: 3px solid var(--red);
+        outline-offset: 3px;
+        border-radius: 4px;
+      }
+      .wrap {
+        width: min(1080px, 100% - 2.5rem);
+        margin-inline: auto;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: var(--pixel);
+        font-weight: 400;
+        line-height: 1.15;
+        margin: 0;
+        letter-spacing: 0.01em;
+      }
+      h2 {
+        font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
+      }
+      h3 {
+        font-size: 1.25rem;
+      }
+      p {
+        margin: 0;
+        max-width: 64ch;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.92em;
+      }
+
+      /* Header */
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-block: 1.25rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font: 400 1.25rem var(--pixel);
+        text-decoration: none;
+      }
+      .ball {
+        width: 1.35rem;
+        height: 1.35rem;
+        border-radius: 50%;
+        border: 3px solid var(--ink);
+        background: linear-gradient(var(--red) 0 45%, var(--ink) 45% 55%, var(--paper) 55%);
+        position: relative;
+        flex: none;
+      }
+      .ball::after {
+        content: '';
+        position: absolute;
+        inset: 50% auto auto 50%;
+        width: 0.42rem;
+        height: 0.42rem;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: var(--paper);
+        border: 2px solid var(--ink);
+      }
+      .top nav {
+        display: flex;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        font-size: 0.98rem;
+      }
+      .top nav a {
+        text-decoration: none;
+        color: var(--ink-soft);
+      }
+      .top nav a:hover {
+        color: var(--ink);
+        text-decoration: underline;
+      }
+
+      /* Hero */
+      .hero {
+        padding-block: 2.5rem 0;
+      }
+      .hero h1 {
+        font-size: clamp(2.3rem, 1.3rem + 4.2vw, 4.4rem);
+        max-width: 16ch;
+      }
+      .lede {
+        margin-top: 1.25rem;
+        font-size: 1.2rem;
+        color: var(--ink-soft);
+        max-width: 54ch;
+      }
+      .install {
+        margin-top: 2rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.6rem;
+        max-width: 640px;
+      }
+      .cmd {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: var(--frame);
+        color: #e9eef6;
+        border-radius: 10px;
+        padding: 0.7rem 0.7rem 0.7rem 1rem;
+        font: 0.98rem var(--mono);
+      }
+      .cmd span {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      .cmd span::before {
+        content: '❯ ';
+        color: var(--yellow);
+      }
+      .copy {
+        flex: none;
+        font: 700 0.85rem var(--body);
+        color: var(--ink);
+        background: var(--yellow);
+        border: 0;
+        border-radius: 6px;
+        padding: 0.45rem 0.8rem;
+        cursor: pointer;
+        min-width: 4.6rem;
+      }
+      .copy:hover {
+        background: #ffd83d;
+      }
+      .note {
+        margin-top: 0.4rem;
+        font-size: 0.95rem;
+        color: var(--ink-soft);
+      }
+      .actions {
+        margin-top: 1.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+        align-items: center;
+      }
+      .button {
+        display: inline-block;
+        font: 700 1rem var(--body);
+        text-decoration: none;
+        color: #fff;
+        background: var(--red);
+        padding: 0.75rem 1.2rem;
+        border-radius: 8px;
+        box-shadow: inset 0 -3px 0 var(--red-dark);
+      }
+      .button:hover {
+        background: var(--red-dark);
+      }
+
+      /* The sky behind the terminal follows the visitor's clock, as the plugin's does. */
+      .sky {
+        margin-top: 3rem;
+        padding: clamp(1.5rem, 4vw, 3.5rem) 0 0;
+        background: linear-gradient(var(--sky-top), var(--sky-bottom));
+        transition: background 0.6s;
+      }
+      .sky[data-phase='dawn'] {
+        --sky-top: #f2b694;
+        --sky-bottom: #a9c9ec;
+      }
+      .sky[data-phase='day'] {
+        --sky-top: #5f9fdc;
+        --sky-bottom: #bfe0f6;
+      }
+      .sky[data-phase='dusk'] {
+        --sky-top: #5b4c8f;
+        --sky-bottom: #ef9a6a;
+      }
+      .sky[data-phase='night'] {
+        --sky-top: #0e1a36;
+        --sky-bottom: #2c4572;
+      }
+      .terminal img {
+        width: 100%;
+        border-radius: 10px 10px 0 0;
+      }
+      .sky-note {
+        text-align: right;
+        font-size: 0.88rem;
+        padding: 0.6rem 0 0.8rem;
+        color: rgba(255, 255, 255, 0.92);
+      }
+      .sky[data-phase='day'] .sky-note,
+      .sky[data-phase='dawn'] .sky-note {
+        color: var(--ink);
+      }
+
+      /* Sections */
+      section {
+        padding-block: clamp(2.75rem, 5vw, 4.5rem);
+      }
+      .intro {
+        margin-top: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      /* Dialogue boxes, as the games draw them. */
+      .reactions {
+        margin-top: 2.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+        gap: 2.5rem 2rem;
+      }
+      .reactions figure {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      /* The GIFs are all 200 px tall but 280 to 450 wide: each sits in a box shaped like the widest, scaled by
+         height, so every one comes out the same height and pixel size, its caption at the same line. */
+      .reactions img {
+        width: 100%;
+        aspect-ratio: 450 / 200;
+        object-fit: contain;
+      }
+      .dialog {
+        position: relative;
+        flex: 1;
+        margin-top: 0.85rem;
+        background: var(--paper);
+        border: 3px solid var(--frame);
+        border-radius: 10px;
+        box-shadow:
+          inset 0 0 0 3px var(--paper),
+          inset 0 0 0 5px #9fb3cc;
+        padding: 0.9rem 1.1rem 1rem;
+      }
+      .dialog b {
+        display: block;
+        font: 700 1.05rem var(--body);
+        margin-bottom: 0.2rem;
+      }
+      .dialog::after {
+        content: '▼';
+        position: absolute;
+        right: 0.8rem;
+        bottom: 0.35rem;
+        font-size: 0.7rem;
+        color: var(--red);
+      }
+      .aside {
+        margin-top: 2.5rem;
+        display: grid;
+        gap: 0.9rem;
+      }
+      .spinner {
+        margin: 0.4rem 0 0;
+        background: var(--frame);
+        color: #e9eef6;
+        border-radius: 10px;
+        padding: 0.9rem 1.1rem;
+        font: 0.92rem/1.7 var(--mono);
+        overflow-x: auto;
+        white-space: pre;
+        max-width: 640px;
+      }
+
+      /* Levels */
+      .levels {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 3rem;
+        align-items: center;
+      }
+      .xp {
+        margin-top: 1.5rem;
+        border-collapse: collapse;
+        font-size: 1rem;
+      }
+      .xp td {
+        padding: 0.5rem 0;
+        border-bottom: 2px solid #cddbe7;
+      }
+      .xp td:last-child {
+        padding-left: 2rem;
+        text-align: right;
+        font: 700 1.1rem var(--body);
+        color: var(--grass);
+      }
+      .levels p + p {
+        margin-top: 1rem;
+      }
+
+      /* Landscapes */
+      .phases {
+        margin-top: 2rem;
+        display: inline-flex;
+        gap: 0.4rem;
+        background: var(--paper);
+        border: 3px solid var(--frame);
+        border-radius: 10px;
+        padding: 0.3rem;
+      }
+      .phases button {
+        font: 700 1rem var(--body);
+        color: var(--ink);
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
+        padding: 0.45rem 0.95rem;
+        cursor: pointer;
+      }
+      .phases button[aria-selected='true'] {
+        background: var(--frame);
+        color: #fff;
+      }
+      .scenes {
+        margin-top: 1.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+        gap: 1rem;
+      }
+      .scenes figure {
+        margin: 0;
+      }
+      .scenes img {
+        width: 100%;
+        border-radius: 6px;
+        border: 3px solid var(--frame);
+      }
+      .scenes figcaption {
+        margin-top: 0.4rem;
+        font: 400 0.95rem var(--body);
+        color: var(--ink-soft);
+        text-transform: capitalize;
+      }
+
+      /* Commands, as the start menu. */
+      .menu {
+        margin-top: 2rem;
+        list-style: none;
+        padding: 0.6rem;
+        background: var(--paper);
+        border: 3px solid var(--frame);
+        border-radius: 10px;
+        box-shadow:
+          inset 0 0 0 3px var(--paper),
+          inset 0 0 0 5px #9fb3cc;
+        max-width: 860px;
+      }
+      .menu li {
+        display: grid;
+        grid-template-columns: 1.4rem minmax(12rem, 18rem) 1fr;
+        gap: 0.5rem 1rem;
+        align-items: baseline;
+        padding: 0.6rem 0.6rem;
+        border-radius: 6px;
+      }
+      .menu li::before {
+        content: '▶';
+        color: var(--red);
+        font-size: 0.85rem;
+        visibility: hidden;
+      }
+      .menu li:hover::before,
+      .menu li:focus-within::before {
+        visibility: visible;
+      }
+      .menu li:hover {
+        background: #eef4fa;
+      }
+      .menu code {
+        font-weight: 600;
+      }
+      .menu span {
+        color: var(--ink-soft);
+      }
+
+      /* Status line */
+      .statusline {
+        margin-top: 1.75rem;
+        border-radius: 10px;
+        border: 3px solid var(--frame);
+      }
+
+      /* FAQ */
+      .faq {
+        margin-top: 2rem;
+        display: grid;
+        gap: 0.8rem;
+        max-width: 760px;
+      }
+      details {
+        background: var(--paper);
+        border: 3px solid var(--frame);
+        border-radius: 10px;
+        padding: 0.9rem 1.1rem;
+      }
+      summary {
+        cursor: pointer;
+        font: 700 1.05rem var(--body);
+      }
+      details p {
+        margin-top: 0.6rem;
+        color: var(--ink-soft);
+      }
+
+      /* Footer */
+      footer {
+        background: var(--frame);
+        color: #d8e1ee;
+        padding-block: 3rem;
+        font-size: 0.95rem;
+      }
+      footer .wrap {
+        display: grid;
+        gap: 1rem;
+      }
+      footer p {
+        max-width: 80ch;
+      }
+
+      @media (max-width: 760px) {
+        .top nav {
+          display: none;
+        }
+        .levels {
+          grid-template-columns: 1fr;
+          gap: 2rem;
+        }
+        .menu li {
+          grid-template-columns: 1.2rem 1fr;
+        }
+        .menu li span {
+          grid-column: 2;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="#"><span class="ball" aria-hidden="true"></span>Pokémon Journey</a>
+      <nav aria-label="Sections">
+        <a href="#reactions">What they do</a>
+        <a href="#levels">Levels</a>
+        <a href="#landscapes">Landscapes</a>
+        <a href="#commands">Commands</a>
+        <a href="https://github.com/JinHang02/claude-code-pokemon">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="hero">
+        <div class="wrap">
+          <h1>Pokémon that live above your Claude Code prompt</h1>
+          <p class="lede">
+            A free Claude Code plugin. Your party roams a tiny pixel world while you work: they run when Claude is busy,
+            cheer when your tests pass, faint when they fail, and evolve as you ship.
+          </p>
+          <div class="install" id="install">
+            <div class="cmd">
+              <span>/plugin marketplace add JinHang02/claude-code-pokemon</span>
+              <button class="copy" type="button" data-copy="/plugin marketplace add JinHang02/claude-code-pokemon">
+                Copy
+              </button>
+            </div>
+            <div class="cmd">
+              <span>/plugin install pokemon@claude-code-pokemon</span>
+              <button class="copy" type="button" data-copy="/plugin install pokemon@claude-code-pokemon">Copy</button>
+            </div>
+            <p class="note">
+              Run both inside Claude Code, then start a new session. Needs Claude Code 2.1.287 or newer and a terminal
+              with 24-bit color.
+            </p>
+          </div>
+          <div class="actions">
+            <a class="button" href="https://github.com/JinHang02/claude-code-pokemon">View on GitHub</a>
+            <a href="#reactions">See what they do</a>
+          </div>
+        </div>
+        <div class="sky" data-phase="day">
+          <div class="wrap">
+            <div class="terminal">
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/hero.gif"
+                width="660"
+                height="240"
+                alt="Pikachu, Charmander and Squirtle roaming a pixel meadow above the Claude Code prompt, running while Claude works and cheering with confetti"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section id="reactions">
+        <div class="wrap">
+          <h2>They react to your work</h2>
+          <p class="intro">Nothing to set up. Your party watches what Claude is doing and reacts on its own.</p>
+          <div class="reactions">
+            <figure>
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/working.gif"
+                alt="The lead Pokémon with a thought bubble while the party hurries about"
+                loading="lazy"
+              />
+              <figcaption class="dialog">
+                <b>Claude is working</b>A thought bubble pops up over your lead while the party hurries about.
+              </figcaption>
+            </figure>
+            <figure>
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/hop.gif"
+                alt="The party doing a double hop with a spin"
+                loading="lazy"
+              />
+              <figcaption class="dialog">
+                <b>Claude finishes a reply</b>A double hop with a spin: your cue that it's your turn.
+              </figcaption>
+            </figure>
+            <figure>
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/cheer.gif"
+                alt="Confetti bursting over the party"
+                loading="lazy"
+              />
+              <figcaption class="dialog"><b>Tests pass or a commit lands</b>Confetti, and XP for everyone.</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/faint.gif"
+                alt="Charmander shuddering and sinking into the grass"
+                loading="lazy"
+              />
+              <figcaption class="dialog">
+                <b>Tests or a build fail</b>A battle-style faint: a shudder, a sink, a beat of silence, then back up.
+              </figcaption>
+            </figure>
+            <figure>
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/wild.gif"
+                alt="A wild Pokémon stepping out of rustling grass while the party turns to look"
+                loading="lazy"
+              />
+              <figcaption class="dialog">
+                <b>A wild Pokémon appears</b>Every 10 to 20 minutes the grass rustles and a visitor walks across.
+              </figcaption>
+            </figure>
+            <figure>
+              <img
+                src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/clones.gif"
+                alt="Small clones of the lead following it through the grass"
+                loading="lazy"
+              />
+              <figcaption class="dialog">
+                <b>Claude launches subagents</b>A little clone pops out of the grass for each one and follows along.
+              </figcaption>
+            </figure>
+          </div>
+          <div class="aside">
+            <p>
+              Only real failures make them faint. A <code>grep</code> that finds nothing isn't a failure, so a plain
+              command has to fail three times in a row before anyone keels over. Leave Claude idle for five minutes and
+              they doze off.
+            </p>
+            <p>Even the spinner joins in, and each turn closes with a Poké Ball:</p>
+            <pre class="spinner">
+✻ Searching tall grass… (17m 46s · thinking)
+◓ Caught for 18m 2s</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="levels">
+        <div class="wrap levels">
+          <div>
+            <h2>Raise them into legends</h2>
+            <p class="intro">Every Pokémon in your party earns XP from the work you and Claude get done.</p>
+            <table class="xp">
+              <tbody>
+                <tr>
+                  <td>Claude finishes a reply</td>
+                  <td>+2</td>
+                </tr>
+                <tr>
+                  <td>A test run passes</td>
+                  <td>+5</td>
+                </tr>
+                <tr>
+                  <td>A commit goes through</td>
+                  <td>+10</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <img
+              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve.gif"
+              alt="Charmander evolving into Charmeleon in flashing white silhouettes"
+              loading="lazy"
+            />
+            <p style="margin-top: 1.25rem">
+              They evolve at the same level as in the games: Charmander at 16, Charmeleon at 36. Stone and trade
+              evolutions happen at Lv 30, regional forms evolve the way their region does, and gender matters where it
+              does in the games.
+            </p>
+            <p>905 Pokémon, 424 alternate forms, and a 1 in 32 chance of a shiny on every catch.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="landscapes">
+        <div class="wrap">
+          <h2>Twenty landscapes, on your clock</h2>
+          <p class="intro">
+            Meadow, hills, mountains, lake or forest: a new one every hour, at dawn, day, dusk or night by your local
+            time. This shows the time of day it is for you right now.
+          </p>
+          <div class="phases" role="tablist" aria-label="Time of day">
+            <button type="button" role="tab" data-phase="dawn" aria-selected="false">Dawn</button>
+            <button type="button" role="tab" data-phase="day" aria-selected="true">Day</button>
+            <button type="button" role="tab" data-phase="dusk" aria-selected="false">Dusk</button>
+            <button type="button" role="tab" data-phase="night" aria-selected="false">Night</button>
+          </div>
+          <div class="scenes" role="tabpanel" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section id="commands">
+        <div class="wrap">
+          <h2>Commands</h2>
+          <p class="intro">Type them straight into Claude Code.</p>
+          <ul class="menu">
+            <li>
+              <code>/pokemon &lt;name&gt;</code
+              ><span>Pick your lead, spelled exactly: <code>shiny gengar</code>, <code>galarian mr mime</code></span>
+            </li>
+            <li><code>/pokemon add [name]</code><span>Grow your party to three; no name catches a random one</span></li>
+            <li><code>/pokemon remove [name]</code><span>Release one; with no name, never your lead</span></li>
+            <li><code>/pokemon party</code><span>Levels, XP to go, and who evolves when</span></li>
+            <li>
+              <code>/pokemon everstone &lt;name&gt;</code><span>Stop (or allow again) a Pokémon's evolution</span>
+            </li>
+            <li><code>/pokedex</code><span>Everything you've seen, per generation, plus your shinies</span></li>
+            <li>
+              <code>/pokemon-play &lt;animation&gt;</code
+              ><span>Watch any animation now: <code>evolve</code>, <code>wild</code>, <code>dusk lake</code>…</span>
+            </li>
+            <li>
+              <code>/pokemon off</code
+              ><span>Put them in their Poké Balls; <code>/pokemon on</code> brings them back</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="statusline">
+        <div class="wrap">
+          <h2>A battle HUD for your status line</h2>
+          <p class="intro">
+            Optional and separate from the plugin: a status line script with your model as a nametag, the context window
+            left as an HP bar, and your effort as a level. Setup is in the
+            <a href="https://github.com/JinHang02/claude-code-pokemon#optional-a-pokémon-status-line">README</a>.
+          </p>
+          <img
+            class="statusline"
+            src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/statusline.png"
+            width="2020"
+            height="148"
+            alt="The status line: an OPUS 5.5 nametag, the project, ROUTE main, EXP tokens, Lv.XHIGH effort, a green HP bar and the session time"
+            loading="lazy"
+            style="image-rendering: auto"
+          />
+        </div>
+      </section>
+
+      <section id="faq">
+        <div class="wrap">
+          <h2>Questions</h2>
+          <div class="faq">
+            <details>
+              <summary>Does it slow Claude Code down?</summary>
+              <p>
+                No. It draws about 20 frames a second while things move and drops to 5 when nothing does, and it never
+                touches Claude's work.
+              </p>
+            </details>
+            <details>
+              <summary>Does it send my code anywhere?</summary>
+              <p>
+                No. It only downloads sprites and evolution data, then caches them. It looks at which commands Claude
+                runs and whether they succeed, and none of that leaves your machine.
+              </p>
+            </details>
+            <details>
+              <summary>I installed it and nothing shows up.</summary>
+              <p>
+                It's built on Claude Code's early-access plugin hooks, which Anthropic is still rolling out. If they
+                aren't switched on for you yet, the plugin doesn't load. Make sure you're on Claude Code 2.1.287 or
+                newer and started a new session.
+              </p>
+            </details>
+            <details>
+              <summary>Which terminals work best?</summary>
+              <p>
+                iTerm2, Ghostty, kitty, WezTerm and Windows Terminal draw the pixel art crisply. In the VS Code or
+                Cursor terminal, set <code>terminal.integrated.minimumContrastRatio</code> to 1. macOS Terminal.app
+                works but shows thin lines between rows.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <p>
+          Pokémon Journey for Claude Code is free and open source under the MIT license, made by
+          <a href="https://github.com/JinHang02">JinHang02</a>. Sprites come from
+          <a href="https://gitlab.com/phoneybadger/pokemon-colorscripts">pokemon-colorscripts</a> and evolution data
+          from <a href="https://pokeapi.co">PokeAPI</a>.
+        </p>
+        <p>
+          This is an unofficial fan project, not affiliated with, endorsed or sponsored by Nintendo, Game Freak,
+          Creatures Inc. or The Pokémon Company. Pokémon and all related names are trademarks of their respective
+          owners. Claude and Claude Code are products of Anthropic.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      // The time of day as the plugin reckons it: dawn 5–7, day 7–17, dusk 17–19, night otherwise.
+      const hour = new Date().getHours()
+      const now =
+        hour >= 5 && hour < 7 ? 'dawn' : hour >= 7 && hour < 17 ? 'day' : hour >= 17 && hour < 19 ? 'dusk' : 'night'
+      document.querySelector('.sky').dataset.phase = now
+
+      const base = 'https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/'
+      const places = ['meadow', 'hills', 'mountains', 'lake', 'forest']
+      const scenes = document.querySelector('.scenes')
+      const tabs = [...document.querySelectorAll('.phases button')]
+      function show(phase) {
+        tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.phase === phase)))
+        scenes.innerHTML = places
+          .map(
+            p =>
+              `<figure><img src="${base}${phase}-${p}.png" width="550" height="130" alt="The ${p} at ${phase}" loading="lazy"><figcaption>${phase} ${p}</figcaption></figure>`,
+          )
+          .join('')
+      }
+      tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.phase)))
+      show(now)
+
+      document.querySelectorAll('.copy').forEach(button =>
+        button.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(button.dataset.copy)
+            button.textContent = 'Copied'
+          } catch {
+            button.textContent = 'Select it'
+          }
+          setTimeout(() => (button.textContent = 'Copy'), 1600)
+        }),
+      )
+    </script>
+  </body>
+</html>
