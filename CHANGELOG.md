@@ -127,7 +127,7 @@ The first release, **Pokémon Journey for Claude Code**.
 
 ### Known limitations
 
-- **Early access:** the plugin needs Claude Code 2.1.287 or newer and runs on its early-access plugin hooks, which Anthropic rolls out gradually and can switch off remotely. Where the switch is off, the plugin doesn't load (and `claude plugin test` refuses to run).
+- **A Claude Code mod:** the plugin needs Claude Code 2.1.287 or newer, where mods are on by default. Mods don't load under `--safe-mode`, with `disableAllHooks` set, or where an organization stops user-installed mods, and Anthropic can switch installed mods off remotely.
 - **The Tip line** under the spinner can't be changed by plugins; Claude Code's own `spinnerTipsOverride` setting can (see the README).
 - **The status line** can't be set by plugins; the battle-HUD script in `extras/` is set up by hand and needs bash, jq and perl (Git Bash or WSL on Windows).
 - **A piped test run whose summary is cut off** (`pytest | head`) doesn't react, since nothing says whether it passed.
@@ -136,7 +136,7 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Game-only rules aren't modelled:** the Let's Go starter Pikachu and Eevee evolve like any other, and evolutions by time of day, location or held item all happen at their level (or Lv 30).
 - **Headless runs count:** a `claude -p` run earns XP and can evolve your party, though nothing is drawn.
 - **Narrow bands:** near the band's edges the thought bubble can be cut off (often on a 40-column band), and the "!" bubble over the tallest member loses its top for the 0.4 s startled hop.
-- **Terminal only:** the band is drawn with terminal cells, so nothing shows in the Claude desktop or web app.
+- **Drawn in the terminal only:** the band is made of terminal cells, so it shows in `claude` in a terminal (editors' integrated terminals included) but not in the Desktop app's Code tab, the VS Code extension's chat panel or the web. Those sessions still earn XP.
 - **Hand-tested on macOS only.** Linux is covered by CI; Windows has had a code review, not a run.
 - **macOS Terminal.app** draws block characters from the font, so the pixel art shows thin lines between rows and can look skewed for a frame while moving; iTerm2, Ghostty, kitty and WezTerm draw it crisp.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.

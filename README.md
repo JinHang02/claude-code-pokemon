@@ -37,7 +37,7 @@ Start a new session and a wild Pokémon will be waiting above your prompt. Want 
 /pokemon pikachu
 ```
 
-> **Works on** macOS, Linux and Windows. **Needs** Claude Code **2.1.287 or newer** and a terminal with 24-bit color (iTerm2, Ghostty, kitty, WezTerm, Windows Terminal, the VS Code / Cursor terminal...). It's built on Claude Code's early-access plugin hooks, which Anthropic is still rolling out: if your party never shows up, they aren't switched on for you yet, and a future Claude Code update could change how it behaves.
+> **Works on** macOS, Linux and Windows. **Needs** Claude Code **2.1.287 or newer** and a terminal with 24-bit color (iTerm2, Ghostty, kitty, WezTerm, Windows Terminal, the VS Code / Cursor terminal...). It's a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview), and mods are on by default from 2.1.287. If your party doesn't show up, run `/plugin`: the line under the tabs should list `pokemon` among the active mods.
 
 ---
 
