@@ -20,6 +20,8 @@ const LIST = [
   { name: 'burmy', forms: ['regular', 'sandy'] },
   { name: 'wormadam', forms: ['regular', 'sandy'] },
   { name: 'mothim', forms: ['regular'] },
+  { name: 'caterpie', forms: ['regular'] },
+  { name: 'mewtwo', forms: ['regular'] },
 ]
 const fire = {
   species: { name: 'charmander' },
@@ -71,6 +73,8 @@ const cloaks = {
 }
 // Each species' gender ratio in eighths female, where a test fixes it: these always come out one way.
 const GENDER_RATES: Record<string, number> = { combee: 8, vespiquen: 8, burmy: 0, mothim: 0 }
+// Capture rates where a test fixes them: Caterpie always caught, Mewtwo never.
+const CAPTURE_RATES: Record<string, number> = { caterpie: 255, mewtwo: 0 }
 // Each species' evolution chain, as PokeAPI links it.
 const CHAINS: Record<string, unknown> = {
   charmander: fire,
@@ -96,7 +100,15 @@ const member = (species: string, extra: Partial<Member> = {}): Member => ({
 })
 
 // What the fake network and store do: go offline, stall every download, serve another species list, refuse reads.
-type Net = { isOnline: boolean; list: string; stall?: Promise<void>; isStoreBroken?: boolean; cacheAgeMs?: number }
+// `sprites`: art by sprite file, where a test gives one its own.
+type Net = {
+  isOnline: boolean
+  list: string
+  stall?: Promise<void>
+  isStoreBroken?: boolean
+  cacheAgeMs?: number
+  sprites?: Record<string, string>
+}
 
 // The engine around the plugin: a fake network, store, clock zone and UI calls; resolves the store and toasts.
 function world(
@@ -142,11 +154,13 @@ function world(
         JSON.stringify({
           evolution_chain: { url: `https://pokeapi.co/chain/${species}` },
           ...(species in GENDER_RATES ? { gender_rate: GENDER_RATES[species] } : {}),
+          ...(species in CAPTURE_RATES ? { capture_rate: CAPTURE_RATES[species] } : {}),
         }),
       )
     const chain = /chain\/([a-z-]+)/.exec(e.url)?.[1]
     if (chain) return ok(JSON.stringify({ chain: CHAINS[chain] ?? { species: { name: chain }, evolves_to: [] } }))
-    return ok(art)
+    const file = /\/colorscripts\/small\/(?:regular|shiny)\/([a-z0-9-]+)$/.exec(e.url)?.[1]
+    return ok((file && net.sprites?.[file]) || art)
   })
   on('store.get', async (_$, e) => {
     if (net.isStoreBroken) throw new Error('store unreadable')
@@ -171,6 +185,7 @@ function world(
     return { value: undefined }
   })
   on('ui.invalidate', async () => ({ value: undefined }))
+  on('ui.message', async () => ({}))
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   const saveNow = () => store.get('save') as Save
   // The party as it stands: each member's saved XP plus every session ledger not yet folded into the save.
@@ -346,7 +361,7 @@ test('/pokedex shows sightings and the party', async ($, on) => {
   await cmd($, 'pokemon', 'add shiny vaporeon')
   const dex = await cmd($, 'pokedex')
   // Eevee may be a lucky shiny (1 in 32); the asked-for Vaporeon always is.
-  expect(dex).toMatch(/Pokédex: 2 \/ 13 seen · [12] shiny/)
+  expect(dex).toMatch(/Pokédex: 2 \/ 15 seen · 0 caught · [12] shiny/)
   expect(dex).toMatch(/Shinies: (Eevee, )?Vaporeon/)
   expect(dex).toMatch(/Lead {2}Pikachu +Lv 1 /)
 })
@@ -399,7 +414,7 @@ test('a warm cache means no downloads at all', async ($, on) => {
   // Its evolution level and gender already known, so there's nothing to look up either.
   const party = [member('pikachu', { evolveAt: 30, gender: 'male' })]
   const w = await begin($, on, { ...emptySave(), party }, ART, files)
-  expect(await cmd($, 'pokedex')).toContain('/ 13 seen')
+  expect(await cmd($, 'pokedex')).toContain('/ 15 seen')
   expect(w.fetched).toEqual([])
 })
 
@@ -532,10 +547,174 @@ const colorsIn = (cells: string) => {
   return colors
 }
 
+const CYAN = 0x00ffff
+const BALL_RED = 0xe3350d
+const solid = (rgb: string, size: number) =>
+  Array.from({ length: size }, () => `\x1b[38;2;${rgb}m\x1b[48;2;${rgb}m▀\x1b[0m`.repeat(size)).join('\n')
+const TALL = solid('9;9;9', 12)
+// A wild visitor easy to find in the band: a solid cyan block.
+const BLOCK = solid('0;255;255', 8)
+const throwNet = (): Net => ({
+  isOnline: true,
+  list: JSON.stringify(LIST),
+  sprites: { caterpie: BLOCK, mewtwo: BLOCK },
+})
+type Aim = {
+  pointer: (e: { type: 'down'; x: number; y: number; button: 'left'; fine?: { x: number; y: number } }) => Promise<void>
+  drawn: () => Promise<unknown>
+  redraw: () => Promise<void>
+}
+type Line = [string, string, string][]
+// The band's text lines while the click layer draws it (null when it's pixel art), drawn afresh as the engine
+// does after the plugin invalidates it.
+async function aimLines(aim: Aim): Promise<Line[] | null> {
+  await aim.redraw()
+  const find = (node: unknown): Line[] | null => {
+    if (typeof node !== 'object' || node === null) return null
+    const n = node as { type?: string; props?: { key?: string; props?: { lines?: Line[] } } }
+    if (n.type === 'Client' && n.props?.key === 'aim') return n.props.props?.lines ?? null
+    for (const child of Object.values(node)) {
+      const found = find(child)
+      if (found) return found
+    }
+    return null
+  }
+  return find(await aim.drawn())
+}
+const isAiming = async (aim: Aim) => (await aimLines(aim)) !== null
+// The first cell the text band draws as a bare `hex` background, in the cells the click layer counts.
+function cellIn(lines: Line[] | null, hex: string) {
+  for (const [y, runs] of (lines ?? []).entries()) {
+    let x = 0
+    for (const [text, , bg] of runs) {
+      if (text.startsWith(' ') && bg === hex) return { x, y }
+      x += text.length
+    }
+  }
+  return null
+}
+// Moves the clock on until the text band shows a bare `hex` cell.
+async function seenIn(w: { clock: { advance: (ms: number) => Promise<unknown> } }, aim: Aim, hex: string) {
+  for (let i = 0; i < 200; i++) {
+    const cell = cellIn(await aimLines(aim), hex)
+    if (cell) return cell
+    await w.clock.advance(50)
+  }
+  throw new Error('never showed up')
+}
+// The first band cell whose two pixels are both `color`, in the cells the click layer counts.
+function cellOf(cells: string, columns: number, color: number) {
+  const words = new Uint32Array(Uint8Array.from(atob(cells), c => c.charCodeAt(0)).buffer)
+  for (let i = 0; i < words.length / 3; i++)
+    if (words[i * 3] === 0x20 && words[i * 3 + 2] === color) return { x: i % columns, y: Math.floor(i / columns) }
+  return null
+}
+// Moves the clock on until `find` finds something.
+async function seen<T>(w: { clock: { advance: (ms: number) => Promise<unknown> } }, find: () => T | null) {
+  for (let i = 0; i < 200; i++) {
+    const found = find()
+    if (found) return found
+    await w.clock.advance(50)
+  }
+  throw new Error('never showed up')
+}
+// A party of one in daylight with the band up and `name` stepped out of the grass.
+async function visited($: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0], on: On, name: string) {
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] },
+    TALL,
+    undefined,
+    throwNet(),
+  )
+  await cmd($, 'pokemon', 'party')
+  const aim = (await mountBand($ as never)) as Aim
+  await cmd($, 'pokemon-play', 'day')
+  expect(await cmd($, 'pokemon-play', `wild ${name}`)).toMatch(/^A wild .+ wanders by\.$/)
+  const cell = await seenIn(w, aim, '#00ffff')
+  return { w, aim, cell }
+}
+
+test('a Poké Ball thrown at a sure catch: it joins the party with ◓, and the Pokédex counts it', async ($, on) => {
+  const { w, aim, cell } = await visited($, on, 'caterpie')
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+  expect(w.toasts.some(t => /^Gotcha! (✨ )?Caterpie was caught! It joined your party\.$/.test(t))).toBe(true)
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'caterpie'])
+  expect(w.saveNow().party[1]).toMatchObject({ isCaught: true, xp: 0 })
+  expect(w.saveNow().dex.caterpie?.caught).toBe(1)
+  expect(await cmd($, 'pokemon', 'party')).toMatch(/Caterpie ◓/)
+  expect(await cmd($, 'pokedex')).toMatch(/seen · 1 caught ·/)
+})
+
+test('a ball thrown at the sky above it misses: it flies, lands, blinks out, and nothing is caught', async ($, on) => {
+  const { w, aim, cell } = await visited($, on, 'caterpie')
+  await aim.pointer({ type: 'down', x: cell.x, y: 0, button: 'left' })
+  let flew = false
+  for (let i = 0; i < 40; i++) {
+    await w.clock.advance(50)
+    if (colorsIn(w.band.cells).has(BALL_RED)) flew = true
+  }
+  expect(flew).toBe(true)
+  expect(JSON.stringify(await aimLines(aim))).not.toContain('#e3350d')
+  expect(w.toasts.some(t => t.startsWith('Gotcha'))).toBe(false)
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
+})
+
+test('one that can never be caught breaks free: hidden in the ball, then back out', async ($, on) => {
+  const { w, aim, cell } = await visited($, on, 'mewtwo')
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  let hidden = false
+  let back = false
+  for (let i = 0; i < 60; i++) {
+    await w.clock.advance(50)
+    const isShown = cellOf(w.band.cells, 80, CYAN) !== null
+    if (!isShown) hidden = true
+    if (hidden && isShown) back = true
+  }
+  expect([hidden, back]).toEqual([true, true])
+  expect(w.saveNow().dex.mewtwo?.caught).toBeUndefined()
+})
+
+test('the click layer is there only while a wild Pokémon can be aimed at; a second click mid-throw does nothing', async ($, on) => {
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] },
+    TALL,
+    undefined,
+    throwNet(),
+  )
+  await cmd($, 'pokemon', 'party')
+  const aim = (await mountBand($ as never)) as Aim
+  await cmd($, 'pokemon-play', 'day')
+  expect(await isAiming(aim)).toBe(false)
+  await cmd($, 'pokemon-play', 'wild caterpie')
+  await w.clock.advance(500)
+  expect(await isAiming(aim)).toBe(false)
+  const cell = await seenIn(w, aim, '#00ffff')
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+  for (let i = 0; i < 60; i++) await w.clock.advance(50)
+  expect(w.toasts.filter(t => t.startsWith('Gotcha'))).toHaveLength(1)
+  expect(w.saveNow().party.filter(m => m.species === 'caterpie')).toHaveLength(1)
+  expect(await isAiming(aim)).toBe(false)
+})
+
+test('/pokemon-play wild takes a name: a misspelled one calls nobody, a real one comes by', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild agumon')).toBe('No Pokémon called "agumon".')
+  expect(await cmd($, 'pokemon-play', 'wild mewtwo')).toBe('A wild Mewtwo wanders by.')
+})
+
 test('a wild Pokémon, end to end: the grass rustles, then a "!" over the party, and a toast names it', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 }), member('eevee')] })
   await cmd($, 'pokemon', 'party')
-  await mountBand($)
+  const band = (await mountBand($)) as Aim
   await w.clock.advance(500)
   expect(await cmd($, 'pokemon-play', 'wild')).toMatch(/^A wild .+ wanders by\.$/)
   expect(w.toasts.some(t => /^(✨ )?A wild .+ appeared!$/.test(t))).toBe(true)
@@ -549,7 +728,8 @@ test('a wild Pokémon, end to end: the grass rustles, then a "!" over the party,
   let alerted = false
   for (let i = 0; i < 30; i++) {
     await w.clock.advance(50)
-    if (colorsIn(w.band.cells).has(0xe0352b)) alerted = true
+    // Drawn as pixel art or, once it can be aimed at, as text.
+    if (colorsIn(w.band.cells).has(0xe0352b) || JSON.stringify(await aimLines(band)).includes('#e0352b')) alerted = true
   }
   expect(alerted).toBe(true)
 })
@@ -745,7 +925,7 @@ test('an old species list still serves when its refresh fails', async ($, on) =>
     list: JSON.stringify(LIST),
     cacheAgeMs: 40 * 24 * 60 * 60_000,
   })
-  expect(await cmd($, 'pokedex')).toContain('/ 13 seen')
+  expect(await cmd($, 'pokedex')).toContain('/ 15 seen')
 })
 
 test('a stalled download never holds up a command', async ($, on) => {
@@ -927,4 +1107,49 @@ test('a piped test run reacts to its summary; one still running in the backgroun
   await $.tool.call({ ...bash('pytest'), run_in_background: true } as never)
   await cmd($, 'pokemon', 'party')
   expect(w.partyNow()[0]?.xp).toBe(5)
+})
+
+test('the PC box: listed with /pokemon box; a boxed Pokémon can lead (the old lead takes its place) or rejoin', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { xp: 100 }), member('charmander')],
+    box: [member('eevee', { xp: 40, isCaught: true })],
+  })
+  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box:\n {2}1\. {2}Eevee ◓ {2}Lv 4 /)
+  expect(await cmd($, 'pokemon', 'eevee')).toBe(
+    'Eevee (Lv 4) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
+  )
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'charmander'])
+  expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
+  expect(await cmd($, 'pokemon', 'add pikachu')).toBe('Pikachu came out of the PC box and joined your party!')
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'charmander', 'pikachu'])
+  expect(await cmd($, 'pokemon', 'box')).toBe('Your PC box is empty.')
+})
+
+test('a name in both the party and the box picks the party one; a full party leaves the box alone', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu'), member('eevee'), member('charmander')],
+    box: [member('eevee', { id: 'boxed' }), member('raichu', { id: 'boxed-raichu' })],
+  })
+  expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 1).')
+  expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['boxed', 'boxed-raichu'])
+})
+
+test('a boxed Pokémon comes out by name even when the party holds another form of its species', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('mr-mime', { form: 'galar', id: 'gal', xp: 400 }), member('pikachu')],
+    box: [member('mr-mime', { id: 'boxed' })],
+  })
+  expect(await cmd($, 'pokemon', 'mr mime')).toBe(
+    'Mr Mime (Lv 1) came out of the PC box to lead your party. Mr Mime (Galar) (Lv 11) went into the PC box.',
+  )
+  expect(w.saveNow().party[0]?.id).toBe('boxed')
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['gal'])
+  expect(await cmd($, 'pokemon', 'add galarian mr mime')).toBe(
+    'Mr Mime (Galar) came out of the PC box and joined your party!',
+  )
+  expect(w.saveNow().party.map(m => m.id)).toContain('gal')
 })

@@ -113,7 +113,7 @@ Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustl
 ```text
 /pokedex
 
-Pokédex: 37 / 905 seen · 2 shiny
+Pokédex: 37 / 905 seen · 4 caught · 2 shiny
   Gen 1  █░░░░░░░░░  21/151
   Gen 2  █░░░░░░░░░  9/100
   Gen 3  ░░░░░░░░░░  4/135
@@ -153,19 +153,31 @@ Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it f
 
 ---
 
+## Catch 'em
+
+When a wild Pokémon wanders by, **click it** to throw a Poké Ball. Aim for the Pokémon itself: a ball that lands on
+grass or a gap in its sprite misses. A hit wobbles in the grass, and how often it holds follows the games' own
+catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly ever. Break free and it may run.
+
+Catches join your party, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>` brings one
+out to lead.
+
+---
+
 ## Commands
 
-| Command                                 | What it does                                                                                                                                                                 |
-| :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/pokemon`                              | A random Pokémon becomes your lead                                                                                                                                           |
-| `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. Close misses get a suggestion                                   |
-| `/pokemon add [name]` / `remove [name]` | Grow or trim your party (up to 3). No name: a random catch, or a random release that never picks your lead                                                                   |
-| `/pokemon party`                        | Levels, XP to go, and who evolves when                                                                                                                                       |
-| `/pokemon everstone <name>`             | Stop (or allow again) that Pokémon's evolution                                                                                                                               |
-| `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                            |
-| `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                       |
-| `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                    |
-| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve`, `wild`; or a time and place: `dusk lake`, `night forest`, `mountains` |
+| Command                                 | What it does                                                                                                                                                                        |
+| :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/pokemon`                              | A random Pokémon becomes your lead                                                                                                                                                  |
+| `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. Close misses get a suggestion                                          |
+| `/pokemon add [name]` / `remove [name]` | Grow or trim your party (up to 3). No name: a random catch, or a random release that never picks your lead                                                                          |
+| `/pokemon party`                        | Levels, XP to go, and who evolves when                                                                                                                                              |
+| `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                          |
+| `/pokemon everstone <name>`             | Stop (or allow again) that Pokémon's evolution                                                                                                                                      |
+| `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                   |
+| `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                              |
+| `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                           |
+| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve`, `wild [name]`; or a time and place: `dusk lake`, `night forest`, `mountains` |
 
 ---
 

@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   emptySave,
+  formatBox,
   formatDex,
   formatParty,
   earnInto,
@@ -12,8 +13,10 @@ import {
   isDueToEvolve,
   level,
   loadSave,
+  recordCaught,
   recordSeen,
   spriteBudget,
+  storeCaught,
   xpForLevel,
 } from '../hooks/save'
 import type { Member } from '../hooks/save'
@@ -116,7 +119,7 @@ test('the Pokédex counts per generation and lists shinies', () => {
   let save = recordSeen(emptySave(), 'bulbasaur', true, 1)
   save = recordSeen(save, 'chikorita', false, 2)
   const text = formatDex(save, names)
-  expect(text).toContain('Pokédex: 2 / 905 seen · 1 shiny')
+  expect(text).toContain('Pokédex: 2 / 905 seen · 0 caught · 1 shiny')
   expect(text).toContain('Gen 1  ░░░░░░░░░░  1/151')
   expect(text).toContain('Gen 2  ░░░░░░░░░░  1/100')
   expect(text).toContain('Shinies: Bulbasaur')
@@ -151,4 +154,47 @@ test('sprite size: small halves it, auto goes small on a short terminal, all fit
   expect(spriteBudget('auto', 30, 3)).toBe(12)
   expect(spriteBudget('auto', 15, 3)).toBe(6)
   expect(spriteBudget('normal', 8, 3)).toBe(4)
+})
+
+test('a 1.0.0 save loads with no box and no caught counts; box entries that are not Pokémon are dropped', () => {
+  const old = { party: [pikachu], size: 'auto', dex: { pikachu: { seen: 1, shiny: 0, first: 1 } }, recent: ['pikachu'] }
+  expect(loadSave(old)).toEqual(old)
+  const eevee = { ...pikachu, id: 'b1', species: 'eevee', isCaught: true }
+  const s = loadSave({
+    ...old,
+    box: [eevee, { species: 7 }, null],
+    dex: { pikachu: { seen: 2, shiny: 0, first: 1, caught: 1 } },
+  })
+  expect(s.box).toEqual([eevee])
+  expect(s.dex.pikachu).toEqual({ seen: 2, shiny: 0, first: 1, caught: 1 })
+  expect(loadSave({ ...old, party: [{ ...pikachu, isCaught: 'yes' }] }).party[0]).toEqual(pikachu)
+})
+
+test('a catch joins the party while it has room and no twin, else goes to the PC box; the Pokédex counts it', () => {
+  const eevee: Member = { ...pikachu, id: 'e1', species: 'eevee', isCaught: true }
+  const roomy = storeCaught({ ...emptySave(), party: [pikachu] }, eevee)
+  expect(roomy.isInParty).toBe(true)
+  expect(roomy.save.party.map(m => m.id)).toEqual(['p1', 'e1'])
+  const twin = storeCaught({ ...emptySave(), party: [pikachu] }, { ...pikachu, id: 'p2', isCaught: true })
+  expect(twin.isInParty).toBe(false)
+  expect(twin.save.party.map(m => m.id)).toEqual(['p1'])
+  expect(twin.save.box?.map(m => m.id)).toEqual(['p2'])
+  const three = [pikachu, { ...pikachu, id: 'x', species: 'mew' }, { ...pikachu, id: 'y', species: 'abra' }]
+  expect(storeCaught({ ...emptySave(), party: three }, eevee).save.box?.map(m => m.id)).toEqual(['e1'])
+  let save = recordSeen(emptySave(), 'eevee', false, 5)
+  save = recordCaught(recordCaught(save, 'eevee', 6), 'eevee', 7)
+  expect(save.dex.eevee).toEqual({ seen: 1, shiny: 0, first: 5, caught: 2 })
+  expect(recordCaught(emptySave(), 'abra', 9).dex.abra).toEqual({ seen: 1, shiny: 0, first: 9, caught: 1 })
+})
+
+test('the PC box lists its Pokémon like the party; ◓ marks the ones caught with a ball', () => {
+  const boxed: Member = { ...pikachu, id: 'b1', species: 'eevee', xp: 40, isCaught: true }
+  const save = { ...emptySave(), party: [{ ...pikachu, isCaught: true as const }], box: [boxed] }
+  expect(formatParty(save)).toContain('Lead  Pikachu ◓  Lv 1')
+  expect(formatBox(save)).toBe(['Your PC box:', '  1.  Eevee ◓  Lv 4  (24 xp to Lv 5)'].join('\n'))
+  expect(formatBox(emptySave())).toBe('Your PC box is empty.')
+  expect(withExtra(save, { b1: 24 }).box?.[0]?.xp).toBe(64)
+  const names = ['bulbasaur', 'eevee', ...Array.from({ length: 903 }, (_, i) => `mon-${i}`)]
+  const dex = recordCaught(recordSeen(emptySave(), 'eevee', false, 1), 'eevee', 2)
+  expect(formatDex(dex, names)).toContain('Pokédex: 1 / 905 seen · 1 caught · 0 shiny')
 })

@@ -117,6 +117,28 @@ export function toCells({ pixels, width, height }: Pixels): { cells: string; col
   return { cells: toBase64(new Uint8Array(words.buffer)), columns: width, rows }
 }
 
+// Pixels as coloured text, one line per two pixel rows: runs of [text, fg, bg], '' for the terminal's own colour.
+export type TextRun = [string, string, string]
+
+export function textRows({ pixels, width, height }: Pixels): TextRun[][] {
+  const hex = (c: number) => (c === CLEAR ? '' : `#${c.toString(16).padStart(6, '0')}`)
+  const lines: TextRun[][] = []
+  for (let r = 0; r < Math.ceil(height / 2); r++) {
+    const runs: TextRun[] = []
+    for (let x = 0; x < width; x++) {
+      const top = pixels[2 * r * width + x] ?? CLEAR
+      const bottom = 2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR
+      const cell: TextRun =
+        top === bottom ? [' ', '', hex(top)] : top === CLEAR ? ['▄', hex(bottom), ''] : ['▀', hex(top), hex(bottom)]
+      const last = runs[runs.length - 1]
+      if (last && last[0].endsWith(cell[0]) && last[1] === cell[1] && last[2] === cell[2]) last[0] += cell[0]
+      else runs.push(cell)
+    }
+    lines.push(runs)
+  }
+  return lines
+}
+
 function toBase64(bytes: Uint8Array): string {
   let bin = ''
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))

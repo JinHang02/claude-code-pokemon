@@ -13,17 +13,21 @@ export type Member = {
   hasEverstone?: boolean
   // From its species' ratio, as in the games; null for a genderless one, absent until looked up.
   gender?: 'female' | 'male' | null
+  // Caught with a Poké Ball from the wild, not summoned by name.
+  isCaught?: true
 }
 
-export type DexEntry = { seen: number; shiny: number; first: number }
+export type DexEntry = { seen: number; shiny: number; first: number; caught?: number }
 
 // `isOff`: the Pokémon rest in their Poké Balls (/pokemon off): nothing drawn, no xp.
 // `folded`: the session XP ledgers already added into the party's XP here, so they never count twice.
+// `box`: the PC box, where catches go when the party is full; absent when empty.
 export type Save = {
   party: Member[]
   size: Size
   dex: Record<string, DexEntry>
   recent: string[]
+  box?: Member[]
   isOff?: boolean
   folded?: string[]
 }
@@ -68,6 +72,7 @@ function loadMember(raw: unknown, at: number): Member | null {
       : {}),
     ...(raw.hasEverstone === true ? { hasEverstone: true } : {}),
     ...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === null ? { gender: raw.gender } : {}),
+    ...(raw.isCaught === true ? { isCaught: true as const } : {}),
   }
 }
 
@@ -80,14 +85,26 @@ export function loadSave(raw: unknown): Save {
     if (!member || party.length >= MAX_PARTY) continue
     party.push(party.some(p => p.id === member.id) ? { ...member, id: `${member.id}-${at}` } : member)
   }
+  const box: Member[] = []
+  for (const [at, m] of (Array.isArray(s.box) ? s.box : []).entries()) {
+    const member = loadMember(m, at)
+    if (member) box.push(member)
+  }
   const dex: Record<string, DexEntry> = {}
   for (const [name, e] of Object.entries(isObject(s.dex) ? s.dex : {}))
-    if (isName(name) && isObject(e)) dex[name] = { seen: count(e.seen), shiny: count(e.shiny), first: count(e.first) }
+    if (isName(name) && isObject(e))
+      dex[name] = {
+        seen: count(e.seen),
+        shiny: count(e.shiny),
+        first: count(e.first),
+        ...(count(e.caught) ? { caught: count(e.caught) } : {}),
+      }
   return {
     party,
     size: SIZES.includes(s.size as Size) ? (s.size as Size) : 'auto',
     dex,
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
+    ...(box.length ? { box } : {}),
     ...(s.isOff === true ? { isOff: true } : {}),
     ...(Array.isArray(s.folded) && s.folded.some(isLedgerKey) ? { folded: s.folded.filter(isLedgerKey) } : {}),
   }
@@ -112,10 +129,10 @@ export function extraXp(ledgers: Record<string, Ledger>, folded: string[] = []):
 }
 
 // The save as the party stands: each member's XP with its ledger XP added. For showing and deciding, never storing.
-export const withExtra = (save: Save, extra: Record<string, number>): Save => ({
-  ...save,
-  party: save.party.map(m => ({ ...m, xp: m.xp + (extra[m.id] ?? 0) })),
-})
+export const withExtra = (save: Save, extra: Record<string, number>): Save => {
+  const add = (m: Member) => ({ ...m, xp: m.xp + (extra[m.id] ?? 0) })
+  return { ...save, party: save.party.map(add), ...(save.box ? { box: save.box.map(add) } : {}) }
+}
 
 // `ledger` added into the save's own XP, and marked as added; a ledger already added changes nothing.
 export function foldLedger(save: Save, key: string, ledger: Ledger): Save {
@@ -145,6 +162,20 @@ export function recordSeen(save: Save, species: string, isShiny: boolean, now: n
   return { ...save, dex: { ...save.dex, [species]: entry }, recent }
 }
 
+// One more of `species` caught; a catch never seen before counts as seen once.
+export function recordCaught(save: Save, species: string, now: number): Save {
+  const was = save.dex[species] ?? { seen: 1, shiny: 0, first: now }
+  return { ...save, dex: { ...save.dex, [species]: { ...was, caught: (was.caught ?? 0) + 1 } } }
+}
+
+// A catch joins the party while it has room and holds no Pokémon of its species and form; else the PC box.
+export function storeCaught(save: Save, m: Member): { save: Save; isInParty: boolean } {
+  const isInParty = save.party.length < MAX_PARTY && !save.party.some(p => p.species === m.species && p.form === m.form)
+  return isInParty
+    ? { save: { ...save, party: [...save.party, m] }, isInParty }
+    : { save: { ...save, box: [...(save.box ?? []), m] }, isInParty }
+}
+
 export const titleCase = (name: string) =>
   name
     .split('-')
@@ -171,7 +202,7 @@ function memberColumns(m: Member): string[] {
         : ''
   const sign = m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
   return [
-    `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}`,
+    `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
     `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})`,
     evolves,
@@ -181,26 +212,40 @@ function memberColumns(m: Member): string[] {
 // Terminal columns a text takes: ✨ is drawn two wide.
 const widthOf = (text: string) => [...text].length + (text.match(/✨/g)?.length ?? 0)
 
+// Rows of columns, each column padded to its widest entry.
+function lineUp(rows: string[][]): string[] {
+  const widths = (rows[0] ?? []).map((_, c) => Math.max(...rows.map(r => widthOf(r[c] ?? ''))))
+  const pad = (text: string, c: number) => text + ' '.repeat((widths[c] ?? 0) - widthOf(text))
+  return rows.map(r => `  ${r.map(pad).join('  ').trimEnd()}`)
+}
+
 // One row per member, every column lined up.
 export function formatParty(save: Save): string {
   if (!save.party.length) return 'Your party is empty. /pokemon <name> picks a lead.'
-  const rows = save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)])
-  const widths = rows[0]!.map((_, c) => Math.max(...rows.map(r => widthOf(r[c] ?? ''))))
-  const pad = (text: string, c: number) => text + ' '.repeat((widths[c] ?? 0) - widthOf(text))
-  return ['Your party:', ...rows.map(r => `  ${r.map(pad).join('  ').trimEnd()}`)].join('\n')
+  return [
+    'Your party:',
+    ...lineUp(save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)])),
+  ].join('\n')
+}
+
+export function formatBox(save: Save): string {
+  const box = save.box ?? []
+  if (!box.length) return 'Your PC box is empty.'
+  return ['Your PC box:', ...lineUp(box.map((m, i) => [`${i + 1}.`, ...memberColumns(m)]))].join('\n')
 }
 
 // The Pokédex: totals, progress per generation, shinies and the latest sightings. `names` is the national dex order.
 export function formatDex(save: Save, names: string[]): string {
   const seen = names.filter(n => save.dex[n])
   const shinies = names.filter(n => (save.dex[n]?.shiny ?? 0) > 0)
+  const caught = names.filter(n => (save.dex[n]?.caught ?? 0) > 0)
   const gens = GENERATIONS.map((end, g) => {
     const start = g === 0 ? 0 : (GENERATIONS[g - 1] ?? 0)
     const inGen = names.slice(start, end).filter(n => save.dex[n]).length
     return `  Gen ${g + 1}  ${bar(inGen, end - start)}  ${inGen}/${end - start}`
   })
   return [
-    `Pokédex: ${seen.length} / ${names.length} seen · ${shinies.length} shiny`,
+    `Pokédex: ${seen.length} / ${names.length} seen · ${caught.length} caught · ${shinies.length} shiny`,
     ...gens,
     `Shinies: ${shinies.length ? shinies.map(n => titleCase(n)).join(', ') : 'none yet'}`,
     `Recently seen: ${save.recent.length ? save.recent.map(n => titleCase(n)).join(', ') : 'nothing yet'}`,

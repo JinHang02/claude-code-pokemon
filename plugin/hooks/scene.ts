@@ -17,6 +17,8 @@ export const SLEEP_TICKS = ticks(5 * 60_000)
 const WALK = 0.25
 const RUN = 0.6
 const WILD = 0.18
+// A fleeing wild Pokémon dashes at three times its pace.
+const FLEE = WILD * 3
 const ACCEL = 0.03
 
 const SPARK = [0xffffff, 0xfff27a, 0xffd84a]
@@ -87,6 +89,8 @@ const RUSTLE = ticks(2000)
 const ALERT = ticks(2500)
 // The startled hop on spotting a wild Pokémon.
 const STARTLE = ticks(400)
+// The hop of a wild Pokémon breaking out of a Poké Ball.
+const WILD_HOP = ticks(400)
 // Evolution: the two forms swap as white silhouettes, ever faster, then a flash and the new form.
 export const EVOLVE = ticks(4500)
 const EVOLVE_FLASH = ticks(500)
@@ -112,8 +116,22 @@ export type Particle = {
   color?: number
 }
 
-// `rustle`: ticks left of the grass shaking at its edge before it steps out.
-export type Wild = { x: number; facing: 1 | -1; stride: number; pause: number; hasPaused: boolean; rustle: number }
+// `rustle`: ticks left of the grass shaking at its edge before it steps out. `isHeld`: stopped where it stands (a
+// Poké Ball is on its way, or it's inside one); `isFleeing`: dashing for the nearest edge; `hop`: ticks left of
+// the hop as it breaks free.
+export type Wild = {
+  x: number
+  facing: 1 | -1
+  stride: number
+  pause: number
+  hasPaused: boolean
+  rustle: number
+  isHeld?: true
+  isFleeing?: true
+  hop?: number
+}
+
+export type Placed = { img: Pixels; left: number; floor: number }
 
 export type Status = {
   // One per party member, the lead first.
@@ -213,6 +231,23 @@ export const startWild = (s: Status, width: number, wildWidth: number, rand = Ma
   return { ...s, wild: { x, facing, stride: 0, pause: 0, hasPaused: false, rustle: RUSTLE } }
 }
 
+// Stops a wild Pokémon where it stands, or lets it walk on.
+export function holdWild(s: Status, isHeld: boolean): Status {
+  if (!s.wild) return s
+  const { isHeld: _, ...rest } = s.wild
+  return { ...s, wild: isHeld ? { ...rest, isHeld: true } : rest }
+}
+
+export const hopWild = (s: Status): Status => (s.wild ? { ...s, wild: { ...s.wild, hop: WILD_HOP } } : s)
+
+// It turns for the nearest edge and dashes off.
+export function fleeWild(s: Status, width: number, wildWidth: number): Status {
+  if (!s.wild) return s
+  const { isHeld: _, ...rest } = s.wild
+  const facing = rest.x + wildWidth / 2 < width / 2 ? -1 : 1
+  return { ...s, wild: { ...rest, facing, pause: 0, isFleeing: true } }
+}
+
 const between = (lo: number, hi: number, rand: () => number) => lo + Math.floor(rand() * (hi - lo + 1))
 const flip = (f: 1 | -1): 1 | -1 => (f === 1 ? -1 : 1)
 
@@ -283,6 +318,12 @@ export function advance(s: Scene, width: number, spriteWidth: number, rand = Mat
 // A wild Pokémon strolls across, stops once mid-way to look about, and leaves the other side.
 function moveWild(w: Wild, width: number, wildWidth: number): Wild | null {
   if (w.rustle > 0) return { ...w, rustle: w.rustle - 1 }
+  if (w.hop) w = { ...w, hop: w.hop - 1 }
+  if (w.isHeld) return w
+  if (w.isFleeing) {
+    const x = w.x + FLEE * w.facing
+    return x < -wildWidth - 1 || x > width + 1 ? null : { ...w, x, stride: w.stride + FLEE }
+  }
   // Looks back over its shoulder mid-pause, then on its way again.
   const turns = w.pause === ticks(1600) || w.pause === ticks(800)
   if (w.pause > 0) return { ...w, pause: w.pause - 1, facing: turns ? flip(w.facing) : w.facing }
@@ -384,6 +425,14 @@ export function step(s: Status, width: number, widths: number[], wildWidth = 0, 
           },
         ]
   })
+  // One that fled leaves a puff of dust at the edge it ran out of.
+  if (s.wild?.isFleeing && !wild) {
+    const edge = s.wild.facing === 1 ? width - 3 : 1
+    fx = [
+      ...fx,
+      ...[0, 1, 2].map(i => ({ kind: 'dust' as const, x: edge + i - 1, y: -1 - (i % 2), age: 0, life: ticks(450) })),
+    ]
+  }
   const compactT = s.isCompacting ? s.compactT + 1 : 0
   return { ...s, actors, mood, idleTicks, clones, trail, fx, compactT, wild, alert, t }
 }
@@ -417,11 +466,14 @@ function dim(img: Pixels, k: number): Pixels {
   return { ...img, pixels: img.pixels.map(c => (c === CLEAR ? c : tint(c, [k, k, k]))) }
 }
 
-const silhouette = (img: Pixels): Pixels => ({ ...img, pixels: img.pixels.map(c => (c === CLEAR ? c : 0xffffff)) })
+export const silhouette = (img: Pixels): Pixels => ({
+  ...img,
+  pixels: img.pixels.map(c => (c === CLEAR ? c : 0xffffff)),
+})
 
 const easeOut = (p: number) => 1 - (1 - p) ** 2
 const easeIn = (p: number) => p * p
-const arc = (p: number, peak: number) => Math.round(4 * peak * p * (1 - p))
+export const arc = (p: number, peak: number) => Math.round(4 * peak * p * (1 - p))
 
 // How a Pokémon shows this tick: stretched or squashed (`scale`), lifted, sunk below the grass,
 // shaken sideways and dimmed.
@@ -490,11 +542,29 @@ export function evolveLook(t: number): { isNew: boolean; isWhite: boolean } {
   return { isNew: Math.floor(t / period) % 2 === 1, isWhite: p > 0.1 }
 }
 
-// Pixels a Pokémon covers in the frame being drawn.
+// Where a wild Pokémon's sprite goes in a band `height` pixels tall: facing its way, feet on the ground, bobbing
+// as it walks and lifted while it hops.
+export function wildPlacement(w: Wild, img: Pixels, height: number): Placed {
+  const bob = w.pause || w.isHeld ? 0 : Math.floor(w.stride / 2.5) % 2
+  const hop = w.hop ? arc(1 - w.hop / WILD_HOP, 3) : 0
+  return { img: w.facing === 1 ? mirror(img) : img, left: Math.round(w.x), floor: height - 2 - bob - hop }
+}
+
+// Who covers each pixel of the frame last drawn: a party member (or clone) or the wild Pokémon.
+const PARTY = 1
+const WILD_BODY = 2
 let body = new Uint8Array(0)
+let bodyWidth = 0
+
+// Whose pixel (x, y) of the last frame is, the topmost Pokémon painted there.
+export function paintedBy(x: number, y: number): 'party' | 'wild' | null {
+  if (x < 0 || x >= bodyWidth || y < 0) return null
+  const who = body[y * bodyWidth + x]
+  return who === WILD_BODY ? 'wild' : who === PARTY ? 'party' : null
+}
 
 // Paints `img` with its feet on row `floor`, rows below `clip` left out (sunk into the grass);
-// `avoidBodies` leaves any Pokémon in the frame untouched; `isBody` marks what it paints as one.
+// `avoidBodies` leaves any Pokémon in the frame untouched; `who` marks what it paints as a Pokémon's.
 function paint(
   into: Pixels,
   img: Pixels,
@@ -502,7 +572,7 @@ function paint(
   floor: number,
   clip = into.height,
   avoidBodies = false,
-  isBody = false,
+  who = 0,
 ) {
   const top = floor + 1 - img.height
   for (let y = 0; y < img.height; y++)
@@ -512,7 +582,7 @@ function paint(
       if (c === CLEAR || px < 0 || px >= into.width || py < 0 || py >= into.height || py > clip) continue
       if (avoidBodies && body[py * into.width + px]) continue
       into.pixels[py * into.width + px] = c
-      if (isBody) body[py * into.width + px] = 1
+      if (who) body[py * into.width + px] = who
     }
 }
 
@@ -563,7 +633,8 @@ function thoughtBubble(out: Pixels, lead: Scene, width: number, top: number, t: 
 export { phaseAt } from './backdrop'
 export type { Landscape, Phase } from './backdrop'
 
-export type Look = { phase: Phase; landscape?: Landscape; wild?: Pixels; evolveFrom?: Pixels }
+// `overlays`: painted last, over everything (a Poké Ball and its sparkles).
+export type Look = { phase: Phase; landscape?: Landscape; wild?: Pixels; evolveFrom?: Pixels; overlays?: Placed[] }
 
 // The band's picture: the meadow, clones trailing the lead, a wild visitor, the party in their poses with
 // feet in the grass (lead in front), then dust, sparks, confetti and Zs. `lefts`: the party facing left.
@@ -572,6 +643,7 @@ export function frame(s: Status, lefts: Pixels[], width: number, rows: number, l
   const ground = out.height - 2
   backdrop(out, look.phase, look.landscape ?? 'meadow', s.t, 1000 / TICK_MS)
   body = new Uint8Array(width * out.height)
+  bodyWidth = width
   if (s.wild && s.wild.rustle > 0) rustle(out, s.wild.facing === 1 ? 0 : width - RUSTLE_COLUMNS, s.t)
   const night = look.phase === 'night' ? 0.85 : 1
   const lead = s.actors[0] ?? newScene()
@@ -596,23 +668,14 @@ export function frame(s: Status, lefts: Pixels[], width: number, rows: number, l
         ground + sink - lift,
         ground,
         false,
-        true,
+        PARTY,
       )
     })
   }
 
   if (s.wild && look.wild) {
-    const w = s.wild
-    const lift = w.pause ? 0 : Math.floor(w.stride / 2.5) % 2
-    paint(
-      out,
-      dim(w.facing === 1 ? mirror(look.wild) : look.wild, night),
-      Math.round(w.x),
-      ground - lift,
-      ground,
-      false,
-      true,
-    )
+    const p = wildPlacement(s.wild, look.wild, out.height)
+    paint(out, dim(p.img, night), p.left, p.floor, ground, false, WILD_BODY)
   }
 
   const tops: number[] = []
@@ -630,7 +693,7 @@ export function frame(s: Status, lefts: Pixels[], width: number, rows: number, l
     const p = pose(s, facing.height, i)
     let sprite = dim(scaleY(facing, p.scale), p.light * night)
     if (isWhite) sprite = silhouette(sprite)
-    paint(out, sprite, Math.round(a.x) + p.shake, ground - p.lift + p.sink, ground, false, true)
+    paint(out, sprite, Math.round(a.x) + p.shake, ground - p.lift + p.sink, ground, false, PARTY)
     tops[i] = ground + 1 - sprite.height - p.lift + p.sink
   }
 
@@ -673,5 +736,6 @@ export function frame(s: Status, lefts: Pixels[], width: number, rows: number, l
       paint(out, glyph(Z_GLYPH, 3, pick(ZZZ, age)), fx.x + drift, (tops[fx.y] ?? ground) + 2 - rise, ground, true)
     }
   }
+  for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
   return out
 }

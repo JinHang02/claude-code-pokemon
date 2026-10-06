@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Mon } from '../types'
+import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
+import type { Click, Throw, ThrowEvent } from './catch'
 import { evolvedForm, genderOf, nextStages, pokeapiForm } from './evolution'
 import type { ChainLink, Stage } from './evolution'
 import { lookup, randomPick, slug, spell } from './lookup'
@@ -10,6 +12,7 @@ import { classify } from './reactions'
 import {
   displayName,
   emptySave,
+  formatBox,
   formatDex,
   formatParty,
   earnInto,
@@ -23,8 +26,10 @@ import {
   loadSave,
   MAX_PARTY,
   newId,
+  recordCaught,
   recordSeen,
   spriteBudget,
+  storeCaught,
   withExtra,
   XP,
 } from './save'
@@ -34,8 +39,11 @@ import {
   carryActors,
   EVOLVE,
   evolve,
+  fleeWild,
   frame,
   HEADROOM,
+  holdWild,
+  hopWild,
   initialStatus,
   isAsleep,
   isCalm,
@@ -45,13 +53,15 @@ import {
   startWild,
   step,
   TICK_MS,
+  paintedBy,
   ticks,
+  wildPlacement,
 } from './scene'
-import type { Happening, Phase, Status } from './scene'
+import type { Happening, Look, Phase, Status } from './scene'
 import { landscapeAt, LANDSCAPES } from './backdrop'
 import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
-import { fit, parseAnsi, toCells } from './sprite'
+import { fit, parseAnsi, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
 
 const BASE = 'https://gitlab.com/phoneybadger/pokemon-colorscripts/-/raw/main'
@@ -97,7 +107,16 @@ let lastCells = ''
 // The band refused the last frame (hidden or collapsed): frames are offered again once in a while.
 let isHidden = false
 const RETRY_TICKS = ticks(1000)
-let wild: { mon: Mon; left: Pixels } | null = null
+let wild: { mon: Mon; left: Pixels; pick: Pick } | null = null
+// The visitor's capture rate, once PokeAPI has said.
+let wildRate = DEFAULT_RATE
+// A Poké Ball in flight or playing out, at most one.
+let pitch: Throw | null = null
+// While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a click layer over pixel art
+// stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
+const AIM_EVERY = 2
+let isAiming = false
+const canAim = () => Boolean(wild && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
 let evolveFrom: Pixels | null = null
 let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
@@ -381,6 +400,8 @@ const same = (a: Member, b: Member) => a.species === b.species && a.form === b.f
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level;
 // a new one replaces the lead.
 async function setLead($: EngineInterface, query: string): Promise<string> {
+  const fromBox = query.trim() ? await leadFromBox($, query) : null
+  if (fromBox) return fromBox
   const caught = await catchOne($, query)
   if (typeof caught === 'string') return caught
   let text = ''
@@ -405,6 +426,8 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
 
 async function addMember($: EngineInterface, query: string): Promise<string> {
   if (save.party.length >= MAX_PARTY) return `Your party is full (${MAX_PARTY}). Make room with /pokemon remove <name>.`
+  const fromBox = query.trim() ? await addFromBox($, query) : null
+  if (fromBox) return fromBox
   const caught = await catchOne($, query, 'add ')
   if (typeof caught === 'string') return caught
   const name = displayName(caught.species, caught.form)
@@ -421,26 +444,73 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   return text
 }
 
-// The party member a query names exactly (`vulpix` is the plain one, `alolan vulpix` the other); otherwise a
-// suggestion naming `command`, or what's in the party.
-function findMember(s: Save, query: string, command: string): number | string {
-  const words = slug(query).split('-').filter(Boolean)
+// The species and forms among `members`, for looking a name up among them.
+function namesOf(members: Member[]): Species[] {
   const names: Species[] = []
-  for (const m of s.party) {
+  for (const m of members) {
     const known = names.find(n => n.name === m.species)
     if (known) known.forms.push(m.form)
     else names.push({ name: m.species, forms: [m.form] })
   }
-  const found = words.length ? lookup(names, words) : { error: '' }
-  if ('pick' in found) {
-    const { species, form } = found.pick
-    const at = s.party.findIndex(m => m.species === species && m.form === form)
-    // Just the species named: the plain one, or else the first of that species.
-    const any = s.party.findIndex(m => m.species === species)
-    if (at >= 0 || any >= 0) return at >= 0 ? at : any
-  }
+  return names
+}
+
+// Where among `members` a query names exactly (`vulpix` is the plain one, `alolan vulpix` the other): the form
+// named, or else the first of that species; -1 when none.
+function indexIn(members: Member[], query: string): number {
+  const words = slug(query).split('-').filter(Boolean)
+  const found = words.length && members.length ? lookup(namesOf(members), words) : null
+  if (!found || !('pick' in found)) return -1
+  const { species, form } = found.pick
+  const at = members.findIndex(m => m.species === species && m.form === form)
+  return at >= 0 ? at : members.findIndex(m => m.species === species)
+}
+
+// The party member a query names exactly; otherwise a suggestion naming `command`, or what's in the party.
+function findMember(s: Save, query: string, command: string): number | string {
+  const at = indexIn(s.party, query)
+  if (at >= 0) return at
+  const words = slug(query).split('-').filter(Boolean)
+  const found = words.length ? lookup(namesOf(s.party), words) : { error: '' }
   if ('guess' in found) return didYouMean(found.guess, command)
   return `No ${query.trim()} in your party. ${formatParty(withExtra(s, extra))}`
+}
+
+// `/pokemon <name>` for a Pokémon in the PC box and not the party: it leads, and the old lead goes into the box.
+async function leadFromBox($: EngineInterface, query: string): Promise<string | null> {
+  let text = ''
+  await mutate($, s => {
+    const box = s.box ?? []
+    const at = indexIn(box, query)
+    const m = box[at]
+    if (!m || s.party.some(p => same(p, m))) return s
+    const old = s.party[0]
+    const lv = (p: Member) => level(p.xp + (extra[p.id] ?? 0))
+    text = `${displayName(m.species, m.form)} (Lv ${lv(m)}) came out of the PC box to lead your party.`
+    if (old) text += ` ${displayName(old.species, old.form)} (Lv ${lv(old)}) went into the PC box.`
+    return { ...s, party: [m, ...s.party.slice(1)], box: [...box.filter((_, i) => i !== at), ...(old ? [old] : [])] }
+  })
+  if (!text) return null
+  await refreshParty($)
+  background($, learnEvolutions($))
+  return text
+}
+
+// `/pokemon add <name>` for a Pokémon in the PC box: it comes out and joins the party.
+async function addFromBox($: EngineInterface, query: string): Promise<string | null> {
+  let text = ''
+  await mutate($, s => {
+    const box = s.box ?? []
+    const at = indexIn(box, query)
+    const m = box[at]
+    if (!m || s.party.some(p => same(p, m)) || s.party.length >= MAX_PARTY) return s
+    text = `${displayName(m.species, m.form)} came out of the PC box and joined your party!`
+    return { ...s, party: [...s.party, m], box: box.filter((_, i) => i !== at) }
+  })
+  if (!text) return null
+  await refreshParty($)
+  background($, learnEvolutions($))
+  return text
 }
 
 async function removeMember($: EngineInterface, query: string): Promise<string> {
@@ -656,21 +726,104 @@ function fitWild(mon: Mon): Pixels {
   return fit(mon, Math.min(fitted?.budget ?? tallest, Math.floor(tallest / 2)))
 }
 
-async function spawnWild($: EngineInterface) {
-  if (!band || !fitted || status.wild) return
+// A species' capture rate, from the PokeAPI entry its evolution data comes from (and is cached with).
+async function captureRateOf($: EngineInterface, name: string): Promise<number> {
+  const res = await cachedFetch($, `${POKEAPI}/pokemon-species/${name}`, `pokeapi/species-${name}.json`, isJson)
+  const rate = res.ok ? (JSON.parse(res.text) as { capture_rate?: unknown }).capture_rate : undefined
+  return typeof rate === 'number' && Number.isFinite(rate) ? rate : DEFAULT_RATE
+}
+
+// A wild Pokémon comes by: the one `query` names, or a random one. Answers why not when the name isn't one.
+async function spawnWild($: EngineInterface, query = ''): Promise<string | null> {
+  if (!band || !fitted || status.wild || pitch) return null
   try {
     const list = await loadSpecies($)
-    const pick = randomPick(list)
+    const words = slug(query).split('-').filter(Boolean)
+    const found = words.length ? lookup(list, words) : { pick: randomPick(list) }
+    if ('error' in found) return found.error
+    if ('guess' in found)
+      return `Did you mean ${displayName(found.guess.species, found.guess.form)}? Run /pokemon-play wild ${spell(found.guess)}`
+    const pick = found.pick
     const { art, isShiny } = await fetchArt($, fileOf(pick), Math.random() < SHINY_ODDS)
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
-    wild = { mon, left: fitWild(mon) }
+    wild = { mon, left: fitWild(mon), pick }
+    wildRate = DEFAULT_RATE
+    background(
+      $,
+      captureRateOf($, pick.species).then(rate => {
+        if (wild?.pick === pick) wildRate = rate
+      }),
+    )
     status = startWild(status, band.columns, wild.left.width)
     $.ui.toast(`${isShiny ? '✨ ' : ''}A wild ${mon.name} appeared!`, { timeoutMs: 6000 })
     await mutate($, s => recordSeen(s, pick.species, isShiny, Date.now()))
   } catch (err) {
     await report($, err)
   }
+  return null
 }
+
+// A left click on the band: a Poké Ball at that spot while a wild Pokémon is out of the grass, one at a time.
+function throwAt(click: Click) {
+  feel('activity')
+  const w = status.wild
+  if (!band || !wild || !w || w.rustle > 0 || w.isFleeing || pitch) return
+  const height = band.rows * 2
+  const place = wildPlacement(w, wild.left, height)
+  const { x, ys } = clickPixels(click)
+  // A hit is a pixel the wild Pokémon shows in the last frame: one a party member stands in front of misses.
+  const isHit = ys.some(y => paintedBy(x, y) === 'wild')
+  const to = { x, y: ys[ys.length - 1] ?? 0 }
+  // The ball comes to rest with its bottom on the ground row, in front of the Pokémon's middle.
+  const rest = { x: place.left + place.img.width / 2, y: height - 3 }
+  pitch = startThrow({ x: -3, y: height - 2 }, to, rest, isHit, wildRate)
+  if (isHit) status = holdWild(status, true)
+}
+
+// The Pokémon in the ball is kept: in the party while it has room (and no twin), else the PC box.
+async function keepCatch($: EngineInterface) {
+  if (!wild) return
+  const { pick, mon } = wild
+  status = { ...status, wild: null }
+  wild = null
+  const caught: Member = {
+    id: newId(),
+    species: pick.species,
+    form: pick.form,
+    isShiny: mon.isShiny,
+    xp: 0,
+    evolutions: 0,
+    isCaught: true,
+  }
+  let isInParty = false
+  await mutate($, s => {
+    const kept = storeCaught(recordCaught(s, pick.species, Date.now()), caught)
+    isInParty = kept.isInParty
+    return kept.save
+  })
+  const where = isInParty ? 'It joined your party.' : 'It was sent to the PC box.'
+  $.ui.toast(`Gotcha! ${mon.isShiny ? '✨ ' : ''}${mon.name} was caught! ${where}`)
+  feel('cheer')
+  if (!isInParty) return
+  await refreshParty($)
+  background($, learnEvolutions($))
+}
+
+function afterThrow($: EngineInterface, event: ThrowEvent) {
+  if (event === 'broke-free') status = hopWild(status)
+  else if (event === 'released') status = holdWild(status, false)
+  else if (event === 'fled') status = fleeWild(status, band?.columns ?? 0, wild?.left.width ?? 0)
+  else background($, keepCatch($))
+}
+
+// The band's look besides the party: time and place, the visitor as a throw shows it, and the ball.
+const lookNow = (): Look => ({
+  phase: phaseNow(),
+  landscape: landscapeNow(),
+  wild: (wild && (pitch ? wildLook(pitch, wild.left) : wild.left)) ?? undefined,
+  evolveFrom: evolveFrom ?? undefined,
+  ...(pitch ? { overlays: ballOverlays(pitch) } : {}),
+})
 
 async function tick($: EngineInterface) {
   if (!band || !fitted || save.isOff) return
@@ -685,19 +838,27 @@ async function tick($: EngineInterface) {
     fitted.lefts.map(l => l.width),
     wild?.left.width ?? 0,
   )
+  if (pitch) {
+    const { pitch: next, event } = stepThrow(pitch)
+    pitch = next
+    if (event) afterThrow($, event)
+  }
   if (!status.wild) wild = null
+  if (canAim() !== isAiming) {
+    isAiming = !isAiming
+    $.ui.invalidate('ui.render')
+    return
+  }
   if (status.mood?.kind !== 'evolve') evolveFrom = null
-  if (isCalm(status) && tickNo % CALM_EVERY !== 0) return
+  if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
-  const { cells } = toCells(
-    frame(status, fitted.lefts, band.columns, band.rows, {
-      phase: phaseNow(),
-      landscape: landscapeNow(),
-      wild: wild?.left,
-      evolveFrom: evolveFrom ?? undefined,
-    }),
-  )
+  const { cells } = toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow()))
   if (cells === lastCells && !isHidden) return
+  if (isAiming) {
+    lastCells = cells
+    if (tickNo % AIM_EVERY === 0) $.ui.invalidate('ui.render')
+    return
+  }
   const res = await $.ui.blit({
     requestId: band.requestId,
     key: 'scene',
@@ -739,8 +900,9 @@ async function play($: EngineInterface, args: string): Promise<string> {
       countAgents()
     })
   } else if (name === 'evolve') return evolveMember($, 0, true)
-  else if (name === 'wild') {
-    await spawnWild($)
+  else if (words[0] === 'wild') {
+    const said = await spawnWild($, words.slice(1).join(' '))
+    if (said) return said
     return wild ? `A wild ${wild.mon.name} wanders by.` : 'No wild Pokémon showed up.'
   } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES].join(', ')}.`
   return `Playing ${name}.`
@@ -753,6 +915,9 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
     case 'party':
       await sync($)
       return formatParty(view())
+    case 'box':
+      await sync($)
+      return formatBox(view())
     case 'add':
       return addMember($, tail)
     case 'remove':
@@ -852,7 +1017,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · party · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · party · box · size small|normal|auto · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
@@ -974,6 +1139,12 @@ export const register: Register = on => {
     }
   })
 
+  on('ui.message', async ($, e, next) => {
+    const click = e.element === 'aim' ? readClick(e.data) : null
+    if (click) throwAt(click)
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const mons = await read($, party)
     // Another surface drawing at the same time leaves the terminal's band alone.
@@ -982,7 +1153,7 @@ export const register: Register = on => {
       band = null
       return next(e)
     }
-    const { Raster } = $.ui.resolve(e)
+    const { Client, Raster } = $.ui.resolve(e)
     // As wide as a Raster can be.
     const columns = Math.min(512, e.props.bodyColumns)
     const budget = spriteBudget(save.size, e.props.maxRows, Math.ceil(HEADROOM / 2))
@@ -1013,15 +1184,12 @@ export const register: Register = on => {
     }
     band = { requestId: e.requestId, columns, rows }
     isHidden = false
-    const { cells } = toCells(
-      frame(status, fitted.lefts, columns, rows, {
-        phase: phaseNow(),
-        landscape: landscapeNow(),
-        wild: wild?.left,
-        evolveFrom: evolveFrom ?? undefined,
-      }),
-    )
+    const img = frame(status, fitted.lefts, columns, rows, lookNow())
+    const { cells } = toCells(img)
     lastCells = cells
+    isAiming = canAim()
+    if (isAiming)
+      return <Client key="aim" module="./aim.tsx" width={columns} height={rows} props={{ lines: textRows(img) }} />
 
     return <Raster key="scene" columns={columns} rows={rows} cells={cells} />
   })

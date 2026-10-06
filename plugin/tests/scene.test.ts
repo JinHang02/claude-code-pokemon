@@ -8,11 +8,15 @@ import {
   EVOLVE,
   evolve,
   evolveLook,
+  fleeWild,
   frame,
   HEADROOM,
+  holdWild,
+  hopWild,
   initialStatus,
   isCalm,
   newScene,
+  paintedBy,
   phaseAt,
   pose,
   react,
@@ -20,6 +24,7 @@ import {
   startWild,
   step,
   TICK_MS,
+  wildPlacement,
 } from '../hooks/scene'
 import type { Scene, Status } from '../hooks/scene'
 
@@ -436,4 +441,85 @@ test('nobody dozes off with a wild Pokémon around, and its "!" leaves with it',
   // The visitor gone early (the band shrank under it): the "!" goes too.
   const alerted = { ...initialStatus(), actors: [newScene(10)], alert: 40 }
   expect(step(alerted, 80, [10]).alert).toBe(0)
+})
+
+// Steps with a 4-wide wild visitor in the band.
+const go = (s: Status, n: number) => {
+  for (let i = 0; i < n; i++) s = step(s, W, [SPRITE.width], 4, () => 0.99)
+  return s
+}
+const H = ROWS * 2
+
+test('a held wild Pokémon stands still where it is; let go, it walks on', () => {
+  const out = go(
+    startWild(still, W, 4, () => 0.9),
+    ticks(2000) + 20,
+  )
+  const x = out.wild?.x ?? 0
+  const held = go(holdWild(out, true), 40)
+  expect(held.wild?.x).toBe(x)
+  expect(wildPlacement(held.wild!, SPRITE, H).floor).toBe(H - 2)
+  const free = go(holdWild(held, false), 40)
+  expect(free.wild?.x).toBeLessThan(x)
+  expect(free.wild?.isHeld).toBeUndefined()
+})
+
+test('breaking free it hops: lifted mid-hop, back on the ground after', () => {
+  const held = holdWild(
+    go(
+      startWild(still, W, 4, () => 0.9),
+      ticks(2000) + 20,
+    ),
+    true,
+  )
+  const hopping = hopWild(held)
+  const lifts = Array.from(
+    { length: ticks(400) + 2 },
+    (_, i) => H - 2 - wildPlacement(go(hopping, i).wild!, SPRITE, H).floor,
+  )
+  expect(Math.max(...lifts)).toBe(3)
+  expect(lifts.at(-1)).toBe(0)
+})
+
+test('a fleeing wild Pokémon dashes for the nearest edge and leaves a puff of dust there', () => {
+  const out = go(
+    startWild(still, W, 4, () => 0.1),
+    ticks(2000) + 20,
+  )
+  const nearLeft = { ...out, wild: { ...out.wild!, x: 10, pause: 0, hasPaused: true } }
+  let s = fleeWild(nearLeft, W, 4)
+  expect(s.wild?.facing).toBe(-1)
+  let ticksToLeave = 0
+  while (s.wild && ticksToLeave < 200) {
+    s = go(s, 1)
+    ticksToLeave++
+  }
+  expect(s.wild).toBeNull()
+  expect(ticksToLeave).toBeLessThan(Math.ceil(15 / 0.18))
+  expect(s.fx.some(p => p.kind === 'dust' && p.x <= 2)).toBe(true)
+})
+
+test('the wild sprite is placed facing its way, and the frame paints overlays over everything', () => {
+  const lopsided = { pixels: [0x111111, -1, -1, -1], width: 2, height: 2 }
+  const w = { x: 5, facing: 1 as const, stride: 0, pause: 1, hasPaused: true, rustle: 0 }
+  expect(wildPlacement(w, lopsided, H)).toEqual({
+    img: { pixels: [-1, 0x111111, -1, -1], width: 2, height: 2 },
+    left: 5,
+    floor: H - 2,
+  })
+  const dotImg = { pixels: [0xff00ff], width: 1, height: 1 }
+  const img = frame(still, [SPRITE], W, ROWS, { phase: 'day', overlays: [{ img: dotImg, left: 11, floor: H - 3 }] })
+  expect(at(img, 11, H - 3)).toBe(0xff00ff)
+})
+
+test('the last frame says whose each pixel is: a party member in front of the wild Pokémon covers it', () => {
+  const wildImg = { pixels: Array<number>(16).fill(0x00ffff), width: 4, height: 4 }
+  const w = { x: 10, facing: -1 as const, stride: 0, pause: 1, hasPaused: true, rustle: 0 }
+  frame({ ...still, wild: w }, [SPRITE], W, ROWS, { phase: 'day', wild: wildImg })
+  expect(paintedBy(11, H - 3)).toBe('party')
+  const away: Status = { ...still, actors: [{ ...newScene(40), roam: idle }], wild: w }
+  frame(away, [SPRITE], W, ROWS, { phase: 'day', wild: wildImg })
+  expect(paintedBy(11, H - 3)).toBe('wild')
+  expect(paintedBy(11, 0)).toBeNull()
+  expect(paintedBy(-1, H - 3)).toBeNull()
 })
