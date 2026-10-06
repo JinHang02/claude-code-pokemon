@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
+## [1.1.0] - 2026-10-06
+
+### Added: catching wild Pokémon
+
+- Click a wild Pokémon in the band to throw a Poké Ball at it. The ball comes from just past the band's
+  bottom-left corner, as in the GBA games, and arcs onto the spot you clicked in 0.6 s, spinning as it flies.
+- The ball has to land on one of the Pokémon's own pixels: grass, a see-through gap in its sprite or your own
+  party is a miss. A missed ball bounces once where it landed and blinks out; the Pokémon walks on.
+- A hit stops the Pokémon. It turns white and shrinks into the ball, the ball drops to the ground and wobbles.
+- The odds follow the games: each ball catches with the species' capture rate ÷ 255 (from PokeAPI), so a
+  Caterpie always comes quietly, Pikachu 3 times in 4 and a legendary about 1 time in 100. When PokeAPI can't be
+  reached a rate of 45 is used (about 1 in 6).
+- Caught: three wobbles, a click with sparkles, `Gotcha! Caterpie was caught!` and your party cheers. It joins
+  your party, or the PC box when your party is full or already has one of it. It starts at Lv 1.
+- Broke free: up to two wobbles (more when it was close), then the ball bursts open and the Pokémon pops out with
+  a hop. 1 time in 10 it then flees, dashing to the nearest edge and leaving a puff of dust; otherwise you can
+  throw again, as often as you like while it's in view.
+- One ball at a time: clicks while a ball is in the air or wobbling, while the Pokémon is still in the grass or
+  fleeing, or with no wild Pokémon around do nothing.
+
+### Added: the PC box
+
+- `/pokemon box` lists the Pokémon in your PC box, with levels, as `/pokemon party` does.
+- `/pokemon <name>` brings a Pokémon out of the box to lead; your old lead goes into the box. A name in both your
+  party and the box picks the party one.
+- `/pokemon add <name>` brings a Pokémon out of the box into your party when there's room.
+- Pokémon in the box don't earn XP.
+- `◓` after a name in `/pokemon party` and `/pokemon box` marks a Pokémon caught with a ball.
+- `/pokedex` counts what you caught: `Pokédex: 71 / 905 seen · 3 caught · 6 shiny`.
+- `/pokemon-play wild <name>` calls a particular wild Pokémon, for trying a throw at it.
+
+### Known limitations
+
+- **Throwing needs mouse clicks:** your terminal has to pass mouse clicks to Claude Code.
+- **Pixel-exact aim** needs a terminal that reports where in a cell you clicked: kitty, Ghostty, iTerm2, WezTerm
+  and foot do. Elsewhere, and through tmux, a click counts both pixels of the cell.
+- **While a wild Pokémon can be aimed at, the band is drawn as coloured text at 10 frames a second:** a click layer
+  laid over the pixel art stops Claude Code's display from updating. So for that half minute it moves a little less
+  smoothly and costs more CPU (measured: about 20 to 35% against about 10%), back to pixel art once a ball is thrown
+  or the Pokémon leaves.
+- **A throw in progress is lost** when the plugin reloads (an update, a hot reload), as the wild visitor is.
+
 ## [1.0.0] - 2026-10-03
 
 The first release, **Pokémon Journey for Claude Code**.
