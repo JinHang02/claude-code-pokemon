@@ -142,3 +142,95 @@ test("each test runner's summary reads as passed or failed", () => {
   for (const out of failed) expect(testVerdict(out)).toBe('failed')
   expect(testVerdict('collected 12 items')).toBeNull()
 })
+
+const quiet = { happenings: [], xp: 0, streak: 0 }
+const cheer = { happenings: ['cheer'], xp: 5, streak: 0 }
+
+test('a `$(...)` inside double quotes never hides what follows it', () => {
+  expect(xpFor('cd "$(git rev-parse --show-toplevel)" && pytest -q')).toEqual(cheer)
+  expect(xpFor('echo "now: $(date)"; git commit -m x').xp).toBe(10)
+  expect(xpFor('git commit -m "bump to $(cat VERSION); ok"').xp).toBe(10)
+})
+
+test('a wrapper runs the command after its options and target, quoted as one string or not', () => {
+  for (const cmd of [
+    'ssh host "pytest -q"',
+    "ssh host 'cd app && pytest'",
+    'ssh -p 2222 -i ~/.ssh/key host pytest -q',
+    'docker compose run --rm --no-deps -v "$PWD":/opt -w /opt --entrypoint bash ai-agents-canvas -lc "pytest -q"',
+    'docker run --rm -v "$PWD":/w -w /w node:22 npm test',
+    'kubectl exec -it -n prod web -- pytest',
+    'ssh host docker exec app pytest',
+    'nix develop -c pytest',
+    'devbox run pytest',
+  ])
+    expect(xpFor(cmd)).toEqual(cheer)
+  expect(xpFor('ssh host "cd app && git commit -m x"').xp).toBe(10)
+})
+
+test("a wrapper's command that only mentions a test or commit is a plain command", () => {
+  for (const cmd of [
+    'docker exec app grep -rn pytest .',
+    'ssh host echo git commit done',
+    'ssh host cat pytest.ini',
+    'docker compose run --rm app echo npm test',
+    'echo bash -c "pytest"',
+  ]) {
+    expect(xpFor(cmd)).toEqual(quiet)
+    expect(xpFor(cmd, true)).toEqual({ happenings: [], xp: 0, streak: 1 })
+  }
+})
+
+test('a heredoc body is never read as commands, and a quoted message never makes a dry run', () => {
+  expect(xpFor("git commit -F - <<'EOF'\nFix\nEOF").xp).toBe(10)
+  expect(xpFor('git commit -F- <<EOF\nfix; tests | ok\nEOF\n').xp).toBe(10)
+  expect(xpFor("cat > notes.md <<-'EOF'\n\tgit commit -m x\n\tEOF\ngit commit -m y").xp).toBe(10)
+  expect(classify('Bash', "cat > t.sh <<'EOF'\npytest -q\nEOF", false, 0, '3 passed')).toEqual(quiet)
+  expect(xpFor('grep -q x <<< "$out"\npytest')).toEqual(cheer)
+  expect(xpFor('git commit -m "handle the --dry-run flag"').xp).toBe(10)
+  expect(xpFor('git commit --dry-run -m "x"').xp).toBe(0)
+})
+
+test('a subshell, `timeout`, a path to the runner, a quoted env value and `test:*` scripts still run a test', () => {
+  for (const cmd of [
+    '(cd plugin && npm test)',
+    '(pytest)',
+    'timeout 300 pytest',
+    'timeout -k 5 10m npm test',
+    '.venv/bin/pytest -q',
+    './node_modules/.bin/vitest run',
+    'FOO="a b" pytest',
+    'npm run test:unit',
+    'pnpm test:e2e',
+  ])
+    expect(xpFor(cmd)).toEqual(cheer)
+})
+
+test('tests that passed before a later command failed are not a failed test run', () => {
+  const out = 'Tests:       5 passed, 5 total\nerror: pre-commit hook failed'
+  expect(classify('Bash', 'npm test && git commit -m x', true, 0, out)).toEqual({ happenings: [], xp: 0, streak: 1 })
+  expect(classify('Bash', 'npm test && npm run build', true, 0, out)).toEqual({
+    happenings: ['tool-error'],
+    xp: 0,
+    streak: 0,
+  })
+  expect(classify('Bash', 'npm test && git commit -m x', true, 0, 'Tests: 1 failed, 4 passed').happenings).toEqual([
+    'tool-error',
+  ])
+  expect(xpFor('npm test && git commit -m x', true).happenings).toEqual(['tool-error'])
+})
+
+test('a runner asked for its version, help or test list runs no tests', () => {
+  for (const cmd of [
+    'pytest --version',
+    'pytest -h',
+    'pytest --collect-only -q',
+    'pytest --co',
+    'jest --listTests',
+    'vitest --help',
+    'cargo test --no-run',
+  ]) {
+    expect(xpFor(cmd)).toEqual(quiet)
+    expect(xpFor(cmd, true)).toEqual({ happenings: [], xp: 0, streak: 1 })
+  }
+})

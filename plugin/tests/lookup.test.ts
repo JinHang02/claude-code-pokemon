@@ -37,6 +37,8 @@ test("something that isn't a Pokémon, or a form it doesn't have, says so", () =
     error: 'Charizard has no "alola" form. Try: gmax, mega-x, mega-y.',
   })
   expect(lookup(LIST, ['mega', 'tauros'])).toEqual({ error: 'Tauros has no other forms.' })
+  // A form word is the form asked for, not the start of another species' name.
+  expect(lookup(LIST, ['mega', 'taurso'])).toEqual({ error: 'Tauros has no other forms.' })
   expect(lookup(LIST, ['agumon'])).toEqual({ error: 'No Pokémon called "agumon".' })
   expect(lookup(LIST, ['y'])).toEqual({ error: 'No Pokémon called "y".' })
 })

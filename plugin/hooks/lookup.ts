@@ -91,9 +91,12 @@ function exact(list: Species[], words: string[]): Pick | null {
 // then a prefix, then a near miss), the words left over a form of it. Resolves an error text when nothing fits.
 function closestPick(list: Species[], words: string[]): Pick | string {
   let failure: string | undefined
+  const formWords = new Set([...Object.keys(ADJECTIVES), ...list.flatMap(p => p.forms.flatMap(f => f.split('-')))])
   for (const match of ['exact', 'prefix', 'typo'] as const)
     for (let len = words.length; len > 0; len--)
       for (let at = 0; at + len <= words.length; at++) {
+        // With other words to be the species, a form word (`mega`) is the form, not the start of a name.
+        if (match === 'prefix' && len === 1 && words.length > 1 && formWords.has(words[at] ?? '')) continue
         const dex = findSpecies(list, words.slice(at, at + len).join('-'), match)
         const found = list[dex]
         if (!found) continue

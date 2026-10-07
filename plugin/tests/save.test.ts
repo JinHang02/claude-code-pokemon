@@ -57,6 +57,19 @@ test('a malformed save is cleaned field by field: numbers, flags, names and PokÃ
   expect(loadSave({ party: [pikachu, pikachu] }).party.map(m => m.id)).toEqual(['p1', 'p1-1'])
 })
 
+test('party members past the third, from an older save, go into the PC box instead of being lost', () => {
+  const m = (id: string, species: string) => ({ id, species, form: 'regular', isShiny: false, xp: 900, evolutions: 0 })
+  const s = loadSave({
+    party: [m('a', 'pikachu'), m('b', 'eevee'), m('c', 'mew'), m('d', 'ditto')],
+    box: [m('e', 'caterpie')],
+  })
+  expect(s.party.map(p => p.id)).toEqual(['a', 'b', 'c'])
+  expect(s.box?.map(p => [p.id, p.xp])).toEqual([
+    ['e', 900],
+    ['d', 900],
+  ])
+})
+
 test('levels grow with the square root of xp', () => {
   expect([0, 3, 4, 16, 324, 1444].map(level)).toEqual([1, 1, 2, 3, 10, 20])
   for (const lv of [2, 5, 10, 20]) {
@@ -77,6 +90,43 @@ test('each session writes the XP it earns to its own ledger; the party counts ev
   // The save itself never holds ledger XP.
   expect(save.party.map(m => m.xp)).toEqual([2, 0])
   expect(loadLedger({ at: 'x', xp: { p1: -3, e1: 4.7, x: 'y' } })).toEqual({ at: 0, xp: { e1: 4 } })
+})
+
+test('member ids are unique across the party and the box, however the save was written', () => {
+  const m = (species: string, id?: string) => ({ ...(id ? { id } : {}), species, form: 'regular', xp: 0 })
+  const ids = (raw: unknown) => {
+    const s = loadSave(raw)
+    return [...s.party, ...(s.box ?? [])].map(p => p.id)
+  }
+  const unique = (list: string[]) => new Set(list).size === list.length
+  expect(unique(ids({ party: [m('pikachu', 'a'), m('eevee', 'a-2'), m('mew', 'a')] }))).toBe(true)
+  expect(unique(ids({ party: [m('pikachu')], box: [m('pikachu')] }))).toBe(true)
+  expect(unique(ids({ party: [m('pikachu', 'a')], box: [m('eevee', 'a'), m('mew', 'a')] }))).toBe(true)
+})
+
+test('a member id that is also a built-in name counts XP like any other', () => {
+  const save = { ...emptySave(), party: [{ ...pikachu, id: 'constructor', xp: 100 }] }
+  const ledger = earnInto(loadLedger(undefined), save.party, 5, 1)
+  expect(ledger.xp.constructor).toBe(5)
+  expect(withExtra(save, extraXp({})).party[0]?.xp).toBe(100)
+  expect(withExtra(save, extraXp({ 'xp:a': loadLedger(ledger) })).party[0]?.xp).toBe(105)
+  expect(foldLedger(save, 'xp:a', loadLedger(ledger)).party[0]?.xp).toBe(105)
+})
+
+test('XP a session writes after its ledger was folded still counts, and is folded once', () => {
+  const save = { ...emptySave(), party: [{ ...pikachu, xp: 10 }] }
+  const folded = foldLedger(save, 'xp:s', loadLedger({ at: 1, xp: { p1: 5 } }))
+  expect(folded.party[0]?.xp).toBe(15)
+  const later = loadLedger({ at: 2, xp: { p1: 8 } })
+  expect(extraXp({ 'xp:s': later }, folded.folded, folded.foldedXp).p1).toBe(3)
+  const again = foldLedger(loadSave(folded), 'xp:s', later)
+  expect(again.party[0]?.xp).toBe(18)
+  expect(extraXp({ 'xp:s': later }, again.folded, again.foldedXp).p1).toBeUndefined()
+  expect(foldLedger(again, 'xp:s', later)).toBe(again)
+  // A mark left by a version that kept no record of what it added: nothing more is added.
+  const { foldedXp: _, ...old } = folded
+  expect(foldLedger(old, 'xp:s', later)).toBe(old)
+  expect(extraXp({ 'xp:s': later }, old.folded)).toEqual({})
 })
 
 test("a finished session's ledger folds into the save once, and is never counted twice", () => {

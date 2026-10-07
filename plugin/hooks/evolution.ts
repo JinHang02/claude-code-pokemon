@@ -85,7 +85,8 @@ export function nextStages(
 export function evolvedForm(stage: Stage, memberForm: string, forms: string[]): string {
   if (stage.form !== undefined) {
     const named = stage.form.startsWith(`${stage.species}-`) ? stage.form.slice(stage.species.length + 1) : ''
-    return forms.includes(named) ? named : 'regular'
+    // `darmanitan-galar-standard` is the sprites' `galar`.
+    return forms.includes(named) ? named : (forms.find(f => f !== 'regular' && named.startsWith(`${f}-`)) ?? 'regular')
   }
   return forms.includes(memberForm) ? memberForm : 'regular'
 }

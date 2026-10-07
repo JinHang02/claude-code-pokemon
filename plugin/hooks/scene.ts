@@ -231,6 +231,10 @@ export const startWild = (s: Status, width: number, wildWidth: number, rand = Ma
   return { ...s, wild: { x, facing, stride: 0, pause: 0, hasPaused: false, rustle: RUSTLE } }
 }
 
+// A wild Pokémon still in the grass on the right steps out at the band's right edge, wherever that is now.
+export const keepRustleAtEdge = (s: Status, width: number): Status =>
+  s.wild && s.wild.rustle > 0 && s.wild.facing === -1 ? { ...s, wild: { ...s.wild, x: width } } : s
+
 // Stops a wild Pokémon where it stands, or lets it walk on.
 export function holdWild(s: Status, isHeld: boolean): Status {
   if (!s.wild) return s
@@ -564,7 +568,8 @@ export function paintedBy(x: number, y: number): 'party' | 'wild' | null {
 }
 
 // Paints `img` with its feet on row `floor`, rows below `clip` left out (sunk into the grass);
-// `avoidBodies` leaves any Pokémon in the frame untouched; `who` marks what it paints as a Pokémon's.
+// `avoidBodies` leaves any Pokémon in the frame untouched; `who` marks what it paints as a Pokémon's, and
+// anything else painted over a Pokémon (a "!", a ball) hides it there.
 function paint(
   into: Pixels,
   img: Pixels,
@@ -582,7 +587,7 @@ function paint(
       if (c === CLEAR || px < 0 || px >= into.width || py < 0 || py >= into.height || py > clip) continue
       if (avoidBodies && body[py * into.width + px]) continue
       into.pixels[py * into.width + px] = c
-      if (who) body[py * into.width + px] = who
+      body[py * into.width + px] = who
     }
 }
 

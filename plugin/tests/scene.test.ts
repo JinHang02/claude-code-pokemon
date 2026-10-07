@@ -15,6 +15,7 @@ import {
   hopWild,
   initialStatus,
   isCalm,
+  keepRustleAtEdge,
   newScene,
   paintedBy,
   phaseAt,
@@ -510,6 +511,30 @@ test('the wild sprite is placed facing its way, and the frame paints overlays ov
   const dotImg = { pixels: [0xff00ff], width: 1, height: 1 }
   const img = frame(still, [SPRITE], W, ROWS, { phase: 'day', overlays: [{ img: dotImg, left: 11, floor: H - 3 }] })
   expect(at(img, 11, H - 3)).toBe(0xff00ff)
+})
+
+test('a wild Pokémon still in the grass steps out at the edge the band has now, after a resize', () => {
+  const fromRight = startWild(still, 80, 4, () => 0.9)
+  expect(keepRustleAtEdge(fromRight, 200).wild?.x).toBe(200)
+  expect(keepRustleAtEdge(fromRight, 40).wild?.x).toBe(40)
+  const fromLeft = startWild(still, 80, 4, () => 0.1)
+  expect(keepRustleAtEdge(fromLeft, 200).wild?.x).toBe(-4)
+  const out = { ...fromRight, wild: fromRight.wild && { ...fromRight.wild, rustle: 0, x: 50 } }
+  expect(keepRustleAtEdge(out, 200).wild?.x).toBe(50)
+})
+
+test('a pixel counts as the wild Pokémon only where it shows: never under the "!" over a party member', () => {
+  const tall = { pixels: Array<number>(8 * (H - 2)).fill(0x00ffff), width: 8, height: H - 2 }
+  const w = { x: 10, facing: -1 as const, stride: 0, pause: 1, hasPaused: true, rustle: 0 }
+  const img = frame({ ...still, alert: 10, wild: w }, [SPRITE], W, ROWS, { phase: 'day', wild: tall })
+  let wildPixels = 0
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
+      if (paintedBy(x, y) === 'wild') {
+        wildPixels++
+        expect(at(img, x, y)).toBe(0x00ffff)
+      }
+  expect(wildPixels).toBeGreaterThan(0)
 })
 
 test('the last frame says whose each pixel is: a party member in front of the wild Pokémon covers it', () => {

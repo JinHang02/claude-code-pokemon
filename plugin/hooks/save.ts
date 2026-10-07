@@ -20,7 +20,8 @@ export type Member = {
 export type DexEntry = { seen: number; shiny: number; first: number; caught?: number }
 
 // `isOff`: the Pokémon rest in their Poké Balls (/pokemon off): nothing drawn, no xp.
-// `folded`: the session XP ledgers already added into the party's XP here, so they never count twice.
+// `folded`: the session XP ledgers already added into the party's XP here, so they never count twice;
+// `foldedXp`: what each added, so XP a ledger gains afterwards still counts.
 // `box`: the PC box, where catches go when the party is full; absent when empty.
 export type Save = {
   party: Member[]
@@ -30,6 +31,7 @@ export type Save = {
   box?: Member[]
   isOff?: boolean
   folded?: string[]
+  foldedXp?: Record<string, Record<string, number>>
 }
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
@@ -79,17 +81,34 @@ function loadMember(raw: unknown, at: number): Member | null {
 // A stored save, with anything malformed replaced by its default, field by field.
 export function loadSave(raw: unknown): Save {
   const s = isObject(raw) ? raw : {}
+  // Ids are unique across party and box: a repeat becomes `<id>-<slot>`, then `-2`, `-3`... until free.
+  const ids = new Set<string>()
+  const load = (raw: unknown, at: number) => {
+    const member = loadMember(raw, at)
+    if (!member) return null
+    let id = member.id
+    if (ids.has(id)) id = `${member.id}-${at}`
+    for (let n = 2; ids.has(id); n++) id = `${member.id}-${at}-${n}`
+    ids.add(id)
+    return id === member.id ? member : { ...member, id }
+  }
   const party: Member[] = []
+  // Members past a full party go into the box after its own.
+  const overflow: Member[] = []
   for (const [at, m] of (Array.isArray(s.party) ? s.party : []).entries()) {
-    const member = loadMember(m, at)
-    if (!member || party.length >= MAX_PARTY) continue
-    party.push(party.some(p => p.id === member.id) ? { ...member, id: `${member.id}-${at}` } : member)
+    const member = load(m, at)
+    if (member) (party.length < MAX_PARTY ? party : overflow).push(member)
   }
   const box: Member[] = []
   for (const [at, m] of (Array.isArray(s.box) ? s.box : []).entries()) {
-    const member = loadMember(m, at)
+    const member = load(m, at)
     if (member) box.push(member)
   }
+  box.push(...overflow)
+  const folded = Array.isArray(s.folded) ? s.folded.filter(isLedgerKey) : []
+  const foldedXp: Record<string, Record<string, number>> = {}
+  for (const [key, xp] of Object.entries(isObject(s.foldedXp) ? s.foldedXp : {}))
+    if (folded.includes(key)) foldedXp[key] = loadLedger({ xp }).xp
   const dex: Record<string, DexEntry> = {}
   for (const [name, e] of Object.entries(isObject(s.dex) ? s.dex : {}))
     if (isName(name) && isObject(e))
@@ -106,40 +125,68 @@ export function loadSave(raw: unknown): Save {
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
     ...(box.length ? { box } : {}),
     ...(s.isOff === true ? { isOff: true } : {}),
-    ...(Array.isArray(s.folded) && s.folded.some(isLedgerKey) ? { folded: s.folded.filter(isLedgerKey) } : {}),
+    ...(folded.length ? { folded } : {}),
+    ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
   }
 }
 
 const isLedgerKey = (k: unknown): k is string => typeof k === 'string' && k.startsWith(LEDGER)
 
+// XP by member id, with no inherited keys: an id like `constructor` reads as no XP yet.
+const tally = (): Record<string, number> => Object.create(null) as Record<string, number>
+
 // A stored ledger, with anything malformed dropped.
 export function loadLedger(raw: unknown): Ledger {
   const l = isObject(raw) ? raw : {}
-  const xp: Record<string, number> = {}
+  const xp = tally()
   for (const [id, n] of Object.entries(isObject(l.xp) ? l.xp : {})) if (count(n)) xp[id] = count(n)
   return { at: count(l.at), xp }
 }
 
-// The XP in session ledgers not yet folded into the save, by member id.
-export function extraXp(ledgers: Record<string, Ledger>, folded: string[] = []): Record<string, number> {
-  const extra: Record<string, number> = {}
-  for (const [key, ledger] of Object.entries(ledgers))
-    if (!folded.includes(key)) for (const [id, n] of Object.entries(ledger.xp)) extra[id] = (extra[id] ?? 0) + n
+// The XP in `xp` above `counted`, by member id.
+function above(xp: Record<string, number>, counted: Record<string, number> = {}): Record<string, number> {
+  const out = tally()
+  for (const [id, n] of Object.entries(xp)) {
+    const more = n - (Object.hasOwn(counted, id) ? (counted[id] ?? 0) : 0)
+    if (more > 0) out[id] = more
+  }
+  return out
+}
+
+// The XP in session ledgers not yet folded into the save, by member id. A ledger folded by a version that kept
+// no record of what it added counts as wholly folded.
+export function extraXp(
+  ledgers: Record<string, Ledger>,
+  folded: string[] = [],
+  foldedXp: Record<string, Record<string, number>> = {},
+): Record<string, number> {
+  const extra = tally()
+  for (const [key, ledger] of Object.entries(ledgers)) {
+    if (folded.includes(key) && !Object.hasOwn(foldedXp, key)) continue
+    const more = folded.includes(key) ? above(ledger.xp, foldedXp[key]) : ledger.xp
+    for (const [id, n] of Object.entries(more)) extra[id] = (extra[id] ?? 0) + n
+  }
   return extra
 }
 
 // The save as the party stands: each member's XP with its ledger XP added. For showing and deciding, never storing.
 export const withExtra = (save: Save, extra: Record<string, number>): Save => {
-  const add = (m: Member) => ({ ...m, xp: m.xp + (extra[m.id] ?? 0) })
+  const add = (m: Member) => ({ ...m, xp: m.xp + (Object.hasOwn(extra, m.id) ? (extra[m.id] ?? 0) : 0) })
   return { ...save, party: save.party.map(add), ...(save.box ? { box: save.box.map(add) } : {}) }
 }
 
-// `ledger` added into the save's own XP, and marked as added; a ledger already added changes nothing.
+// `ledger` added into the save's own XP, and marked as added with what it added; XP it gained since an earlier
+// fold is added the same way. Nothing new to add changes nothing.
 export function foldLedger(save: Save, key: string, ledger: Ledger): Save {
-  if (save.folded?.includes(key)) return save
+  const isFolded = save.folded?.includes(key) ?? false
+  const counted = save.foldedXp?.[key]
+  if (isFolded && !counted) return save
+  const more = above(ledger.xp, counted)
+  if (isFolded && !Object.keys(more).length) return save
   return {
-    ...withExtra(save, ledger.xp),
-    folded: [...(save.folded ?? []), key],
+    ...withExtra(save, more),
+    folded: isFolded ? (save.folded ?? []) : [...(save.folded ?? []), key],
+    foldedXp: { ...save.foldedXp, [key]: { ...counted, ...ledger.xp } },
   }
 }
 
@@ -152,7 +199,11 @@ export const isDueToEvolve = (m: Member) =>
 // A session's ledger after every party member earns `amount`.
 export const earnInto = (ledger: Ledger, party: Member[], amount: number, now: number): Ledger => ({
   at: now,
-  xp: { ...ledger.xp, ...Object.fromEntries(party.map(m => [m.id, (ledger.xp[m.id] ?? 0) + amount])) },
+  xp: Object.assign(
+    tally(),
+    ledger.xp,
+    Object.fromEntries(party.map(m => [m.id, (Object.hasOwn(ledger.xp, m.id) ? (ledger.xp[m.id] ?? 0) : 0) + amount])),
+  ),
 })
 
 export function recordSeen(save: Save, species: string, isShiny: boolean, now: number): Save {

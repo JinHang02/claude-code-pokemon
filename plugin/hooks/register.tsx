@@ -47,6 +47,7 @@ import {
   initialStatus,
   isAsleep,
   isCalm,
+  keepRustleAtEdge,
   newScene,
   phaseAt,
   react,
@@ -108,15 +109,16 @@ let lastCells = ''
 let isHidden = false
 const RETRY_TICKS = ticks(1000)
 let wild: { mon: Mon; left: Pixels; pick: Pick } | null = null
-// The visitor's capture rate, once PokeAPI has said.
-let wildRate = DEFAULT_RATE
+// The visitor's capture rate, once PokeAPI has said (null until then: no throws yet).
+let wildRate: number | null = DEFAULT_RATE
 // A Poké Ball in flight or playing out, at most one.
 let pitch: Throw | null = null
 // While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a click layer over pixel art
 // stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
 const AIM_EVERY = 2
 let isAiming = false
-const canAim = () => Boolean(wild && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
+const canAim = () =>
+  Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
 let evolveFrom: Pixels | null = null
 let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
@@ -294,7 +296,7 @@ function mutate($: EngineInterface, change: (s: Save) => Save) {
     save = change(loadSave(await $.store.get('save')))
     await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
-    extra = extraXp(await readLedgers($), save.folded)
+    extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
   })
 }
 
@@ -308,7 +310,7 @@ async function sync($: EngineInterface) {
     isNewParty = latest.party.map(keyOf).join() !== save.party.map(keyOf).join()
     isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
     save = latest
-    extra = extraXp(await readLedgers($), save.folded)
+    extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
   })
   if (isNewParty) await refreshParty($)
   if (isNewLook) $.ui.invalidate('ui.render')
@@ -329,7 +331,8 @@ async function foldLedgers($: EngineInterface) {
   const now = Date.now()
   for (const [key, l] of Object.entries(ledgers)) {
     if (key === ledgerKey || now - l.at < LEDGER_STALE_MS) continue
-    if (!save.folded?.includes(key)) await mutate($, s => foldLedger(s, key, l))
+    // XP it gained after an earlier fold is folded too, before it can go.
+    if (foldLedger(save, key, l) !== save) await mutate($, s => foldLedger(s, key, l))
     else {
       const latest = loadLedger(await $.store.get(key))
       if (latest.at === l.at) await $.store.delete(key)
@@ -340,8 +343,13 @@ async function foldLedgers($: EngineInterface) {
   if (gone.length)
     await mutate($, s => {
       const folded = (s.folded ?? []).filter(k => !gone.includes(k))
-      const { folded: _, ...rest } = s
-      return folded.length ? { ...rest, folded } : rest
+      const foldedXp = Object.fromEntries(Object.entries(s.foldedXp ?? {}).filter(([k]) => !gone.includes(k)))
+      const { folded: _, foldedXp: __, ...rest } = s
+      return {
+        ...rest,
+        ...(folded.length ? { folded } : {}),
+        ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
+      }
     })
 }
 
@@ -425,7 +433,8 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
 }
 
 async function addMember($: EngineInterface, query: string): Promise<string> {
-  if (save.party.length >= MAX_PARTY) return `Your party is full (${MAX_PARTY}). Make room with /pokemon remove <name>.`
+  if (save.party.length >= MAX_PARTY)
+    return `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
   const fromBox = query.trim() ? await addFromBox($, query) : null
   if (fromBox) return fromBox
   const caught = await catchOne($, query, 'add ')
@@ -435,7 +444,7 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   await mutate($, s => {
     if (s.party.some(m => same(m, caught))) text = `${name} is already in your party.`
     else if (s.party.length >= MAX_PARTY)
-      text = `Your party is full (${MAX_PARTY}). Make room with /pokemon remove <name>.`
+      text = `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
     else return { ...recordSeen(s, caught.species, caught.isShiny, Date.now()), party: [...s.party, caught] }
     return s
   })
@@ -466,6 +475,17 @@ function indexIn(members: Member[], query: string): number {
   return at >= 0 ? at : members.findIndex(m => m.species === species)
 }
 
+// Where in the PC box a query names exactly, species and form; `shiny` in it asks for a shiny one. -1 when none.
+function boxIndex(box: Member[], query: string): number {
+  const words = slug(query).split('-').filter(Boolean)
+  const wantsShiny = words.includes('shiny')
+  const named = words.filter(w => w !== 'shiny')
+  const found = named.length && box.length ? lookup(namesOf(box), named) : null
+  if (!found || !('pick' in found)) return -1
+  const { species, form } = found.pick
+  return box.findIndex(m => m.species === species && m.form === form && (!wantsShiny || m.isShiny))
+}
+
 // The party member a query names exactly; otherwise a suggestion naming `command`, or what's in the party.
 function findMember(s: Save, query: string, command: string): number | string {
   const at = indexIn(s.party, query)
@@ -481,7 +501,7 @@ async function leadFromBox($: EngineInterface, query: string): Promise<string | 
   let text = ''
   await mutate($, s => {
     const box = s.box ?? []
-    const at = indexIn(box, query)
+    const at = boxIndex(box, query)
     const m = box[at]
     if (!m || s.party.some(p => same(p, m))) return s
     const old = s.party[0]
@@ -501,7 +521,7 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
   let text = ''
   await mutate($, s => {
     const box = s.box ?? []
-    const at = indexIn(box, query)
+    const at = boxIndex(box, query)
     const m = box[at]
     if (!m || s.party.some(p => same(p, m)) || s.party.length >= MAX_PARTY) return s
     text = `${displayName(m.species, m.form)} came out of the PC box and joined your party!`
@@ -529,6 +549,26 @@ async function removeMember($: EngineInterface, query: string): Promise<string> 
     else if (gone) {
       text = `${displayName(gone.species, gone.form)} went back to the wild.`
       return { ...s, party: s.party.filter((_, i) => i !== at) }
+    }
+    return s
+  })
+  await refreshParty($)
+  return text
+}
+
+// `/pokemon deposit <name>`: that member goes into the PC box with its level; the next one leads if it was the lead.
+async function depositMember($: EngineInterface, query: string): Promise<string> {
+  if (!query.trim()) return 'Which one? /pokemon deposit <name>'
+  let text = ''
+  await mutate($, s => {
+    const at = findMember(s, query, 'deposit ')
+    const m = typeof at === 'number' ? s.party[at] : undefined
+    if (typeof at === 'string') text = at
+    else if (s.party.length === 1)
+      text = 'That would leave your party empty. Pick a new lead with /pokemon <name> instead.'
+    else if (m) {
+      text = `${displayName(m.species, m.form)} (Lv ${level(m.xp + (extra[m.id] ?? 0))}) went into the PC box.`
+      return { ...s, party: s.party.filter((_, i) => i !== at), box: [...(s.box ?? []), m] }
     }
     return s
   })
@@ -629,13 +669,15 @@ async function checkEvolutions($: EngineInterface) {
       party: s.party.map(m => (m.id === member.id && m.species === member.species ? { ...m, evolveAt, gender } : m)),
     }))
   }
-  for (let at = 0; at < save.party.length; at++) {
-    const m = view().party[at]
-    if (!m || save.isOff || !isDueToEvolve(m)) continue
+  const isDue = (id: string) => view().party.some(m => m.id === id && isDueToEvolve(m))
+  for (const { id } of save.party) {
+    if (save.isOff || !isDue(id)) continue
     // The one before finishes its animation first; nothing to wait for when no band is drawn.
     for (let wait = 0; band && status.mood?.kind === 'evolve' && wait < EVOLVE + ticks(2000); wait += 5)
       await $.clock.sleep(TICK_MS * 5)
-    await evolveMember($, at)
+    // The party may have changed during the wait: it is looked up again by id.
+    const at = save.party.findIndex(m => m.id === id)
+    if (!save.isOff && isDue(id)) await evolveMember($, at)
   }
 }
 
@@ -662,32 +704,44 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false): 
     const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
     const form = evolvedForm(next, member.form, forms)
     const { art, isShiny } = await fetchArt($, fileOf({ species: next.species, form }), member.isShiny)
-    evolveFrom = fitted?.lefts[at] ?? null
+    // It may have moved, left, or been given an everstone during the downloads.
+    const slot = isPreview ? at : save.party.findIndex(m => m.id === member.id && m.species === member.species)
+    const now = save.party[slot]
+    if (!now) return `${name} already evolved.`
+    if (!isPreview && now.hasEverstone) return `${name} holds an everstone: it won't evolve.`
+    evolveFrom = fitted?.lefts[slot] ?? null
     const { evolveAt: _, ...rest } = member
     const evolved: Member = { ...rest, species: next.species, form, isShiny, evolutions: member.evolutions + 1 }
     const newName = displayName(next.species, form)
     const mon: Mon = { key: keyOf(evolved), name: newName, isShiny, ...parseAnsi(art) }
-    await update($, party, list => list.map((m, i) => (i === at ? mon : m)))
-    status = evolve(status, at)
+    await update($, party, list => list.map((m, i) => (i === slot ? mon : m)))
+    status = evolve(status, slot)
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
       return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
     }
     // Another session may have evolved it first: then that evolution stands.
-    let isFirst = false
+    let outcome = `${name} already evolved.`
     await mutate($, s => {
-      const now = s.party.findIndex(m => m.id === member.id && m.species === member.species)
-      const latest = s.party[now]
+      const i = s.party.findIndex(m => m.id === member.id && m.species === member.species)
+      const latest = s.party[i]
       if (!latest) return s
-      isFirst = true
-      const party = s.party.map((m, i) => (i === now ? { ...evolved, xp: latest.xp } : m))
-      return { ...recordSeen(s, next.species, isShiny, Date.now()), party }
+      if (latest.hasEverstone) {
+        outcome = `${name} holds an everstone: it won't evolve.`
+        return s
+      }
+      outcome = ''
+      const { evolveAt: __, ...kept } = latest
+      const grown: Member = { ...kept, species: next.species, form, isShiny, evolutions: latest.evolutions + 1 }
+      return {
+        ...recordSeen(s, next.species, isShiny, Date.now()),
+        party: s.party.map((m, j) => (j === i ? grown : m)),
+      }
     })
-    if (!isFirst) {
-      await refreshParty($)
-      return `${name} already evolved.`
-    }
-    $.ui.toast(`What? ${name} evolved into ${newName}!`)
+    if (!outcome) $.ui.toast(`What? ${name} evolved into ${newName}!`)
+    // Also redraws over any refresh that was already under way with the old sprite.
+    await refreshParty($)
+    if (outcome) return outcome
     background($, learnEvolutions($))
     return `${name} evolved into ${newName}!`
   } catch (err) {
@@ -714,7 +768,7 @@ async function earn($: EngineInterface, amount: number) {
     const own = loadLedger(await $.store.get(ledgerKey))
     await $.store.set(ledgerKey, earnInto(own, latest.party, amount, Date.now()))
     save = latest
-    extra = extraXp(await readLedgers($), save.folded)
+    extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
     leveledUp = view().party.some((m, i) => level(m.xp) > (before[i] ?? 0))
   })
   if (leveledUp) await learnEvolutions($)
@@ -745,14 +799,21 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
       return `Did you mean ${displayName(found.guess.species, found.guess.form)}? Run /pokemon-play wild ${spell(found.guess)}`
     const pick = found.pick
     const { art, isShiny } = await fetchArt($, fileOf(pick), Math.random() < SHINY_ODDS)
+    // Another visitor may have stepped out during the downloads.
+    if (!band || !fitted || status.wild || pitch) return null
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
     wild = { mon, left: fitWild(mon), pick }
-    wildRate = DEFAULT_RATE
+    wildRate = null
     background(
       $,
-      captureRateOf($, pick.species).then(rate => {
-        if (wild?.pick === pick) wildRate = rate
-      }),
+      captureRateOf($, pick.species)
+        .catch((err: unknown) => {
+          if (wild?.pick === pick) wildRate = DEFAULT_RATE
+          throw err
+        })
+        .then(rate => {
+          if (wild?.pick === pick) wildRate = rate
+        }),
     )
     status = startWild(status, band.columns, wild.left.width)
     $.ui.toast(`${isShiny ? '✨ ' : ''}A wild ${mon.name} appeared!`, { timeoutMs: 6000 })
@@ -767,7 +828,7 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
 function throwAt(click: Click) {
   feel('activity')
   const w = status.wild
-  if (!band || !wild || !w || w.rustle > 0 || w.isFleeing || pitch) return
+  if (!band || !wild || !w || !canAim()) return
   const height = band.rows * 2
   const place = wildPlacement(w, wild.left, height)
   const { x, ys } = clickPixels(click)
@@ -776,7 +837,7 @@ function throwAt(click: Click) {
   const to = { x, y: ys[ys.length - 1] ?? 0 }
   // The ball comes to rest with its bottom on the ground row, in front of the Pokémon's middle.
   const rest = { x: place.left + place.img.width / 2, y: height - 3 }
-  pitch = startThrow({ x: -3, y: height - 2 }, to, rest, isHit, wildRate)
+  pitch = startThrow({ x: -3, y: height - 2 }, to, rest, isHit, wildRate ?? DEFAULT_RATE)
   if (isHit) status = holdWild(status, true)
 }
 
@@ -852,11 +913,13 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
+  // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
+  if (isAiming && tickNo % AIM_EVERY !== 0) return
   const { cells } = toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow()))
   if (cells === lastCells && !isHidden) return
   if (isAiming) {
-    lastCells = cells
-    if (tickNo % AIM_EVERY === 0) $.ui.invalidate('ui.render')
+    // The redraw makes this frame again and records it as drawn.
+    $.ui.invalidate('ui.render')
     return
   }
   const res = await $.ui.blit({
@@ -920,6 +983,8 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return formatBox(view())
     case 'add':
       return addMember($, tail)
+    case 'deposit':
+      return depositMember($, tail)
     case 'remove':
     case 'release':
       return removeMember($, tail)
@@ -993,7 +1058,7 @@ async function load($: EngineInterface) {
     ledgerKey = (await update($, ledger, key => key ?? fresh)) ?? fresh
     await queued(async () => {
       save = loadSave(await $.store.get('save'))
-      extra = extraXp(await readLedgers($), save.folded)
+      extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
     })
   } catch (err) {
     await report($, err)
@@ -1017,7 +1082,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · party · box · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · size small|normal|auto · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
@@ -1182,6 +1247,7 @@ export const register: Register = on => {
         x: Math.min(a.x, Math.max(0, columns - (fitted?.lefts[i]?.width ?? 0))),
       })),
     }
+    status = keepRustleAtEdge(status, columns)
     band = { requestId: e.requestId, columns, rows }
     isHidden = false
     const img = frame(status, fitted.lefts, columns, rows, lookNow())

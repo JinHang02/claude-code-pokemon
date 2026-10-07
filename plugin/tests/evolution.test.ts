@@ -101,6 +101,10 @@ test("the evolved form: the one the games name if it has a sprite, else the memb
   )
   expect(evolvedForm({ species: 'raichu', level: 30 }, 'gmax', raichu)).toBe('regular')
   expect(evolvedForm({ species: 'ninetales', level: 30 }, 'alola', ['regular', 'alola'])).toBe('alola')
+  const darmanitan = ['regular', 'galar', 'galar-zen', 'zen']
+  expect(
+    evolvedForm({ species: 'darmanitan', level: 35, form: 'darmanitan-galar-standard' }, 'galar', darmanitan),
+  ).toBe('galar')
 })
 
 const burmy = link(
