@@ -4,6 +4,63 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
+## [1.2.0] - 2026-10-07
+
+### Added: depositing into the PC box
+
+- `/pokemon deposit <name>` moves a party member into the PC box, keeping its level and XP. Your lead can go too:
+  the next member leads. The party can't be emptied, and a bare `deposit` asks which one.
+- A full party's hint now offers `/pokemon deposit <name>` as well as `remove <name>`.
+
+### Fixed
+
+- A wild Pokémon whose sprite was still downloading when another stepped out no longer replaces it. Before, a ball
+  thrown at the first could catch the second, and both were counted as seen.
+- `/pokemon shiny <name>` brings a shiny Pokémon out of the PC box. It used to miss the box, catch a new one and send
+  your lead back to the wild.
+- A plain name in `/pokemon <name>` and `add <name>` no longer takes a regional form out of the PC box: with a plain
+  Mr. Mime in the party, `/pokemon mr mime` picks that one, as it always should have.
+- An everstone is honoured mid-evolution: one given while the evolution downloads stops it and stays, and a party
+  reordered during an evolution animation no longer evolves the wrong member, everstone or not.
+- After an evolution the band draws the new form, even when a party refresh was already under way.
+- Galarian Darumaka evolves into Galarian Darmanitan, not the plain one.
+- A save with more than 3 party members keeps them: the extras go into the PC box instead of being dropped.
+- While you aim, every step a wild Pokémon takes is drawn, and a click is judged on the picture you see. Before,
+  the band could lag up to a second behind, so a click on the Pokémon could miss.
+- A wild Pokémon can be aimed at only once its catch rate has loaded, so a slow PokeAPI no longer turns a sure catch
+  like Caterpie into a 1 in 6. The rate of 45 is used only when PokeAPI can't be reached.
+- Clicking the "!" over your party is a miss, even where it covers the wild Pokémon.
+- A wild Pokémon rustling in the grass on the right steps out at the band's edge after you resize the terminal.
+  Before, it could appear mid-band, or vanish right after its toast.
+- A `$(...)` inside double quotes no longer hides the rest of the command: `cd "$(git rev-parse --show-toplevel)" &&
+pytest` and `echo "now: $(date)"; git commit -m x` react again.
+- Test runs and commits inside `ssh`, `docker exec`/`run`, `docker compose run`/`exec`, `kubectl exec`,
+  `nix develop -c` and `devbox run` are found after the wrapper's options and its host, container or service, also
+  when given as one quoted string (`ssh host "cd app && pytest"`, `… --entrypoint bash app -lc "pytest -q"`). A
+  command there that only mentions a test or commit (`docker exec app grep -rn pytest .`) no longer reacts.
+- A commit message from a heredoc (`git commit -F - <<'EOF'`) or one mentioning `--dry-run` earns its XP again, and
+  a heredoc's body is never read as commands.
+- More test runs are recognised: in a subshell (`(cd plugin && npm test)`), behind `timeout 300`, by path
+  (`.venv/bin/pytest`, `./node_modules/.bin/vitest`), after a quoted env value (`FOO="a b" pytest`), and as
+  `test:*` scripts (`npm run test:unit`).
+- Tests that passed before a later step failed (`npm test && git commit` stopped by a hook) no longer faint the party
+  as a failed test run; that counts as a plain failure. Asking a runner for its version, help or test list
+  (`pytest --version`, `--collect-only`, `jest --listTests`) no longer earns XP.
+
+- Pokémon sharing an id across the party and the PC box (from an older or hand-edited save) are told apart, so a
+  boxed Pokémon never earns XP.
+- An id that is also a built-in name (`constructor`) no longer turns a Pokémon's XP into nonsense.
+- XP a session earns in the moment its idle ledger is folded into the save is no longer lost: the save records what
+  each fold added, and anything a ledger gains afterwards still counts.
+- A form word no longer sends a lookup to the wrong species: `/pokemon mega taurso` says Tauros has no other forms,
+  not Meganium.
+
+### Known limitations
+
+- Wrapper options before the subcommand (`docker compose -f x.yaml run …`) hide the command inside, and so does a
+  quoted remote script spread over several lines.
+- A Pokémon held in a ball keeps its spot when the terminal narrows, even if that is now off the band.
+
 ## [1.1.0] - 2026-10-06
 
 ### Added: catching wild Pokémon
