@@ -160,7 +160,8 @@ grass or a gap in its sprite misses. A hit wobbles in the grass, and how often i
 catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly ever. Break free and it may run.
 
 Catches join your party, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>` brings one
-out to lead.
+out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the box, level
+and all.
 
 ---
 
