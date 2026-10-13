@@ -125,10 +125,11 @@ const GENDER_CODES: Record<number, Gender> = { 1: 'female', 2: 'male' }
 
 // What `name` evolves into and how, from the PokeAPI form `formName` (`meowth-galar`); empty for a final stage or a
 // name not in the chain. Ways for the other gender never apply (`gender` undefined: any). A form with evolutions of
-// its own takes only those; a form the games give none (Gigantamax) evolves as the plain species; then the
-// evolutions no form is named for apply; failing those, the plain species answers to the games' own names for it
-// (`burmy-plant`, every Scatterbug pattern: forms missing from `forms`, the species' forms in the sprite list, when
-// given). A species and form the plugin has no way to reach gets the fallback level.
+// its own takes only those (the plain species also those of its variants the sprites lack); a form the games give
+// none (Gigantamax) evolves as the plain species; then the evolutions no form is named for apply; failing those, the
+// plain species answers to the games' own names for it (`burmy-plant`, every Scatterbug pattern: forms missing from
+// `forms`, the species' forms in the sprite list, when given). A species and form the plugin has no way to reach gets
+// the fallback level.
 export function nextStages(
   chain: ChainLink,
   name: string,
@@ -148,7 +149,11 @@ export function nextStages(
           w => required(w)?.startsWith(`${name}-`) && !forms.includes(required(w)?.slice(name.length + 1) ?? ''),
         )
       : []
-  const chosen = [forForm(formName), forForm(name), ways.filter(w => !required(w)), asPlain].find(w => w.length) ?? []
+  // A plain species with ways of its own also takes those of the variants the sprites draw as it: Own Tempo Rockruff
+  // becomes Dusk Lycanroc.
+  const own = forForm(formName)
+  const ownAndUnseen = own.length ? [...own, ...asPlain] : own
+  const chosen = [ownAndUnseen, forForm(name), ways.filter(w => !required(w)), asPlain].find(w => w.length) ?? []
   const stages = new Map<string, Stage>()
   // Species and forms some detail leads to that the plugin can't carry out: the fallback, unless another way can.
   const stuck = new Map<string, Stage>()
@@ -174,6 +179,14 @@ export function nextStages(
     if (had?.kind === 'level' && way.kind === 'level' && had.level <= way.level) continue
     stages.set(key, { species, ...(form ? { form } : {}), way })
   }
+  // Level ways into one species from different games come at the lowest of their levels, so each can happen:
+  // Hisuian Decidueye's Lv 36 would never come after plain Decidueye's 34.
+  const lowest = new Map<string, number>()
+  for (const { species, way } of stages.values())
+    if (way.kind === 'level') lowest.set(species, Math.min(way.level, lowest.get(species) ?? way.level))
+  for (const [key, stage] of stages)
+    if (stage.way.kind === 'level')
+      stages.set(key, { ...stage, way: { ...stage.way, level: lowest.get(stage.species) ?? stage.way.level } })
   const reached = new Set([...stages.values()].map(s => `${s.species}|${s.form ?? ''}`))
   for (const [target, stage] of stuck) if (!reached.has(target)) stages.set(`${target}|fallback`, stage)
   return [...stages.values()]
@@ -194,10 +207,11 @@ export type DueContext = {
 export const timeMatches = (time: Time | undefined, phase: Phase) =>
   !time || (time === 'day' ? phase === 'day' || phase === 'dawn' : time === phase)
 
-// The stages that happen by themselves now. Given items and Shedinja never do; an Everstone stops them all.
+// The stages that happen by themselves now. Given items and Shedinja never do; an Everstone stops them all. Of the
+// ways into one species, one that needs this time of day wins: Cubone becomes Alolan Marowak at night.
 export function dueStages(stages: Stage[], c: DueContext): Stage[] {
   if (c.heldItem === 'everstone') return []
-  return stages.filter(({ way }) => {
+  const due = stages.filter(({ way }) => {
     if ('time' in way && !timeMatches(way.time, c.phase)) return false
     if (way.kind === 'level') return c.level >= way.level && (!way.partyType || c.partyTypes.includes(way.partyType))
     if (way.kind === 'hold') return c.heldItem === way.item
@@ -205,6 +219,8 @@ export function dueStages(stages: Stage[], c: DueContext): Stage[] {
     if (way.kind === 'party') return c.party.includes(way.species)
     return false
   })
+  const isTimed = (s: Stage) => Boolean('time' in s.way && s.way.time)
+  return due.filter(s => isTimed(s) || !due.some(o => o.species === s.species && isTimed(o)))
 }
 
 // The plugin's form for an evolved `stage` (forms as the sprite list names them: `alola`, `galar`...): the one

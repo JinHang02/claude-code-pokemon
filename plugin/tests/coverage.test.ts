@@ -48,6 +48,10 @@ test('the evolutions named in the design follow the games', () => {
   expect(way('pichu', 'pikachu')).toEqual({ kind: 'friendship' })
   expect(way('piloswine', 'mamoswine')).toEqual({ kind: 'level', level: 43, isFallback: true })
   expect(way('rockruff', 'lycanroc', 'regular', 'midnight')).toEqual({ kind: 'level', level: 25, time: 'night' })
+  expect(way('rockruff', 'lycanroc', 'regular', 'dusk')).toEqual({ kind: 'level', level: 25, time: 'dusk' })
+  // Plain and Hisuian Decidueye from one level, so either can come; Cubone's night way is Alolan Marowak's.
+  expect(way('dartrix', 'decidueye', 'regular', 'hisui')).toEqual({ kind: 'level', level: 34 })
+  expect(way('cubone', 'marowak', 'regular', 'alola')).toEqual({ kind: 'level', level: 28, time: 'night' })
   expect(way('eevee', 'sylveon')).toEqual({ kind: 'level', level: 30, isFallback: true })
   expect(way('nincada', 'shedinja')).toEqual({ kind: 'shed' })
   expect(path('nincada', 'shedinja')?.siblingLevel).toBe(20)

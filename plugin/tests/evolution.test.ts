@@ -159,6 +159,28 @@ test('Shedinja comes along with Ninjask; the time of day names Lycanroc', () => 
     { species: 'lycanroc', form: 'lycanroc-midday', way: { kind: 'level', level: 25, time: 'day' } },
     { species: 'lycanroc', form: 'lycanroc-midnight', way: { kind: 'level', level: 25, time: 'night' } },
   ])
+  // As PokeAPI has it: Dusk Lycanroc comes from Own Tempo Rockruff, which the sprites draw as plain Rockruff.
+  const tempo = (time: string, from: string, to: string) => ({
+    trigger: named('level-up'),
+    min_level: 25,
+    time_of_day: time,
+    required_pokemon_form: named(from),
+    evolved_pokemon_form: named(to),
+  })
+  const realDog = link(
+    'rockruff',
+    [],
+    link('lycanroc', [
+      tempo('day', 'rockruff', 'lycanroc-midday'),
+      tempo('night', 'rockruff', 'lycanroc-midnight'),
+      tempo('dusk', 'rockruff-own-tempo', 'lycanroc-dusk'),
+    ]),
+  )
+  expect(nextStages(realDog, 'rockruff', 'rockruff', null, [])).toEqual([
+    { species: 'lycanroc', form: 'lycanroc-midday', way: { kind: 'level', level: 25, time: 'day' } },
+    { species: 'lycanroc', form: 'lycanroc-midnight', way: { kind: 'level', level: 25, time: 'night' } },
+    { species: 'lycanroc', form: 'lycanroc-dusk', way: { kind: 'level', level: 25, time: 'dusk' } },
+  ])
 })
 
 test('the same way in several games is one stage, at the lowest level', () => {
@@ -171,6 +193,39 @@ test('the same way in several games is one stage, at the lowest level', () => {
     ]),
   )
   expect(nextStages(darumaka, 'darumaka')).toEqual([lv('darmanitan', 35)])
+})
+
+test("level ways into one species from different games share the lowest level; the time of day's own form wins", () => {
+  // Legends: Arceus's Lv 36 for Hisuian Decidueye would never come: Dartrix evolves at 34 first. Both come at 34.
+  const dartrix = link(
+    'dartrix',
+    [],
+    link('decidueye', [
+      { trigger: named('level-up'), min_level: 34 },
+      { trigger: named('level-up'), min_level: 36, evolved_pokemon_form: named('decidueye-hisui') },
+    ]),
+  )
+  expect(nextStages(dartrix, 'dartrix')).toEqual([
+    lv('decidueye', 34),
+    lv('decidueye', 34, { form: 'decidueye-hisui' }),
+  ])
+  // Cubone becomes Marowak by day and Alolan Marowak at night, as in Sun and Moon.
+  const plain = lv('marowak', 28)
+  const alolan = {
+    species: 'marowak',
+    form: 'marowak-alola',
+    way: { kind: 'level', level: 28, time: 'night' },
+  } as Stage
+  const base = { level: 28, togetherMs: 0, party: [], partyTypes: [] }
+  expect(dueStages([plain, alolan], { ...base, phase: 'day' })).toEqual([plain])
+  expect(dueStages([plain, alolan], { ...base, phase: 'night' })).toEqual([alolan])
+  // Only within one species: Eevee's Sylveon (by level) stays beside Espeon (by friendship, by day).
+  const sylveon = lv('sylveon', 30)
+  const espeon = { species: 'espeon', way: { kind: 'friendship', time: 'day' } } as Stage
+  expect(dueStages([sylveon, espeon], { ...base, level: 30, togetherMs: FRIENDSHIP_MS, phase: 'day' })).toEqual([
+    sylveon,
+    espeon,
+  ])
 })
 
 test('what is due: level and time, a held item, friendship time, a party member, never with an Everstone', () => {
