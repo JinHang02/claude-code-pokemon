@@ -409,4 +409,12 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
     ].join('\n'),
   )
   expect(formatBag(loadSave({}), 0)).toBe('Bag · ₽3,000\n  Empty. Buy items at the PokéMart: /pokemon mart')
+  // PC box holders are listed too, marked.
+  const boxed = loadSave({
+    party: [m({ id: 'p', heldItem: 'lucky-egg' })],
+    box: [m({ id: 'b', species: 'pichu' }), m({ id: 'c', heldItem: 'soothe-bell' })],
+  })
+  expect(formatBag(boxed, 0)).toBe(
+    ['Bag · ₽3,000', '  Held        Eevee: Lucky Egg · Eevee (box): Soothe Bell'].join('\n'),
+  )
 })

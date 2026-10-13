@@ -466,7 +466,7 @@ export function formatParty(save: Save): string {
   ].join('\n')
 }
 
-// The Bag by tab, the wallet, and who holds what. `cash`: the ledgers' unfolded ₽.
+// The Bag by tab, the wallet, and who holds what, in the party and the PC box. `cash`: the ledgers' unfolded ₽.
 export function formatBag(save: Save, cash: number): string {
   const lines = [`Bag · ${formatMoney(balanceOf(save, cash))}`]
   for (const tab of TABS) {
@@ -475,8 +475,11 @@ export function formatBag(save: Save, cash: number): string {
     )
     if (items.length) lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ×${save.bag?.[i.id]}`).join(' · ')}`)
   }
-  const held = save.party.flatMap(m =>
-    m.heldItem ? [`${displayName(m.species, m.form)}: ${itemName(m.heldItem)}`] : [],
+  const held = [
+    ...save.party.map(m => ({ m, where: '' })),
+    ...(save.box ?? []).map(m => ({ m, where: ' (box)' })),
+  ].flatMap(({ m, where }) =>
+    m.heldItem ? [`${displayName(m.species, m.form)}${where}: ${itemName(m.heldItem)}`] : [],
   )
   if (held.length) lines.push(`  ${'Held'.padEnd(10)}  ${held.join(' · ')}`)
   if (lines.length === 1) lines.push('  Empty. Buy items at the PokéMart: /pokemon mart')

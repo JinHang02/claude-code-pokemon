@@ -1403,6 +1403,29 @@ test('holding: one item each, a new one sends the old back to the Bag; take puts
   expect(w.saveNow().party[0]?.heldItem).toBeUndefined()
 })
 
+test('take reaches a PC box member holding an item when the name is only in the box; the party one comes first', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [], heldItem: 'lucky-egg' })],
+    box: [
+      member('eevee', { next: [] }),
+      member('eevee', { next: [], heldItem: 'soothe-bell' }),
+      member('pikachu', { next: [], heldItem: 'metal-coat' }),
+      member('charmander', { next: [] }),
+    ],
+  })
+  await cmd($, 'pokemon', 'party')
+  expect(await cmd($, 'pokemon', 'bag')).toContain(
+    '  Held        Pikachu: Lucky Egg · Eevee (box): Soothe Bell · Pikachu (box): Metal Coat',
+  )
+  expect(await cmd($, 'pokemon', 'take eevee')).toBe("Eevee's Soothe Bell went back to your Bag.")
+  expect(w.saveNow().box?.map(m => m.heldItem)).toEqual([undefined, undefined, 'metal-coat', undefined])
+  expect(await cmd($, 'pokemon', 'take pikachu')).toBe("Pikachu's Lucky Egg went back to your Bag.")
+  expect(w.saveNow().box?.[2]?.heldItem).toBe('metal-coat')
+  expect(await cmd($, 'pokemon', 'take charmander')).toBe("Charmander isn't holding anything.")
+  expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1, 'soothe-bell': 1 })
+})
+
 test('the everstone stays free: same words as ever, and it never enters the Bag', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], bag: { 'lucky-egg': 1 } })
   await cmd($, 'pokemon', 'give lucky-egg pikachu')

@@ -526,15 +526,18 @@ function indexIn(members: Member[], query: string): number {
   return at >= 0 ? at : members.findIndex(m => m.species === species)
 }
 
-// Where in the PC box a query names exactly, species and form; `shiny` in it asks for a shiny one. -1 when none.
-function boxIndex(box: Member[], query: string): number {
+// Where in the PC box a query names exactly, species and form; `shiny` in it asks for a shiny one. Of several, the
+// first that is `preferred`, if any. -1 when none.
+function boxIndex(box: Member[], query: string, preferred?: (m: Member) => boolean): number {
   const words = slug(query).split('-').filter(Boolean)
   const wantsShiny = words.includes('shiny')
   const named = words.filter(w => w !== 'shiny')
   const found = named.length && box.length ? lookup(namesOf(box), named) : null
   if (!found || !('pick' in found)) return -1
   const { species, form } = found.pick
-  return box.findIndex(m => m.species === species && m.form === form && (!wantsShiny || m.isShiny))
+  const isNamed = (m: Member) => m.species === species && m.form === form && (!wantsShiny || m.isShiny)
+  const first = preferred ? box.findIndex(m => isNamed(m) && preferred(m)) : -1
+  return first >= 0 ? first : box.findIndex(isNamed)
 }
 
 // The party member a query names exactly; otherwise a suggestion naming `command`, or what's in the party.
@@ -693,18 +696,21 @@ async function holdItem($: EngineInterface, query: string, item: Item, command: 
   return text
 }
 
-// `/pokemon take <name>`: its held item back to the Bag; an Everstone is just dropped.
+// `/pokemon take <name>`: its held item back to the Bag; an Everstone is just dropped. A name only in the PC box
+// reaches the one there (one holding an item, if any).
 async function takeItem($: EngineInterface, query: string): Promise<string> {
   if (!query.trim()) return 'Which one? /pokemon take <name>'
   let text = ''
   let isDropped = false
   await mutate($, s => {
-    const at = findMember(s, query, 'take ')
+    const box = s.box ?? []
+    const inBox = indexIn(s.party, query) < 0 ? boxIndex(box, query, b => Boolean(b.heldItem)) : -1
+    const at = inBox >= 0 ? inBox : findMember(s, query, 'take ')
     if (typeof at === 'string') {
       text = at
       return s
     }
-    const m = s.party[at]
+    const m = inBox >= 0 ? box[inBox] : s.party[at]
     if (!m) return s
     const name = displayName(m.species, m.form)
     const { heldItem, ...rest } = m
@@ -725,7 +731,8 @@ async function takeItem($: EngineInterface, query: string): Promise<string> {
       after = back
       text = `${name}'s ${itemName(heldItem)} went back to your Bag.`
     }
-    return { ...after, party: after.party.map((p, i) => (i === at ? rest : p)) }
+    const without = (list: Member[]) => list.map((p, i) => (i === at ? rest : p))
+    return inBox >= 0 ? { ...after, box: without(after.box ?? []) } : { ...after, party: without(after.party) }
   })
   // Already past its level: it evolves now.
   if (isDropped) background($, learnEvolutions($))
