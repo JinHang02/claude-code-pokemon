@@ -1629,6 +1629,21 @@ test('the Mart takes only its own acts: raw buys of anything, bad picks and tabs
   expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
 })
 
+test('a buy the store refuses says why in the Mart and in a toast, and the Mart stays open', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  await band.redraw()
+  w.net.isStoreBroken = true
+  await clickMart(band, 'buy')
+  w.net.isStoreBroken = false
+  const said = await martOf(band)
+  expect(said).toMatchObject({ message: expect.stringMatching(/^Couldn't do that: ./), isError: true })
+  expect(w.toasts).toContain(`Pokémon: ${said?.message.slice("Couldn't do that: ".length)}`)
+  expect(w.saveNow().bag).toBeUndefined()
+})
+
 test('/pokemon mart opens it in the band and says so without one; /pokemon off closes it', async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
@@ -1653,6 +1668,45 @@ test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone
   expect(await martOf(band)).toBeNull()
   expect(await cmd($, 'pokemon', 'mart')).toBe('A wild Caterpie is out: catch it or let it go first.')
   expect(await martOf(band)).toBeNull()
+})
+
+test('no ₽ button and no Mart from the moment a wild Pokémon is out, before it can be aimed at; the button comes back after', async ($, on) => {
+  const net = throwNet()
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+    TALL,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band & Aim
+  await cmd($, 'pokemon-play', 'day')
+  expect(await clientProps(band, 'shop')).not.toBeNull()
+  // Its catch rate is still loading (up to 20 s offline): it can't be aimed at yet.
+  let open = () => {}
+  net.speciesStall = new Promise<void>(resolve => (open = resolve))
+  await cmd($, 'pokemon-play', 'wild caterpie')
+  // A click on the button as last drawn, before the band is drawn again without it.
+  await band.post({ open: true }, { in: 'shop' })
+  expect(await martOf(band)).toBeNull()
+  expect(await clientProps(band, 'shop')).toBeNull()
+  // Through the rustle and after: still no button, and still not aimable.
+  for (let i = 0; i < 60; i++) await w.clock.advance(50)
+  expect(await isAiming(band)).toBe(false)
+  expect(await clientProps(band, 'shop')).toBeNull()
+  net.speciesStall = undefined
+  open()
+  const cell = await seenIn(w, band, '#00ffff')
+  await band.pointer({ type: 'down', ...cell, button: 'left' })
+  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+  let isBack = false
+  for (let i = 0; i < 100 && !isBack; i++) {
+    await w.clock.advance(50)
+    isBack = (await clientProps(band, 'shop')) !== null
+  }
+  expect(isBack).toBe(true)
 })
 
 test('the party turned off in another session closes the Mart: it stays closed when they come back', async ($, on) => {

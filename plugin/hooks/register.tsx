@@ -154,6 +154,10 @@ let mart = { isOpen: false, message: '', isError: false, view: START }
 // stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
 const AIM_EVERY = 2
 let isAiming = false
+// A wild Pokémon is out (rustling, aimable or in a ball): no ₽ button and no Mart then, as the Mart would cover it.
+const isVisited = () => Boolean(status.wild || pitch)
+// The band was last drawn without its button for a visitor; it is drawn again when the visitor comes or goes.
+let isButtonHidden = false
 const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
@@ -1218,17 +1222,34 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
     return null
   }
   if (done.post && 'buy' in done.post) {
-    const { text, isError } = await buyItem($, done.post.buy.id, done.post.buy.qty)
-    mart = { ...mart, message: text, isError }
+    try {
+      const { text, isError } = await buyItem($, done.post.buy.id, done.post.buy.qty)
+      mart = { ...mart, message: text, isError }
+    } catch (err) {
+      // The store refused: said in the Mart's own line, and reported.
+      mart = {
+        ...mart,
+        message: `Couldn't do that: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
+      }
+      await report($, err)
+    }
   }
   return { props: martProps() }
 }
 
-// `/pokemon mart`: the Mart opens in the band, when there is one.
-function openMartCommand($: EngineInterface): string {
+// Why the Mart can't open now, or null when it can.
+function martRefusal(): string | null {
   if (!band || save.isOff) return "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here."
   // The visitor would go on walking under the Mart, out of reach: no Mart while it's out (the button hides then too).
-  if (status.wild || pitch) return `A wild ${wild?.mon.name ?? 'Pokémon'} is out: catch it or let it go first.`
+  if (isVisited()) return `A wild ${wild?.mon.name ?? 'Pokémon'} is out: catch it or let it go first.`
+  return null
+}
+
+// `/pokemon mart`: the Mart opens in the band, when there is one.
+function openMartCommand($: EngineInterface): string {
+  const refusal = martRefusal()
+  if (refusal) return refusal
   openMart($)
   return 'The PokéMart is open above the prompt: click an item, then ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.'
 }
@@ -1261,6 +1282,10 @@ async function tick($: EngineInterface) {
     if (event) afterThrow($, event)
   }
   if (!status.wild) wild = null
+  if (isVisited() !== isButtonHidden) {
+    isButtonHidden = !isButtonHidden
+    $.ui.invalidate('ui.render')
+  }
   if (canAim() !== isAiming) {
     isAiming = !isAiming
     $.ui.invalidate('ui.render')
@@ -1580,7 +1605,8 @@ export const register: Register = on => {
   on('ui.message', async ($, e, next) => {
     const click = e.element === 'aim' ? readClick(e.data) : null
     if (click) throwAt(click)
-    if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true) openMart($)
+    // A click on a button drawn before a visitor came opens nothing.
+    if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
     const posted = e.element === 'mart' && mart.isOpen ? (e.data as { act?: unknown } | null)?.act : undefined
     if (isAct(posted)) {
       const answer = await martAct($, posted)
@@ -1641,16 +1667,21 @@ export const register: Register = on => {
     status = keepRustleAtEdge(status, columns)
     band = { requestId: e.requestId, columns, rows, total }
     isHidden = false
+    isAiming = canAim()
+    isButtonHidden = isVisited()
+    // The Mart covers the band: no scene frame is made under it.
+    if (mart.isOpen) {
+      lastCells = ''
+      return <Client key="mart" module="./mart.tsx" width={total} height={rows} props={martProps()} />
+    }
     const img = frame(status, fitted.lefts, columns, rows, lookNow())
     const { cells } = toCells(img)
     lastCells = cells
-    isAiming = canAim()
-    if (mart.isOpen) return <Client key="mart" module="./mart.tsx" width={total} height={rows} props={martProps()} />
-    // No button while aiming: the band is a click layer then, and the Mart would hold up the catch.
     if (isAiming)
       return <Client key="aim" module="./aim.tsx" width={columns} height={rows} props={{ lines: textRows(img) }} />
     const scene = <Raster key="scene" columns={columns} rows={rows} cells={cells} />
-    if (!button) return scene
+    // No button while a wild Pokémon is out, aimable or not: the Mart would hold up the catch.
+    if (!button || isButtonHidden) return scene
     return (
       <Box flexDirection="row">
         {scene}
