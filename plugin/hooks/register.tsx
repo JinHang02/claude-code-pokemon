@@ -12,6 +12,7 @@ import { lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
+  addTogether,
   buy,
   displayName,
   emptySave,
@@ -83,6 +84,8 @@ const SHINY_ODDS = 1 / 32
 const LIST_MAX_AGE_MS = 30 * 24 * 60 * 60_000
 // How often a session picks up what other sessions saved (and retries a party it couldn't draw).
 const SYNC_MS = 10_000
+// How often time together is added, in every session; the shared stamp keeps two sessions from counting it twice.
+const TOGETHER_EVERY_MS = 60_000
 // A download taking longer than this has failed.
 const FETCH_TIMEOUT_MS = 20_000
 const WILD_EVERY = [ticks(10 * 60_000), ticks(20 * 60_000)] as const
@@ -384,6 +387,14 @@ async function retry($: EngineInterface) {
   if (save.isOff) return
   if (!save.party.length) await setLead($, '')
   else if (isPartyStale) await refreshParty($)
+}
+
+// Time together for the party, then any evolution it (or the hour) has brought.
+async function together($: EngineInterface) {
+  if (save.isOff || !save.party.length) return
+  const now = await $.clock.now()
+  await mutate($, s => (s.isOff ? s : addTogether(s, now)))
+  await learnEvolutions($)
 }
 
 // Fetches every party member's sprite and publishes the party for drawing. A refresh overtaken by a newer
@@ -1364,6 +1375,12 @@ export const register: Register = on => {
       background(
         $,
         started.then(() => retry($)),
+      ),
+    )
+    $.clock.every(TOGETHER_EVERY_MS, () =>
+      background(
+        $,
+        started.then(() => together($)),
       ),
     )
 

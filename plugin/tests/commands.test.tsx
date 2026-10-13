@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { FRIENDSHIP_MS } from '../hooks/evolution'
 import type { Stage } from '../hooks/evolution'
 import type { Member, Save } from '../hooks/save'
 import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
@@ -1759,4 +1760,66 @@ test('₽ from two sessions adds up', async ($, on) => {
   await $.tool.call(bash('git commit -m x') as never)
   await cmd($, 'pokemon', 'party')
   expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,500')
+})
+
+test('time together brings friendship evolutions: Pichu becomes Pikachu after 10 hours', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pichu', { togetherMs: FRIENDSHIP_MS - 90_000 })] })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  expect(await cmd($, 'pokemon', 'party')).toContain('evolves with friendship (♥ 99%, 2m to go)')
+  expect(w.saveNow().party[0]?.species).toBe('pichu')
+  await w.clock.advance(180_000)
+  await until($, () => w.saveNow().party[0]?.species === 'pikachu')
+  expect(w.toasts).toEqual(['What? Pichu evolved into Pikachu!'])
+  expect(await cmd($, 'pokemon', 'party')).toContain('together 10h')
+})
+
+test('Eevee by friendship: Umbreon at night, Espeon by day', async ($, on) => {
+  const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(23) }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('eevee', { togetherMs: FRIENDSHIP_MS - 30_000 })] },
+    ART,
+    undefined,
+    net,
+  )
+  await w.clock.advance(120_000)
+  await until($, () => w.saveNow().party[0]?.species === 'umbreon')
+})
+
+test('Eevee by day becomes Espeon', async ($, on) => {
+  const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(12) }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('eevee', { togetherMs: FRIENDSHIP_MS - 30_000 })] },
+    ART,
+    undefined,
+    net,
+  )
+  await w.clock.advance(120_000)
+  await until($, () => w.saveNow().party[0]?.species === 'espeon')
+})
+
+test('only party time counts: none while off, none in the PC box; a Soothe Bell makes it 1.5 times', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [
+      member('pikachu', { id: 'p', next: [] }),
+      member('charmander', { id: 's', next: [], heldItem: 'soothe-bell' }),
+    ],
+    box: [member('eevee', { id: 'b' })],
+  })
+  await w.clock.advance(60_000)
+  const start = w.saveNow().party.map(m => m.togetherMs ?? 0)
+  await w.clock.advance(120_000)
+  const party = w.saveNow().party
+  expect((party[0]?.togetherMs ?? 0) - (start[0] ?? 0)).toBe(120_000)
+  expect((party[1]?.togetherMs ?? 0) - (start[1] ?? 0)).toBe(180_000)
+  expect(w.saveNow().box?.[0]?.togetherMs).toBeUndefined()
+  await cmd($, 'pokemon', 'off')
+  const resting = w.saveNow().party[0]?.togetherMs
+  await w.clock.advance(300_000)
+  expect(w.saveNow().party[0]?.togetherMs).toBe(resting)
+  expect(await cmd($, 'pokemon', 'party')).toContain('together 2m')
 })
