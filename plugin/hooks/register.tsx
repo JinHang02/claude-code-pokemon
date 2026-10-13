@@ -4,7 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Mon } from '../types'
 import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
 import type { Click, Throw, ThrowEvent } from './catch'
-import { dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
+import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Stage } from './evolution'
 import { isForSale, itemById, itemName, MAX_BAG, splitGive, withArticle } from './items'
 import type { Item } from './items'
@@ -913,7 +913,8 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
       : given
         ? byItem.filter(s => timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase))
         : dueFor({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, context)
-    const next = allowed[Math.floor(Math.random() * allowed.length)]
+    // A preview shows any branch; a real evolution takes this Pokémon's own.
+    const next = isPreview ? allowed[Math.floor(Math.random() * allowed.length)] : chooseStage(member.id, allowed)
     if (!next) {
       if (!isPreview && !options.length)
         await mutate($, s => ({

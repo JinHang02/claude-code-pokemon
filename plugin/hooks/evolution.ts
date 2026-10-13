@@ -223,6 +223,14 @@ export function dueStages(stages: Stage[], c: DueContext): Stage[] {
   return due.filter(s => isTimed(s) || !due.some(o => o.species === s.species && isTimed(o)))
 }
 
+// Which of several evolutions due at once a Pokémon takes: always the same for the same Pokémon, from its id, as the
+// games pick Wurmple's branch from its own personality value.
+export function chooseStage<T>(id: string, options: T[]): T | undefined {
+  let hash = 2166136261
+  for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619)
+  return options[(hash >>> 0) % Math.max(1, options.length)]
+}
+
 // The plugin's form for an evolved `stage` (forms as the sprite list names them: `alola`, `galar`...): the one
 // the games name when the sprites have it; otherwise the member's own form when the evolved species has it.
 export function evolvedForm(stage: Stage, memberForm: string, forms: string[]): string {

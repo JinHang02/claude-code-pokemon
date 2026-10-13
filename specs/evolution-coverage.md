@@ -125,8 +125,8 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Taillow | Swellow | Lv 22 | ✅ |
 | Wingull | Pelipper | Lv 25 | ✅ |
 | Ralts | Kirlia | Lv 20 | ✅ |
-| Kirlia | Gardevoir | Lv 30 | ✅ |
-| Kirlia | Gardevoir | Lv 30 | ✅ |
+| Kirlia ♀ | Gardevoir | Lv 30 | ✅ |
+| Kirlia ♂ | Gardevoir | Lv 30 | ✅ |
 | Surskit | Masquerain | Lv 22 | ✅ |
 | Shroomish | Breloom | Lv 23 | ✅ |
 | Slakoth | Vigoroth | Lv 18 | ✅ |
@@ -156,8 +156,8 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Shuppet | Banette | Lv 37 | ✅ |
 | Duskull | Dusclops | Lv 37 | ✅ |
 | Wynaut | Wobbuffet | Lv 15 | ✅ |
-| Snorunt | Glalie | Lv 42 | ✅ |
-| Snorunt | Glalie | Lv 42 | ✅ |
+| Snorunt ♀ | Glalie | Lv 42 | ✅ |
+| Snorunt ♂ | Glalie | Lv 42 | ✅ |
 | Spheal | Sealeo | Lv 32 | ✅ |
 | Sealeo | Walrein | Lv 44 | ✅ |
 | Bagon | Shelgon | Lv 30 | ✅ |
@@ -178,11 +178,11 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Luxio | Luxray | Lv 30 | ✅ |
 | Cranidos | Rampardos | Lv 30 | ✅ |
 | Shieldon | Bastiodon | Lv 30 | ✅ |
-| Burmy | Wormadam | Lv 20 | ✅ |
-| Burmy | Mothim | Lv 20 | ✅ |
-| Burmy (sandy) | Wormadam (sandy) | Lv 20 | ✅ |
-| Burmy (trash) | Wormadam (trash) | Lv 20 | ✅ |
-| Combee | Vespiquen | Lv 21 | ✅ |
+| Burmy ♀ | Wormadam | Lv 20 | ✅ |
+| Burmy ♂ | Mothim | Lv 20 | ✅ |
+| Burmy ♀ (sandy) | Wormadam (sandy) | Lv 20 | ✅ |
+| Burmy ♀ (trash) | Wormadam (trash) | Lv 20 | ✅ |
+| Combee ♀ | Vespiquen | Lv 21 | ✅ |
 | Buizel | Floatzel | Lv 26 | ✅ |
 | Cherubi | Cherrim | Lv 25 | ✅ |
 | Shellos | Gastrodon | Lv 30 | ✅ |
@@ -301,8 +301,8 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Flabebe (yellow) | Floette (yellow) | Lv 19 | ✅ |
 | Skiddo | Gogoat | Lv 32 | ✅ |
 | Pancham | Pangoro | Lv 32 with a dark type | ✅ |
-| Espurr | Meowstic | Lv 25 | ✅ |
-| Espurr | Meowstic | Lv 25 | ✅ |
+| Espurr ♀ | Meowstic | Lv 25 | ✅ |
+| Espurr ♂ | Meowstic | Lv 25 | ✅ |
 | Honedge | Doublade | Lv 35 | ✅ |
 | Inkay | Malamar | Lv 30 | ✅ |
 | Binacle | Barbaracle | Lv 39 | ✅ |
@@ -337,7 +337,7 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Dewpider | Araquanid | Lv 22 | ✅ |
 | Fomantis | Lurantis | Lv 34 (day) | ✅ |
 | Morelull | Shiinotic | Lv 24 | ✅ |
-| Salandit | Salazzle | Lv 33 | ✅ |
+| Salandit ♀ | Salazzle | Lv 33 | ✅ |
 | Stufful | Bewear | Lv 27 | ✅ |
 | Bounsweet | Steenee | Lv 18 | ✅ |
 | Wimpod | Golisopod | Lv 30 | ✅ |
@@ -394,8 +394,8 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Bonsly | Sudowoodo | fallback Lv 30 | ✅ |
 | Mime Jr | Mr Mime | fallback Lv 30 | ✅ |
 | Mime Jr | Mr Mime (galar) | fallback Lv 30 | ✅ |
-| Basculin (white-striped) | Basculegion | fallback Lv 30 | ✅ |
-| Basculin (white-striped) | Basculegion | fallback Lv 30 | ✅ |
+| Basculin ♀ (white-striped) | Basculegion | fallback Lv 30 | ✅ |
+| Basculin ♂ (white-striped) | Basculegion | fallback Lv 30 | ✅ |
 | Yamask (galar) | Runerigus | fallback Lv 30 | ✅ |
 | Steenee | Tsareena | fallback Lv 30 | ✅ |
 | Poipole | Naganadel | fallback Lv 30 | ✅ |
@@ -457,13 +457,13 @@ every-evolution test, which plays each evolution through the plugin's own comman
 | Porygon2 | Porygon Z | give Dubious Disc | ✅ |
 | Lombre | Ludicolo | give Water Stone | ✅ |
 | Nuzleaf | Shiftry | give Leaf Stone | ✅ |
-| Kirlia | Gallade | give Dawn Stone | ✅ |
+| Kirlia ♂ | Gallade | give Dawn Stone | ✅ |
 | Nosepass | Probopass | give Thunder Stone | ✅ |
 | Skitty | Delcatty | give Moon Stone | ✅ |
 | Roselia | Roserade | give Shiny Stone | ✅ |
 | Feebas | Milotic | give Prism Scale | ✅ |
 | Dusclops | Dusknoir | give Reaper Cloth | ✅ |
-| Snorunt | Froslass | give Dawn Stone | ✅ |
+| Snorunt ♀ | Froslass | give Dawn Stone | ✅ |
 | Clamperl | Huntail | give Deep Sea Tooth | ✅ |
 | Clamperl | Gorebyss | give Deep Sea Scale | ✅ |
 | Pansage | Simisage | give Leaf Stone | ✅ |

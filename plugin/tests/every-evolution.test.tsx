@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { FRIENDSHIP_MS } from '../hooks/evolution'
+import { chooseStage, FRIENDSHIP_MS } from '../hooks/evolution'
 import type { Time } from '../hooks/evolution'
 import { itemName } from '../hooks/items'
 import { spell } from '../hooks/lookup'
@@ -9,14 +9,11 @@ import type { Member, Save } from '../hooks/save'
 import { CHAIN_OF, CHAINS, GENDER_RATES, LIST } from './fixtures/evolutions'
 import { evolutionPaths } from './paths'
 import type { Path } from './paths'
-import { answerTools, bash, begin, cmd, member, until } from './world'
+import { answerTools, bash, begin, cmd, member } from './world'
 import type { Net } from './world'
 
 // The test runner has a console; the plugin's types leave it out. scripts/evolution-coverage.mjs reads these lines.
 declare const console: { log: (line: string) => void }
-
-const PATHS = evolutionPaths()
-console.log(`COVERAGE-TOTAL|${PATHS.length}`)
 
 const chains = Object.fromEntries(LIST.map(s => [s.name, CHAINS[CHAIN_OF[s.name] ?? -1]]).filter(([, c]) => c))
 // The plugin's hour at clock 0: the machine's own offset, or the +0800 the fake `date` answers when it claims UTC.
@@ -45,51 +42,92 @@ function how(p: Path): string {
   return `room in the party when Nincada evolves at Lv ${p.siblingLevel}`
 }
 
-for (const p of PATHS)
+// A member id whose own pick, among the evolutions its trigger makes due together, is this path's target: Wurmple's
+// Silcoon row is played by a Wurmple that becomes Silcoon, its Cascoon row by one that becomes Cascoon.
+function idFor(n: number, p: Path): string {
+  const target = `${p.to}:${p.toForm}`
+  for (let i = 0; i < 1000; i++) if (chooseStage(`p${n}-${i}`, p.ties) === target) return `p${n}-${i}`
+  throw new Error(`no member id picks ${target} among ${p.ties.join(', ')}`)
+}
+
+// The report: every path up front, then one result per path, even one that fails before it gets there.
+const PATHS = evolutionPaths()
+console.log(`COVERAGE-TOTAL|${PATHS.length}`)
+PATHS.forEach((p, n) =>
+  console.log(`COVERAGE-PATH|${n}|${p.kind}|${p.from}|${p.fromForm}|${p.gender ?? ''}|${p.to}|${p.toForm}|${how(p)}`),
+)
+
+PATHS.forEach((p, n) =>
   test(`${p.from} (${p.fromForm}${p.gender ? `, ${p.gender}` : ''}) → ${p.to} (${p.toForm}): ${how(p)}`, async ($, on) => {
-    answerTools(on)
-    const w = p.stage.way
-    const time = 'time' in w ? w.time : undefined
-    const now = clockAt(time)
-    const start: Member = member(p.from, { form: p.fromForm, ...(p.gender ? { gender: p.gender } : {}) })
-    const party: Member[] = [start]
-    const save: Save = { ...emptySave(), party }
-    if (w.kind === 'level') start.xp = xpForLevel(w.level) - 5
-    if (w.kind === 'level' && w.partyType) party.push(member('umbreon'))
-    if (w.kind === 'shed') start.xp = xpForLevel(p.siblingLevel ?? 20) - 5
-    if (w.kind === 'item' || w.kind === 'hold') save.bag = { [w.item]: 1 }
-    if (w.kind === 'friendship') {
-      start.togetherMs = FRIENDSHIP_MS - 30_000
-      save.togetherAt = now
+    let isReported = false
+    const report = (result: string) => {
+      if (!isReported) console.log(`COVERAGE|${n}|${result.replace(/[|\s]+/g, ' ').slice(0, 200)}`)
+      isReported = true
     }
-    if (w.kind === 'party') party.push(member(w.species))
-    const env = await begin($, on, save, undefined, undefined, net(now))
-    const mine = () => env.saveNow().party.find(m => m.id === start.id)
-    const evolved = () => mine()?.species !== p.from
-    await until($, () => mine()?.next !== undefined || evolved())
-    if (w.kind === 'level' || w.kind === 'shed') {
-      // One level short: nothing yet.
-      expect(mine()?.species).toBe(p.from)
-      await $.tool.call(bash('git commit -m x') as never)
+    try {
+      answerTools(on)
+      const w = p.stage.way
+      const time = 'time' in w ? w.time : undefined
+      const now = clockAt(time)
+      const start: Member = member(p.from, {
+        id: idFor(n, p),
+        form: p.fromForm,
+        ...(p.gender ? { gender: p.gender } : {}),
+      })
+      const party: Member[] = [start]
+      const save: Save = { ...emptySave(), party }
+      if (w.kind === 'level') start.xp = xpForLevel(w.level) - 5
+      if (w.kind === 'level' && w.partyType) party.push(member('umbreon'))
+      if (w.kind === 'shed') start.xp = xpForLevel(p.siblingLevel ?? 20) - 5
+      if (w.kind === 'item' || w.kind === 'hold') save.bag = { [w.item]: 1 }
+      if (w.kind === 'friendship') {
+        start.togetherMs = FRIENDSHIP_MS - 30_000
+        save.togetherAt = now
+      }
+      if (w.kind === 'party') party.push(member(w.species))
+      const env = await begin($, on, save, undefined, undefined, net(now))
+      const mine = () => env.saveNow().party.find(m => m.id === start.id)
+      const evolved = () => mine()?.species !== p.from
+      // A command at a time, for background work (an evolution's fetches) to land.
+      const settle = async (done: () => boolean, failure: () => string) => {
+        for (let i = 0; i < 50 && !done(); i++) await cmd($, 'pokemon', 'party')
+        if (!done()) throw new Error(failure())
+      }
+      await settle(
+        () => mine()?.next !== undefined || evolved(),
+        () => 'never learned how it evolves',
+      )
+      if (w.kind === 'level' || w.kind === 'shed') {
+        // One level short: nothing yet.
+        if (evolved()) throw new Error(`evolved a level early, into ${mine()?.species}:${mine()?.form}`)
+        await $.tool.call(bash('git commit -m x') as never)
+      }
+      if (w.kind === 'item' || w.kind === 'hold')
+        await cmd($, 'pokemon', `give ${w.item} ${spell({ dex: 0, species: p.from, form: p.fromForm })}`)
+      if (w.kind === 'friendship') await env.clock.advance(120_000)
+      for (let i = 0; i < 20 && !evolved(); i++) await env.clock.advance(1_000)
+      await settle(evolved, () => `never evolved: still ${p.from}`)
+      const after = env.saveNow()
+      const got = mine()
+      const problems: string[] = []
+      // Shedinja's path: Nincada itself becomes Ninjask, and Shedinja comes along, caught.
+      if (w.kind === 'shed') {
+        if (![...after.party, ...(after.box ?? [])].some(m => m.species === 'shedinja'))
+          problems.push('got no shedinja')
+        if (!after.dex.shedinja?.caught) problems.push('shedinja not caught in the Pokédex')
+      } else if (`${got?.species}:${got?.form}` !== `${p.to}:${p.toForm}`)
+        problems.push(`got ${got?.species}:${got?.form}`)
+      if (got?.evolutions !== 1) problems.push(`evolved ${got?.evolutions} times`)
+      if (!after.dex[p.to]?.seen) problems.push(`${p.to} not seen in the Pokédex`)
+      if ((w.kind === 'item' || w.kind === 'hold') && (after.bag?.[w.item] ?? 0) !== 0)
+        problems.push(`${w.item} not used up`)
+      if (w.kind === 'hold' && got?.heldItem) problems.push(`still holds ${got.heldItem}`)
+      const result = problems.join('; ') || 'ok'
+      report(result)
+      expect(result).toBe('ok')
+    } catch (err) {
+      report(err instanceof Error ? err.message : String(err))
+      throw err
     }
-    if (w.kind === 'item' || w.kind === 'hold')
-      await cmd($, 'pokemon', `give ${w.item} ${spell({ dex: 0, species: p.from, form: p.fromForm })}`)
-    if (w.kind === 'friendship') await env.clock.advance(120_000)
-    for (let i = 0; i < 20 && !evolved(); i++) await env.clock.advance(1_000)
-    await until($, evolved)
-    const got = mine()
-    const everyone = [...env.saveNow().party, ...(env.saveNow().box ?? [])]
-    // Shedinja's path: Nincada itself becomes Ninjask, and Shedinja comes along.
-    const result =
-      w.kind === 'shed'
-        ? everyone.some(m => m.species === 'shedinja')
-          ? 'ok'
-          : 'got no shedinja'
-        : got && p.ties.includes(`${got.species}:${got.form}`)
-          ? 'ok'
-          : `got ${got?.species}:${got?.form}`
-    console.log(`COVERAGE|${p.kind}|${p.from}|${p.fromForm}|${p.to}|${p.toForm}|${how(p)}|${result}`)
-    expect(result).toBe('ok')
-    if (w.kind === 'item' || w.kind === 'hold') expect(env.saveNow().bag?.[w.item] ?? 0).toBe(0)
-    if (w.kind === 'hold') expect(got?.heldItem).toBeUndefined()
-  })
+  }),
+)

@@ -1145,6 +1145,9 @@ test('a slow party refresh in flight never draws over an evolution', async ($, o
   net.stall = undefined
   release()
   for (let i = 0; i < 40; i++) await w.clock.advance(500)
+  // Daylight again: the first showing has run out, and the band's phase follows the wall clock, dim after 19:00.
+  await cmd($, 'pokemon-play', 'day')
+  for (let i = 0; i < 4; i++) await w.clock.advance(500)
   const colors = colorsIn(w.band.cells)
   // Raichu leads, drawn in front: its colour shows; Pikachu's is nowhere. (Eevee may stand fully behind it.)
   expect(colors.has(0x00ff00)).toBe(true)

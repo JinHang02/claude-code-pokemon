@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  chooseStage,
   dueStages,
   evolvedForm,
   FRIENDSHIP_MS,
@@ -226,6 +227,22 @@ test("level ways into one species from different games share the lowest level; t
     sylveon,
     espeon,
   ])
+})
+
+test('of several evolutions due at once, a Pokémon always takes the same one, and each one some Pokémon takes', () => {
+  const options = [lv('silcoon', 7), lv('cascoon', 7)]
+  const ids = Array.from({ length: 50 }, (_, i) => `id${i}`)
+  for (const id of ids) {
+    expect(options).toContain(chooseStage(id, options))
+    expect(chooseStage(id, options)).toBe(chooseStage(id, [...options]))
+  }
+  const taken = new Set(ids.map(id => chooseStage(id, options)))
+  expect(taken.size).toBe(2)
+  // Nine Alcremie sweets, all reachable.
+  const nine = Array.from({ length: 9 }, (_, i) => i)
+  expect(new Set(ids.map(id => chooseStage(id, nine))).size).toBe(9)
+  expect(chooseStage('id0', [])).toBeUndefined()
+  expect(chooseStage('id0', [lv('metapod', 7)])).toEqual(lv('metapod', 7))
 })
 
 test('what is due: level and time, a held item, friendship time, a party member, never with an Everstone', () => {

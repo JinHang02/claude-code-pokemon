@@ -23,14 +23,38 @@ try {
 }
 
 const total = Number(/^COVERAGE-TOTAL\|(\d+)$/m.exec(output)?.[1])
-const rows = [...output.matchAll(/^COVERAGE\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|(.*)$/gm)].map(m =>
-  m.slice(1),
-)
-const name = (species, form) =>
+// No report at all (`claude` missing, the run cut short): the checklist stays as it was.
+if (!Number.isFinite(total)) {
+  console.error(
+    'No COVERAGE-TOTAL line: the every-evolution test did not run. specs/evolution-coverage.md is unchanged.',
+  )
+  console.error(output.slice(-2000))
+  process.exit(1)
+}
+// Every path the test meant to play, and each one's result; a path with no result line is a failure.
+const paths = [
+  ...output.matchAll(/^COVERAGE-PATH\|(\d+)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|(.*)$/gm),
+]
+const results = new Map([...output.matchAll(/^COVERAGE\|(\d+)\|(.*)$/gm)].map(m => [m[1], m[2]]))
+const rows = paths.map(([, n, kind, from, fromForm, gender, to, toForm, how]) => ({
+  n,
+  kind,
+  from,
+  fromForm,
+  gender,
+  to,
+  toForm,
+  how,
+  result: results.get(n) ?? 'no result',
+}))
+const SIGNS = { female: ' ♀', male: ' ♂' }
+const name = (species, form, gender = '') =>
   species
     .split('-')
     .map(w => w[0].toUpperCase() + w.slice(1))
-    .join(' ') + (form === 'regular' ? '' : ` (${form})`)
+    .join(' ') +
+  (SIGNS[gender] ?? '') +
+  (form === 'regular' ? '' : ` (${form})`)
 const TITLES = {
   level: 'By level',
   fallback: 'By level, where the games need something the plugin has no way to do',
@@ -40,7 +64,7 @@ const TITLES = {
   party: 'With a Pokémon in the party',
   shed: 'Shedinja',
 }
-const passed = rows.filter(r => r[6] === 'ok').length
+const passed = rows.filter(r => r.result === 'ok').length
 const lines = [
   '# Evolution coverage',
   '',
@@ -50,14 +74,19 @@ const lines = [
   `**${passed} of ${total} evolutions pass.**`,
 ]
 for (const [kind, title] of Object.entries(TITLES)) {
-  const mine = rows.filter(r => r[0] === kind)
+  const mine = rows.filter(r => r.kind === kind)
   if (!mine.length) continue
   lines.push('', `## ${title} (${mine.length})`, '', '| From | To | How | Result |', '| :-- | :-- | :-- | :-- |')
-  for (const [, from, fromForm, to, toForm, how, result] of mine)
+  for (const r of mine)
     lines.push(
-      `| ${name(from, fromForm)} | ${name(to, toForm)} | ${how} | ${result === 'ok' ? '✅' : `❌ ${result}`} |`,
+      `| ${name(r.from, r.fromForm, r.gender)} | ${name(r.to, r.toForm)} | ${r.how} | ${r.result === 'ok' ? '✅' : `❌ ${r.result}`} |`,
     )
 }
+// A path of a kind with no title would be left out of the file: count it as a failure too.
+const unlisted = rows.filter(r => !(r.kind in TITLES))
 writeFileSync(join(root, 'specs/evolution-coverage.md'), `${lines.join('\n')}\n`)
-console.log(`${rows.length} of ${total} reported, ${rows.length - passed} failed`)
-if (!Number.isFinite(total) || rows.length !== total || passed !== total) process.exit(1)
+const reported = rows.filter(r => results.has(r.n)).length
+console.log(`${paths.length} of ${total} paths listed, ${reported} reported, ${rows.length - passed} failed`)
+for (const r of rows.filter(r => r.result !== 'ok'))
+  console.log(`❌ ${name(r.from, r.fromForm, r.gender)} → ${name(r.to, r.toForm)} (${r.how}): ${r.result}`)
+if (paths.length !== total || passed !== total || unlisted.length) process.exit(1)
