@@ -88,9 +88,9 @@ Every Pokémon in your party earns experience from the work you and Claude get d
 
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve.gif" width="280" align="right" alt="Charmander evolving into Charmeleon in flashing white silhouettes">
 
-They evolve **at the same level they do in the games**: Charmander at 16, Charmeleon at 36, Dratini at 30, Larvitar at 30. Evolutions that need a stone, a trade or friendship (Pikachu, every Eevee evolution) happen at **Lv 30**, or alongside a branch that evolves by level (Slowpoke becomes Slowbro or Slowking at 37). Regional forms evolve the way their region does: a Galarian Meowth becomes Perrserker. You get the classic flashing-silhouette animation and a little _"What? Charmander evolved into Charmeleon!"_.
+They evolve **the way they do in the games**: Charmander at Lv 16, Charmeleon at 36. Pikachu needs a Thunder Stone, Haunter a Linking Cord, Onix a Metal Coat: buy them at the PokéMart and `/pokemon give` them. Pichu, Togepi and other friendship evolutions come from time together: 10 hours in your party while Claude Code is open. Day and night matter where they do in the games (Rockruff becomes Midnight Lycanroc at night), and regional forms evolve the way their region does. A Pokémon that can branch always takes the same branch, decided by that Pokémon, as in the games. You get the classic flashing-silhouette animation and a little _"What? Charmander evolved into Charmeleon!"_.
 
-`/pokemon party` shows when each one evolves. Branching lines pick a branch for you, so your Eevee could become any of its eight evolutions.
+`/pokemon party` shows how each one evolves, and how long it's been with you.
 
 Love your Pikachu just the way it is? Give it an everstone:
 
@@ -165,6 +165,18 @@ and all.
 
 ---
 
+## Shop at the PokéMart
+
+Your work earns Pokédollars too, ten for every XP point: **₽20** for a reply, **₽50** for a passing test run, **₽100** for a commit. You start with ₽3,000. Click **🛒 ₽** in the band's top-right corner (or run `/pokemon mart`) to open the PokéMart: evolution stones, trade items, the Linking Cord, Rare Candy, a Lucky Egg and a Soothe Bell, each with its description from the games. It won't open while a wild Pokémon is out: catch it or let it go first. Click into it, then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many, `Enter` buys and `x` closes (Esc can't: Claude Code keeps it for the prompt). The mouse wheel over the band scrolls the list, and item pictures show when the band is at least 8 rows tall.
+
+```text
+/pokemon give thunder-stone pikachu   Pikachu evolved into Raichu!
+/pokemon give lucky-egg eevee         Eevee is now holding a Lucky Egg.
+/pokemon bag                          what you have, and who holds what
+```
+
+A Pokémon holds one item at a time, as in the games. A Lucky Egg earns its holder half as much XP again; a Soothe Bell makes time together count one and a half times.
+
 ## Commands
 
 | Command                                 | What it does                                                                                                                                                                        |
@@ -175,7 +187,11 @@ and all.
 | `/pokemon party`                        | Levels, XP to go, and who evolves when                                                                                                                                              |
 | `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                          |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                     |
-| `/pokemon everstone <name>`             | Stop (or allow again) that Pokémon's evolution                                                                                                                                      |
+| `/pokemon everstone <name>`             | Give (or take back) a free Everstone: it stops that Pokémon's evolution                                                                                                             |
+| `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                         |
+| `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                       |
+| `/pokemon give <item> <name>`           | Give an item: a stone or trade item evolves it, a hold item is held, a Rare Candy is one level                                                                                      |
+| `/pokemon take <name>`                  | Put its held item back in your Bag                                                                                                                                                  |
 | `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                   |
 | `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                              |
 | `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                           |
@@ -257,6 +273,12 @@ In Claude Code's own per-plugin store under your Claude config directory. Your p
 </details>
 
 <details>
+<summary><b>Why didn't my Pokémon evolve at Lv 30?</b></summary>
+<br>
+Since 1.3.0, evolutions follow the games: a Pikachu needs a Thunder Stone, a Haunter a Linking Cord, a Pichu friendship. <code>/pokemon party</code> says what each one needs. Seventeen evolutions that need a move, steps or a battle in the games (Mime Jr., Yanma, Aipom, Poipole, Steenee, Lickitung, Clobbopus, Tangela, Bonsly, Stantler, Meltan, White-Striped Basculin, Piloswine, Galarian Yamask and Farfetch'd, Hisuian Qwilfish, and Eevee into Sylveon) still happen by level, at Lv 30 or 10 levels after the Pokémon reached its stage.
+</details>
+
+<details>
 <summary><b>Can I run several Claude Code sessions at once?</b></summary>
 <br>
 Yes. Every session shows the same party and they all earn XP for it, so working in three terminals levels your team three times as fast. Each session keeps the XP it earns under its own key, so no session ever overwrites another's XP, and sessions pick up each other's changes within about 10 seconds. Subagents don't earn XP of their own; they show up as clones instead.
@@ -295,7 +317,7 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 - **Rendering:** sprites arrive as truecolor ANSI art. They're parsed into a pixel grid, scaled to fit, and painted into a cell grid of `▀` half-blocks, two pixels per cell, 20 times a second.
 - **Reactions:** hooks on `turn.start`, `turn.complete`, `tool.call` and `session.compact` feed a small state machine: moods, roaming with easing and braking, particles, clones following the leader's path.
 - **Saving:** party, XP and Pokédex live in Claude Code's per-plugin store. Each session writes its XP under its own key and party changes re-read the latest save first, so parallel sessions add up rather than undo each other.
-- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/lookup.ts` (names), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
+- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` (names), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
 
 ## Development
 
@@ -303,8 +325,11 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 git clone https://github.com/JinHang02/claude-code-pokemon
 cd claude-code-pokemon
 claude --plugin-dir plugin       # run it from your clone, reloading as you edit
-claude plugin test plugin        # 122 tests
+claude plugin test plugin        # the whole suite, about a minute
 claude plugin validate plugin/.claude-plugin/plugin.json --strict
+node scripts/evolution-coverage.mjs   # regenerate specs/evolution-coverage.md
+node scripts/evolution-fixture.mjs    # refresh the PokeAPI fixture the evolution tests read
+node scripts/item-icons.mjs           # rebuild the item pictures
 ```
 
 Ideas, bug reports and pull requests are very welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the details.

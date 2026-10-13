@@ -4,6 +4,88 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
+## [1.3.0] - 2026-10-13
+
+### Added: the PokéMart and Pokédollars
+
+- You earn Pokédollars (₽) from the same work that earns XP, ten times over: ₽20 when Claude finishes a reply, ₽50
+  when a test run passes, ₽100 for a commit. It's one wallet: ₽ is earned once per event, not per party member.
+  Everyone starts with ₽3,000, as in Pokémon Red and Blue.
+- A `🛒 ₽ 1,240` button sits in the band's top-right corner and shows `+₽20` as you earn. Big balances show as
+  `₽ 100k` or `₽ 1.2M`. Click it to open the PokéMart inside the band: four tabs (Stones, Hold items, Special,
+  Other), each item with its description from the games, and a "Your party:" line when it would evolve one of yours.
+  Item pictures show when the band is at least 8 rows tall, otherwise a coloured ◆.
+- The Mart won't open while a wild Pokémon is out ("catch it or let it go first").
+- In the Mart: click into it, then `↑` `↓` to choose, `←` `→` for tabs, `-` `+` or `◀` `▶` for how many, `Max`
+  for as many as you can afford, `Enter` or `Buy` to buy, `x` or `✕` to close. The mouse wheel over the band scrolls
+  the list. `/pokemon mart` opens it too.
+- Prices: evolution stones ₽3,000, hold and special items and the Linking Cord ₽5,000, Rare Candy ₽4,800, Soothe
+  Bell ₽4,000, Lucky Egg ₽10,000. The Bag holds up to 999 of each.
+
+### Added: the Bag and held items
+
+- `/pokemon bag` lists your items by tab, your ₽, and who holds what.
+- `/pokemon give <item> <pokemon>` (either order: `give pikachu thunder stone` works too). A stone, a trade item
+  or the Linking Cord evolves the Pokémon at once and is used up. A hold item is held. A Rare Candy raises one
+  level. An item that does nothing for that Pokémon is refused, and nothing is used up.
+- One held item per Pokémon, as in the games: giving another puts the old one back in the Bag.
+  `/pokemon take <pokemon>` puts it back by hand.
+- Lucky Egg: its holder earns half as much XP again. Soothe Bell: its holder's time together counts 1.5 times.
+
+### Added: friendship from time together
+
+- Each party member counts the time it spends in your party while Claude Code is open. `/pokemon party` shows it
+  (`together 2d 5h`). Friendship evolutions happen at 10 hours together: Pichu, Cleffa, Igglybuff, Togepi, Azurill,
+  Budew, Chingling, Munchlax, Riolu, Golbat, Chansey, Buneary, Swadloon, Woobat, Snom, Type: Null, Alolan Meowth,
+  and Eevee (Espeon by day, Umbreon by night).
+- Time in the PC box, with the party off, or with Claude Code closed doesn't count, and two sessions open at once
+  count each minute once.
+
+### Added: evolutions that follow the games
+
+- A Pokémon that can branch takes the same branch every time, decided by that Pokémon as the games decide Wurmple's:
+  one Wurmple always becomes Silcoon.
+- Scatterbug and Spewpa evolve (Spewpa into one of 20 Vivillon patterns), and so does Sinistea.
+- A test plays all 515 evolution paths end to end; the checklist is `specs/evolution-coverage.md`.
+
+### Changed
+
+- Evolutions that need an item in the games need that item here: Pikachu a Thunder Stone, Haunter a Linking Cord,
+  Onix a Metal Coat, Galarian Slowpoke a Galarica Cuff or Wreath, Sneasel a Razor Claw at night. They used to happen
+  at Lv 30.
+- The time of day matters where it does in the games: Rockruff becomes Midday Lycanroc by day, Midnight Lycanroc at
+  night and Dusk Lycanroc at dusk; Cubone at night becomes Alolan Marowak; Alolan Rattata, Galarian Linoone, Amaura
+  and Greavard evolve only at night; Yungoos, Fomantis and Tyrunt only by day. Dartrix becomes plain or Hisuian
+  Decidueye at Lv 34. Pancham needs a Dark-type party member. Mantyke evolves with a Remoraid in the party.
+- Shedinja joins you when Nincada evolves (into the PC box if the party is full), counts as caught, and keeps
+  Ninjask's level.
+- Phione no longer "evolves" into Manaphy, which the games never do.
+- `/pokemon party` says how each Pokémon evolves: `evolves at Lv 36`, `evolves with a Thunder Stone`,
+  `evolves with friendship by day (♥ 67%, 3h 18m to go)`.
+- The everstone is a held item now. `/pokemon everstone <name>` still gives (or takes back) a free one; giving
+  another item replaces it.
+
+### Fixed
+
+- Dusclops, Rhydon, Lampent, Eelektrik, Doublade, Piloswine, Seadra and 10 others no longer evolve twice in a row.
+  They reached their stage above Lv 30 and then hit the old Lv 30 rule straight away.
+- Baby Pokémon (Pichu, Cleffa, Togepi...) no longer wait until Lv 30.
+
+### Known limitations
+
+- **Esc doesn't close the Mart:** Claude Code keeps Escape to give the keyboard back to the prompt. Use `x` or `✕`.
+- **17 evolutions keep a level**, because the games tie them to something the plugin has no way to do (a move,
+  steps, a battle). They happen at Lv 30, or 10 levels after the Pokémon reached its stage when that's later:
+  Mime Jr., Yanma, Piloswine (Lv 43), Aipom, Poipole, Steenee, Lickitung, Clobbopus, Tangela, Bonsly, Stantler,
+  Meltan, White-Striped Basculin, Galarian Yamask, Galarian Farfetch'd, Hisuian Qwilfish, and Eevee into Sylveon.
+- **Some evolutions come within a minute, not at the exact level-up:** a Pokémon holding a level-up item, and
+  Mantyke, evolve within a minute once the condition holds.
+- **Gen 9 Pokémon and items** (Gimmighoul Coin, Syrupy Apple, the Teacups, the Armors, Metal Alloy, Leader's Crest)
+  aren't in the plugin: its Pokémon end at Gen 8.
+- **Alcremie's cream follows the time of day**, and only the Strawberry Sweet is sold.
+- **Spewpa can become event-only Vivillon patterns** (Fancy, Poké Ball).
+- Tyrogue's stats, Inkay's upside-down console and Sliggoo's rain are ignored: they evolve by level alone.
+
 ## [1.2.0] - 2026-10-07
 
 ### Added: depositing into the PC box
