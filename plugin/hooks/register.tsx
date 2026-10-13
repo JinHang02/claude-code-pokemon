@@ -655,14 +655,18 @@ async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stage
   return { stages: stages.filter(n => list.some(s => s.name === n.species)), genderRate }
 }
 
-// A species' types, from PokeAPI (cached). Offline, none: an evolution that needs a type waits.
+// The types of a PokeAPI form (`rattata-alola` is Dark), cached. A form PokeAPI doesn't know has none, and isn't
+// asked again; a failed download is reported and gives none: an evolution that needs a type waits.
 const types = new Map<string, string[]>()
 async function typesOf($: EngineInterface, name: string): Promise<string[]> {
   const known = types.get(name)
   if (known) return known
   try {
     const res = await cachedFetch($, `${POKEAPI}/pokemon/${name}`, `pokeapi/pokemon-${name}.json`, isJson)
-    if (!res.ok) return []
+    if (!res.ok) {
+      types.set(name, [])
+      return []
+    }
     const raw = (JSON.parse(res.text) as { types?: unknown }).types
     const found = (Array.isArray(raw) ? raw : []).flatMap((t: { type?: { name?: unknown } }) => {
       const type = t.type?.name
@@ -670,7 +674,8 @@ async function typesOf($: EngineInterface, name: string): Promise<string[]> {
     })
     types.set(name, found)
     return found
-  } catch {
+  } catch (err) {
+    await report($, err)
     return []
   }
 }
@@ -682,7 +687,9 @@ async function evolutionContext($: EngineInterface): Promise<Surroundings> {
   const hour = localHour(await $.clock.now())
   const party = save.party.map(m => m.species)
   const needsTypes = save.party.some(m => m.next?.some(s => s.way.kind === 'level' && s.way.partyType))
-  const partyTypes = needsTypes ? (await Promise.all(party.map(p => typesOf($, p)))).flat() : []
+  const partyTypes = needsTypes
+    ? (await Promise.all(save.party.map(m => typesOf($, pokeapiForm(m.species, m.form))))).flat()
+    : []
   return { phase: phaseAt(((hour % 24) + 24) % 24), party, partyTypes }
 }
 
@@ -737,6 +744,8 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
   const member = save.party[at]
   if (!member) return 'Your party is empty.'
   const name = displayName(member.species, member.form)
+  // Before any download or animation; the save write checks again.
+  if (given && !isPreview && !save.bag?.[given]) return `You don't have ${withArticle(itemName(given))}.`
   try {
     const { stages } = await evolutionsOf($, member)
     const options = stages.filter(s => s.way.kind !== 'shed')
@@ -784,7 +793,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
       return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
     }
-    // Shedinja comes along when Nincada evolves by level, with Nincada's level and shininess.
+    // Shedinja comes along when Nincada evolves by level, with Nincada's level and shininess, and counts as caught.
     const shed = next.way.kind === 'level' ? stages.find(s => s.way.kind === 'shed') : undefined
     let shedText = ''
     // Another session may have evolved it first: then that evolution stands.
@@ -821,10 +830,12 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
         species: shed.species,
         form: 'regular',
         isShiny,
-        xp: latest.xp,
+        // Its ledger XP too: the same level as Ninjask.
+        xp: latest.xp + (extra[member.id] ?? 0),
         evolutions: 1,
       }
-      const stored = storeCaught(recordSeen(after, shed.species, isShiny, Date.now()), shedinja)
+      const found = recordCaught(recordSeen(after, shed.species, isShiny, Date.now()), shed.species, Date.now())
+      const stored = storeCaught(found, shedinja)
       const shedName = displayName(shed.species)
       shedText = stored.isInParty ? ` ${shedName} joined your party!` : ` ${shedName} went to the PC box.`
       return stored.save

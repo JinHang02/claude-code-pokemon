@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Stage } from '../hooks/evolution'
 import type { Member, Save } from '../hooks/save'
-import { emptySave, evolveLevel, xpForLevel } from '../hooks/save'
+import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 
 const ART = '\x1b[38;2;255;0;0m\x1b[48;2;0;0;255m▀\x1b[0m\x1b[38;2;0;255;0m▄\n\x1b[38;2;255;0;0m█\x1b[0m '
@@ -38,6 +38,7 @@ const LIST = [
   { name: 'mantyke', forms: ['regular'] },
   { name: 'mantine', forms: ['regular'] },
   { name: 'remoraid', forms: ['regular'] },
+  { name: 'rattata', forms: ['regular', 'alola'] },
   { name: 'mewtwo', forms: ['regular'] },
 ]
 const fire = {
@@ -140,7 +141,8 @@ const GENDER_RATES: Record<string, number> = { combee: 8, vespiquen: 8, burmy: 0
 // Capture rates where a test fixes them: Caterpie always caught, Mewtwo never.
 const CAPTURE_RATES: Record<string, number> = { caterpie: 255, mewtwo: 0 }
 // Each species' types where a test needs one: Pancham evolves only with a Dark type in the party.
-const TYPES: Record<string, string[]> = { umbreon: ['dark'] }
+// By PokeAPI form name: Alolan Rattata is Dark, plain Rattata isn't.
+const TYPES: Record<string, string[]> = { umbreon: ['dark'], rattata: ['normal'], 'rattata-alola': ['dark', 'normal'] }
 // Each species' evolution chain, as PokeAPI links it.
 const CHAINS: Record<string, unknown> = {
   charmander: fire,
@@ -1542,7 +1544,36 @@ test('Nincada becomes Ninjask at Lv 20, and Shedinja comes along: to the party, 
   await until($, () => w.toasts.length === 1)
   expect(w.toasts).toEqual(['What? Nincada evolved into Ninjask! Shedinja joined your party!'])
   expect(w.saveNow().party.map(m => m.species)).toEqual(['ninjask', 'shedinja'])
-  expect(w.saveNow().dex.shedinja?.seen).toBe(1)
+  // Ninjask's XP from this session's ledger comes along: the same level.
+  expect(w.partyNow().map(m => level(m.xp))).toEqual([20, 20])
+  // Caught, as in the games.
+  expect(w.saveNow().dex.shedinja).toMatchObject({ seen: 1, caught: 1 })
+  expect(await cmd($, 'pokedex')).toContain(' · 1 caught · ')
+})
+
+test('Pancham counts an Alolan Rattata as the Dark-type it is', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pancham', { xp: xpForLevel(32) - 5 }), member('rattata', { form: 'alola' })],
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party[0]?.species === 'pangoro' && w.toasts.length > 0)
+  expect(w.toasts).toEqual(['What? Pancham evolved into Pangoro!'])
+})
+
+test('a plain Rattata is no Dark-type: Pancham waits', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pancham', { xp: xpForLevel(32) - 5 }), member('rattata')],
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  await $.tool.call(bash('git commit -m x') as never)
+  for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
+  expect(w.saveNow().party[0]?.species).toBe('pancham')
+  expect(w.toasts).toEqual([])
 })
 
 test('with a full party, Shedinja goes to the PC box', async ($, on) => {
