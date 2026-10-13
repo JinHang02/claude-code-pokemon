@@ -1,25 +1,39 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  addTogether,
+  balanceOf,
+  buy,
+  earnInto,
   emptySave,
+  evolveLevel,
+  evolvesText,
+  extraMoney,
+  extraXp,
+  foldLedger,
+  formatBag,
   formatBox,
   formatDex,
   formatParty,
-  earnInto,
-  extraXp,
-  foldLedger,
-  loadLedger,
-  withExtra,
-  isDueToEvolve,
+  formatSpan,
   level,
+  loadLedger,
   loadSave,
+  putInBag,
   recordCaught,
   recordSeen,
   spriteBudget,
+  STARTING_MONEY,
   storeCaught,
+  takeFromBag,
+  TOGETHER_CAP_MS,
+  withExtra,
   xpForLevel,
 } from '../hooks/save'
 import type { Member } from '../hooks/save'
+import { FRIENDSHIP_MS } from '../hooks/evolution'
+import type { Stage } from '../hooks/evolution'
+import { itemById } from '../hooks/items'
 
 const pikachu: Member = { id: 'p1', species: 'pikachu', form: 'regular', isShiny: false, xp: 0, evolutions: 0 }
 
@@ -39,9 +53,9 @@ test('a malformed save is cleaned field by field: numbers, flags, names and Pok�
         form: 'regular',
         xp: -50,
         isShiny: 'false',
-        hasEverstone: 'no',
+        heldItem: 'no-such-item',
         evolutions: 'x',
-        evolveAt: 0,
+        next: 'soon',
       },
       { species: '../../.zshrc', form: 'regular', xp: 1 },
     ],
@@ -81,15 +95,15 @@ test('levels grow with the square root of xp', () => {
 test('each session writes the XP it earns to its own ledger; the party counts every ledger', () => {
   const eevee = { ...pikachu, id: 'e1', species: 'eevee' }
   const save = { ...emptySave(), party: [{ ...pikachu, xp: 2 }, eevee] }
-  const mine = earnInto(earnInto({ at: 0, xp: {} }, save.party, 2, 5), save.party, 5, 9)
-  expect(mine).toEqual({ at: 9, xp: { p1: 7, e1: 7 } })
-  const theirs = { at: 3, xp: { p1: 10 } }
+  const mine = earnInto(earnInto({ at: 0, xp: {}, money: 0 }, save.party, 2, 5), save.party, 5, 9)
+  expect(mine).toEqual({ at: 9, xp: { p1: 7, e1: 7 }, money: 70 })
+  const theirs = { at: 3, xp: { p1: 10 }, money: 0 }
   const extra = extraXp({ 'xp:me': mine, 'xp:them': theirs })
   expect(extra).toEqual({ p1: 17, e1: 7 })
   expect(withExtra(save, extra).party.map(m => m.xp)).toEqual([19, 7])
   // The save itself never holds ledger XP.
   expect(save.party.map(m => m.xp)).toEqual([2, 0])
-  expect(loadLedger({ at: 'x', xp: { p1: -3, e1: 4.7, x: 'y' } })).toEqual({ at: 0, xp: { e1: 4 } })
+  expect(loadLedger({ at: 'x', xp: { p1: -3, e1: 4.7, x: 'y' } })).toEqual({ at: 0, xp: { e1: 4 }, money: 0 })
 })
 
 test('member ids are unique across the party and the box, however the save was written', () => {
@@ -131,7 +145,7 @@ test('XP a session writes after its ledger was folded still counts, and is folde
 
 test("a finished session's ledger folds into the save once, and is never counted twice", () => {
   const save = { ...emptySave(), party: [{ ...pikachu, xp: 2 }] }
-  const old = { at: 1, xp: { p1: 40 } }
+  const old = { at: 1, xp: { p1: 40 }, money: 0 }
   const folded = foldLedger(save, 'xp:old', old)
   expect(folded.party[0]?.xp).toBe(42)
   expect(folded.folded).toEqual(['xp:old'])
@@ -139,21 +153,6 @@ test("a finished session's ledger folds into the save once, and is never counted
   expect(extraXp({ 'xp:old': old }, folded.folded)).toEqual({})
   expect(loadSave(folded).folded).toEqual(['xp:old'])
   expect(loadSave({ ...folded, folded: ['nope', 4] }).folded).toBeUndefined()
-})
-
-test('evolves once it reaches its own evolution level, never with an everstone or at a final stage', () => {
-  expect(isDueToEvolve({ ...pikachu, evolveAt: 16, xp: xpForLevel(16) - 1 })).toBe(false)
-  expect(isDueToEvolve({ ...pikachu, evolveAt: 16, xp: xpForLevel(16) })).toBe(true)
-  expect(isDueToEvolve({ ...pikachu, evolveAt: 36, xp: xpForLevel(30) })).toBe(false)
-  expect(isDueToEvolve({ ...pikachu, evolveAt: null, xp: xpForLevel(60) })).toBe(false)
-  expect(isDueToEvolve({ ...pikachu, xp: xpForLevel(60) })).toBe(false)
-  expect(isDueToEvolve({ ...pikachu, evolveAt: 16, xp: xpForLevel(16), hasEverstone: true })).toBe(false)
-})
-
-test('the evolution level survives a reload; a malformed one is looked up again', () => {
-  expect(loadSave({ party: [{ ...pikachu, evolveAt: 16 }] }).party[0]?.evolveAt).toBe(16)
-  expect(loadSave({ party: [{ ...pikachu, evolveAt: null }] }).party[0]?.evolveAt).toBeNull()
-  expect('evolveAt' in (loadSave({ party: [{ ...pikachu, evolveAt: 'soon' }] }).party[0] ?? {})).toBe(false)
 })
 
 test('sightings count up, shinies too, and recent ones stay unique', () => {
@@ -180,9 +179,9 @@ test('the party lists levels, xp to go and when each evolves', () => {
   const save = {
     ...emptySave(),
     party: [
-      { ...pikachu, xp: 40, evolveAt: 30 },
-      { ...pikachu, species: 'eevee', hasEverstone: true, evolveAt: 30 },
-      { ...pikachu, species: 'charizard', evolveAt: null },
+      { ...pikachu, xp: 40, next: [{ species: 'raichu', way: { kind: 'level', level: 30 } }] as Stage[] },
+      { ...pikachu, species: 'eevee', heldItem: 'everstone', next: [] },
+      { ...pikachu, species: 'charizard', next: [] },
       { ...pikachu, species: 'mew' },
     ],
   }
@@ -247,4 +246,162 @@ test('the PC box lists its Pokémon like the party; ◓ marks the ones caught wi
   const names = ['bulbasaur', 'eevee', ...Array.from({ length: 903 }, (_, i) => `mon-${i}`)]
   const dex = recordCaught(recordSeen(emptySave(), 'eevee', false, 1), 'eevee', 2)
   expect(formatDex(dex, names)).toContain('Pokédex: 1 / 905 seen · 1 caught · 0 shiny')
+})
+
+const stone = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as const
+
+test('a 1.2.0 save loads: the everstone is held, cached levels are looked up again, ₽3,000 to spend', () => {
+  const old = loadSave({
+    party: [
+      { id: 'a', species: 'pikachu', form: 'regular', xp: 40, evolveAt: 30, hasEverstone: true },
+      { id: 'b', species: 'eevee', form: 'regular', xp: 0, evolveAt: 30 },
+    ],
+  })
+  expect(old.party[0]).toEqual({
+    id: 'a',
+    species: 'pikachu',
+    form: 'regular',
+    isShiny: false,
+    xp: 40,
+    evolutions: 0,
+    heldItem: 'everstone',
+  })
+  expect(old.party[1]?.next).toBeUndefined()
+  expect(balanceOf(old, 0)).toBe(STARTING_MONEY)
+})
+
+test('next stages, held items, time together and the Bag load only when well formed', () => {
+  const s = loadSave({
+    party: [
+      { id: 'a', species: 'pikachu', form: 'regular', next: [stone], heldItem: 'lucky-egg', togetherMs: 5000 },
+      { id: 'b', species: 'eevee', form: 'regular', next: [{ species: 'x', way: { kind: 'teleport' } }] },
+      { id: 'c', species: 'onix', form: 'regular', heldItem: 'gimmighoul-coin', togetherMs: -4 },
+    ],
+    bag: { 'fire-stone': 2, 'rare-candy': 1000, everstone: 1, constructor: 3, 'ice-stone': 0.5 },
+    spent: 300,
+    earned: 50,
+    togetherAt: 99,
+  })
+  expect(s.party[0]).toMatchObject({ next: [stone], heldItem: 'lucky-egg', togetherMs: 5000 })
+  // One unreadable stage: the whole list is looked up again.
+  expect(s.party[1]?.next).toBeUndefined()
+  expect('heldItem' in (s.party[2] ?? {})).toBe(false)
+  expect('togetherMs' in (s.party[2] ?? {})).toBe(false)
+  expect(s.bag).toEqual({ 'fire-stone': 2, 'rare-candy': 999 })
+  expect([s.spent, s.earned, s.togetherAt]).toEqual([300, 50, 99])
+})
+
+test('earning: ₽ once per event, XP per member, a Lucky Egg holder gets half again', () => {
+  const party = [
+    { id: 'a', species: 'pikachu', form: 'regular', isShiny: false, xp: 0, evolutions: 0 },
+    { id: 'b', species: 'eevee', form: 'regular', isShiny: false, xp: 0, evolutions: 0, heldItem: 'lucky-egg' },
+  ]
+  const l = earnInto(loadLedger({}), party, 10, 7)
+  expect(l).toEqual({ at: 7, xp: { a: 10, b: 15 }, money: 100 })
+  expect(earnInto(l, party, 2, 8).money).toBe(120)
+})
+
+test('₽ from two ledgers adds up, and a folded ledger is never counted twice', () => {
+  const one = { at: 1, xp: {}, money: 200 }
+  const two = { at: 2, xp: {}, money: 50 }
+  const s0 = loadSave({})
+  expect(balanceOf(s0, extraMoney({ 'xp:1': one, 'xp:2': two }))).toBe(3250)
+  const s1 = foldLedger(s0, 'xp:1', one)
+  expect(s1.earned).toBe(200)
+  expect(balanceOf(s1, extraMoney({ 'xp:1': one, 'xp:2': two }, s1.folded, s1.foldedMoney))).toBe(3250)
+  // It earned more after the fold: only the new part is added.
+  const s2 = foldLedger(s1, 'xp:1', { ...one, money: 260 })
+  expect(s2.earned).toBe(260)
+  expect(foldLedger(s2, 'xp:1', { ...one, money: 260 })).toBe(s2)
+  expect(loadSave(JSON.parse(JSON.stringify(s2)))).toEqual(s2)
+})
+
+test("buying: the price comes off, the Bag fills to 999, and nothing changes when it can't", () => {
+  const s = loadSave({})
+  const stoneItem = itemById('thunder-stone')!
+  const one = buy(s, 0, stoneItem, 1)
+  expect(one).toMatchObject({ text: 'Bought a Thunder Stone!', isError: false })
+  expect(one.save.bag).toEqual({ 'thunder-stone': 1 })
+  expect(balanceOf(one.save, 0)).toBe(0)
+  expect(buy(one.save, 0, stoneItem, 1)).toEqual({
+    save: one.save,
+    text: 'Not enough ₽: ₽3,000 more to go.',
+    isError: true,
+  })
+  const rich = buy(loadSave({ earned: 10_000_000 }), 0, itemById('rare-candy')!, 998)
+  expect(rich.text).toBe('Bought 998 × Rare Candy!')
+  expect(buy(rich.save, 0, itemById('rare-candy')!, 2).text).toBe('Your Bag has room for 1 more.')
+  const full = buy(rich.save, 0, itemById('rare-candy')!, 1).save
+  expect(buy(full, 0, itemById('rare-candy')!, 1).text).toBe("Your Bag can't hold more Rare Candy.")
+})
+
+test('the Bag: taking one out removes an emptied item; putting one back stops at 999', () => {
+  const s = loadSave({ bag: { 'fire-stone': 1, 'rare-candy': 999 } })
+  expect(takeFromBag(s, 'fire-stone').bag).toEqual({ 'rare-candy': 999 })
+  expect(putInBag(s, 'fire-stone')?.bag).toEqual({ 'fire-stone': 2, 'rare-candy': 999 })
+  expect(putInBag(s, 'rare-candy')).toBeNull()
+})
+
+test('time together: the gap since the last beat, capped, a Soothe Bell ×1.5, the same stamp for every session', () => {
+  const a = { id: 'a', species: 'pichu', form: 'regular', isShiny: false, xp: 0, evolutions: 0 }
+  const b = { ...a, id: 'b', heldItem: 'soothe-bell' }
+  const first = addTogether(loadSave({ party: [a, b] }), 1_000)
+  expect(first.togetherAt).toBe(1_000)
+  expect(first.party.map(m => m.togetherMs ?? 0)).toEqual([0, 0])
+  const next = addTogether(first, 61_000)
+  expect(next.party.map(m => m.togetherMs)).toEqual([60_000, 90_000])
+  // A laptop closed for a weekend adds the cap, not the weekend.
+  const back = addTogether(next, 61_000 + 3 * 86_400_000)
+  expect(back.party[0]?.togetherMs).toBe(60_000 + TOGETHER_CAP_MS)
+  // A second session beating just after adds only the moment since.
+  expect(addTogether(back, 61_000 + 3 * 86_400_000 + 1_000).party[0]?.togetherMs).toBe(60_000 + TOGETHER_CAP_MS + 1_000)
+  expect(formatSpan(((365 + 3) * 24 * 60 + 2 * 60 + 7) * 60_000 + 59_000)).toBe('1y 3d 2h 7m')
+  expect(formatSpan(30_000)).toBe('0m')
+  expect(formatSpan(2 * 60 * 60_000)).toBe('2h')
+})
+
+test('the party says how each one evolves, and the Bag lists what you have', () => {
+  const m = (extra: object) => ({
+    id: 'x',
+    species: 'eevee',
+    form: 'regular',
+    isShiny: false,
+    xp: 0,
+    evolutions: 0,
+    ...extra,
+  })
+  expect(evolvesText(m({ next: [{ species: 'charmeleon', way: { kind: 'level', level: 16 } }] }))).toBe(
+    'evolves at Lv 16',
+  )
+  expect(evolvesText(m({ next: [stone] }))).toBe('evolves with a Thunder Stone')
+  expect(evolvesText(m({ next: [{ species: 'lycanroc', way: { kind: 'level', level: 25, time: 'night' } }] }))).toBe(
+    'evolves at Lv 25 at night',
+  )
+  expect(
+    evolvesText(
+      m({ togetherMs: FRIENDSHIP_MS * 0.67, next: [{ species: 'espeon', way: { kind: 'friendship', time: 'day' } }] }),
+    ),
+  ).toBe('evolves with friendship by day (♥ 67%, 3h 18m to go)')
+  expect(evolvesText(m({ next: [] }))).toBe('final form')
+  expect(evolvesText(m({ next: [stone], heldItem: 'everstone' }))).toBe('everstone')
+  expect(evolveLevel(m({ next: [stone, { species: 'x', way: { kind: 'level', level: 40 } }] }))).toBe(40)
+  expect(evolveLevel(m({ next: [stone] }))).toBeNull()
+  expect(evolveLevel(m({}))).toBeUndefined()
+  const s = loadSave({
+    party: [m({ heldItem: 'soothe-bell', togetherMs: 2 * 3_600_000, next: [stone] })],
+    bag: { 'thunder-stone': 1, 'fire-stone': 2, 'metal-coat': 1, 'rare-candy': 3 },
+  })
+  expect(formatParty(s)).toContain('Eevee  Lv 1')
+  expect(formatParty(s)).toContain('together 2h')
+  expect(formatParty(s)).toContain('holds a Soothe Bell')
+  expect(formatBag(s, 0)).toBe(
+    [
+      'Bag · ₽3,000',
+      '  Stones      Fire Stone ×2 · Thunder Stone ×1',
+      '  Hold items  Metal Coat ×1',
+      '  Other       Rare Candy ×3',
+      '  Held        Eevee: Soothe Bell',
+    ].join('\n'),
+  )
+  expect(formatBag(loadSave({}), 0)).toBe('Bag · ₽3,000\n  Empty. Buy items at the PokéMart: /pokemon mart')
 })

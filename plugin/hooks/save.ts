@@ -1,3 +1,8 @@
+import { FRIENDSHIP_MS } from './evolution'
+import type { Stage, Time, Way } from './evolution'
+import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
+import type { Item } from './items'
+
 export type Size = 'auto' | 'normal' | 'small'
 
 export type Member = {
@@ -8,9 +13,12 @@ export type Member = {
   isShiny: boolean
   xp: number
   evolutions: number
-  // The level it evolves at, as in the games; null at a final stage, absent until looked up.
-  evolveAt?: number | null
-  hasEverstone?: boolean
+  // What it evolves into and how, as in the games; [] at a final stage, absent until looked up.
+  next?: Stage[]
+  // The one item it holds, as in the games: an Everstone stops it evolving.
+  heldItem?: string
+  // Time in the party while Claude Code was open: friendship evolutions come from it.
+  togetherMs?: number
   // From its species' ratio, as in the games; null for a genderless one, absent until looked up.
   gender?: 'female' | 'male' | null
   // Caught with a Poké Ball from the wild, not summoned by name.
@@ -23,6 +31,7 @@ export type DexEntry = { seen: number; shiny: number; first: number; caught?: nu
 // `folded`: the session XP ledgers already added into the party's XP here, so they never count twice;
 // `foldedXp`: what each added, so XP a ledger gains afterwards still counts.
 // `box`: the PC box, where catches go when the party is full; absent when empty.
+// `bag`, `spent`, `earned`: the wallet is STARTING_MONEY + earned (and unfolded ledgers) - spent.
 export type Save = {
   party: Member[]
   size: Size
@@ -32,17 +41,31 @@ export type Save = {
   isOff?: boolean
   folded?: string[]
   foldedXp?: Record<string, Record<string, number>>
+  // Items by id, 1 to MAX_BAG each.
+  bag?: Record<string, number>
+  // ₽ spent ever, and ₽ from folded ledgers (with what each added, as for XP).
+  spent?: number
+  earned?: number
+  foldedMoney?: Record<string, number>
+  // When time together was last added, by any session.
+  togetherAt?: number
 }
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
 // side can't lose each other's XP. `at`: when it last wrote.
-export type Ledger = { at: number; xp: Record<string, number> }
+export type Ledger = { at: number; xp: Record<string, number>; money: number }
 
 // Store keys of session ledgers start with this.
 export const LEDGER = 'xp:'
 
 export const MAX_PARTY = 3
 export const XP = { reply: 2, tests: 5, commit: 10 }
+export const MONEY_PER_XP = 10
+export const STARTING_MONEY = 3000
+export const MAX_LEVEL = 100
+// The most one heartbeat adds to time together: a closed laptop isn't time together.
+export const TOGETHER_CAP_MS = 120_000
+const TIMES: Time[] = ['day', 'night', 'dusk']
 export const GENERATIONS = [151, 251, 386, 493, 649, 721, 809, 905]
 const SIZES: Size[] = ['auto', 'normal', 'small']
 
@@ -57,11 +80,43 @@ export const newId = () => Math.random().toString(36).slice(2, 10)
 const count = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0)
 const isObject = (o: unknown): o is Record<string, unknown> => typeof o === 'object' && o !== null && !Array.isArray(o)
 
+function loadWay(w: unknown): Way | null {
+  if (!isObject(w)) return null
+  const time = TIMES.includes(w.time as Time) ? { time: w.time as Time } : {}
+  if (w.kind === 'level')
+    return typeof w.level === 'number' && Number.isInteger(w.level) && w.level > 0
+      ? {
+          kind: 'level',
+          level: w.level,
+          ...time,
+          ...(isName(w.partyType) ? { partyType: w.partyType } : {}),
+          ...(w.isFallback === true ? { isFallback: true as const } : {}),
+        }
+      : null
+  if (w.kind === 'item' || w.kind === 'hold') return isItemId(w.item) ? { kind: w.kind, item: w.item, ...time } : null
+  if (w.kind === 'friendship') return { kind: 'friendship', ...time }
+  if (w.kind === 'party') return isName(w.species) ? { kind: 'party', species: w.species } : null
+  if (w.kind === 'shed') return { kind: 'shed' }
+  return null
+}
+
+// Stored next stages; one that can't be read means the list is looked up again.
+function loadStages(raw: unknown): Stage[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const stages = raw.flatMap((s: unknown): Stage[] => {
+    const way = isObject(s) && isName(s.species) ? loadWay(s.way) : null
+    return isObject(s) && way
+      ? [{ species: s.species as string, ...(isName(s.form) ? { form: s.form } : {}), way }]
+      : []
+  })
+  return stages.length === raw.length ? stages : undefined
+}
+
 // A stored party member, or null when it isn't one. A member saved before ids existed gets one from its
 // place in the party, the same in every session reading that save.
 function loadMember(raw: unknown, at: number): Member | null {
   if (!isObject(raw) || !isName(raw.species) || !isName(raw.form)) return null
-  const evolveAt = raw.evolveAt
+  const next = loadStages(raw.next)
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : `${at}-${raw.species}-${raw.form}`,
     species: raw.species,
@@ -69,10 +124,13 @@ function loadMember(raw: unknown, at: number): Member | null {
     isShiny: raw.isShiny === true,
     xp: count(raw.xp),
     evolutions: count(raw.evolutions),
-    ...(evolveAt === null || (typeof evolveAt === 'number' && Number.isInteger(evolveAt) && evolveAt > 0)
-      ? { evolveAt }
-      : {}),
-    ...(raw.hasEverstone === true ? { hasEverstone: true } : {}),
+    ...(next ? { next } : {}),
+    ...(isItemId(raw.heldItem)
+      ? { heldItem: raw.heldItem }
+      : raw.hasEverstone === true
+        ? { heldItem: 'everstone' }
+        : {}),
+    ...(count(raw.togetherMs) ? { togetherMs: count(raw.togetherMs) } : {}),
     ...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === null ? { gender: raw.gender } : {}),
     ...(raw.isCaught === true ? { isCaught: true as const } : {}),
   }
@@ -109,6 +167,12 @@ export function loadSave(raw: unknown): Save {
   const foldedXp: Record<string, Record<string, number>> = {}
   for (const [key, xp] of Object.entries(isObject(s.foldedXp) ? s.foldedXp : {}))
     if (folded.includes(key)) foldedXp[key] = loadLedger({ xp }).xp
+  const bag: Record<string, number> = {}
+  for (const [id, n] of Object.entries(isObject(s.bag) ? s.bag : {}))
+    if (isItemId(id) && itemById(id)?.isSold !== false && count(n)) bag[id] = Math.min(MAX_BAG, count(n))
+  const foldedMoney: Record<string, number> = {}
+  for (const [key, n] of Object.entries(isObject(s.foldedMoney) ? s.foldedMoney : {}))
+    if (folded.includes(key) && count(n)) foldedMoney[key] = count(n)
   const dex: Record<string, DexEntry> = {}
   for (const [name, e] of Object.entries(isObject(s.dex) ? s.dex : {}))
     if (isName(name) && isObject(e))
@@ -127,6 +191,11 @@ export function loadSave(raw: unknown): Save {
     ...(s.isOff === true ? { isOff: true } : {}),
     ...(folded.length ? { folded } : {}),
     ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
+    ...(Object.keys(bag).length ? { bag } : {}),
+    ...(count(s.spent) ? { spent: count(s.spent) } : {}),
+    ...(count(s.earned) ? { earned: count(s.earned) } : {}),
+    ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
+    ...(count(s.togetherAt) ? { togetherAt: count(s.togetherAt) } : {}),
   }
 }
 
@@ -140,7 +209,7 @@ export function loadLedger(raw: unknown): Ledger {
   const l = isObject(raw) ? raw : {}
   const xp = tally()
   for (const [id, n] of Object.entries(isObject(l.xp) ? l.xp : {})) if (count(n)) xp[id] = count(n)
-  return { at: count(l.at), xp }
+  return { at: count(l.at), xp, money: count(l.money) }
 }
 
 // The XP in `xp` above `counted`, by member id.
@@ -169,6 +238,23 @@ export function extraXp(
   return extra
 }
 
+// The ₽ in session ledgers not yet folded into the save. A ledger folded with no record of its ₽ had none.
+export function extraMoney(
+  ledgers: Record<string, Ledger>,
+  folded: string[] = [],
+  foldedMoney: Record<string, number> = {},
+): number {
+  let more = 0
+  for (const [key, l] of Object.entries(ledgers))
+    more += Math.max(0, l.money - (folded.includes(key) ? (foldedMoney[key] ?? l.money) : 0))
+  return more
+}
+
+// The ₽ to spend: `cash` is extraMoney of the ledgers.
+export const balanceOf = (save: Save, cash: number) => STARTING_MONEY + (save.earned ?? 0) + cash - (save.spent ?? 0)
+
+export const formatMoney = (n: number) => `₽${n.toLocaleString('en-US')}`
+
 // The save as the party stands: each member's XP with its ledger XP added. For showing and deciding, never storing.
 export const withExtra = (save: Save, extra: Record<string, number>): Save => {
   const add = (m: Member) => ({ ...m, xp: m.xp + (Object.hasOwn(extra, m.id) ? (extra[m.id] ?? 0) : 0) })
@@ -182,28 +268,44 @@ export function foldLedger(save: Save, key: string, ledger: Ledger): Save {
   const counted = save.foldedXp?.[key]
   if (isFolded && !counted) return save
   const more = above(ledger.xp, counted)
-  if (isFolded && !Object.keys(more).length) return save
+  const money = Math.max(0, ledger.money - (save.foldedMoney?.[key] ?? 0))
+  if (isFolded && !Object.keys(more).length && !money) return save
   return {
     ...withExtra(save, more),
     folded: isFolded ? (save.folded ?? []) : [...(save.folded ?? []), key],
     foldedXp: { ...save.foldedXp, [key]: { ...counted, ...ledger.xp } },
+    ...(ledger.money
+      ? { earned: (save.earned ?? 0) + money, foldedMoney: { ...save.foldedMoney, [key]: ledger.money } }
+      : {}),
   }
 }
 
 export const level = (xp: number) => 1 + Math.floor(Math.sqrt(xp / 4))
 export const xpForLevel = (lv: number) => 4 * (lv - 1) ** 2
 
-export const isDueToEvolve = (m: Member) =>
-  !m.hasEverstone && typeof m.evolveAt === 'number' && level(m.xp) >= m.evolveAt
+// The level it evolves at by itself: the lowest level way; null when none is by level; undefined until looked up.
+export function evolveLevel(m: Member | undefined): number | null | undefined {
+  if (!m?.next) return undefined
+  const levels = m.next.flatMap(s => (s.way.kind === 'level' ? [s.way.level] : []))
+  return levels.length ? Math.min(...levels) : null
+}
 
-// A session's ledger after every party member earns `amount`.
+// A session's ledger after every party member earns `amount` XP (a Lucky Egg holder half again) and the wallet
+// `amount` × MONEY_PER_XP, once.
 export const earnInto = (ledger: Ledger, party: Member[], amount: number, now: number): Ledger => ({
   at: now,
   xp: Object.assign(
     tally(),
     ledger.xp,
-    Object.fromEntries(party.map(m => [m.id, (Object.hasOwn(ledger.xp, m.id) ? (ledger.xp[m.id] ?? 0) : 0) + amount])),
+    Object.fromEntries(
+      party.map(m => [
+        m.id,
+        (Object.hasOwn(ledger.xp, m.id) ? (ledger.xp[m.id] ?? 0) : 0) +
+          (m.heldItem === 'lucky-egg' ? Math.round(amount * 1.5) : amount),
+      ]),
+    ),
   ),
+  money: ledger.money + amount * MONEY_PER_XP,
 })
 
 export function recordSeen(save: Save, species: string, isShiny: boolean, now: number): Save {
@@ -227,6 +329,66 @@ export function storeCaught(save: Save, m: Member): { save: Save; isInParty: boo
     : { save: { ...save, box: [...(save.box ?? []), m] }, isInParty }
 }
 
+export function takeFromBag(save: Save, id: string): Save {
+  const left = (save.bag?.[id] ?? 0) - 1
+  const { [id]: _, ...rest } = save.bag ?? {}
+  const bag = left > 0 ? { ...rest, [id]: left } : rest
+  const { bag: __, ...without } = save
+  return Object.keys(bag).length ? { ...without, bag } : without
+}
+
+// One more of `id` in the Bag, or null when it already holds MAX_BAG.
+export function putInBag(save: Save, id: string): Save | null {
+  const have = save.bag?.[id] ?? 0
+  return have >= MAX_BAG ? null : { ...save, bag: { ...save.bag, [id]: have + 1 } }
+}
+
+// `qty` of `item` bought with what the wallet holds (`cash`: the ledgers' unfolded ₽), or why not.
+export function buy(save: Save, cash: number, item: Item, qty: number): { save: Save; text: string; isError: boolean } {
+  const have = save.bag?.[item.id] ?? 0
+  const room = MAX_BAG - have
+  const cost = item.price * qty
+  const left = balanceOf(save, cash)
+  if (!room) return { save, text: `Your Bag can't hold more ${item.name}.`, isError: true }
+  if (qty > room) return { save, text: `Your Bag has room for ${room} more.`, isError: true }
+  if (left < cost) return { save, text: `Not enough ₽: ${formatMoney(cost - left)} more to go.`, isError: true }
+  return {
+    save: { ...save, spent: (save.spent ?? 0) + cost, bag: { ...save.bag, [item.id]: have + qty } },
+    text: qty === 1 ? `Bought ${withArticle(item.name)}!` : `Bought ${qty} × ${item.name}!`,
+    isError: false,
+  }
+}
+
+// Time together since the last beat (from any session), capped, added to each party member.
+export function addTogether(save: Save, now: number): Save {
+  const gap = save.togetherAt === undefined ? 0 : Math.max(0, Math.min(now - save.togetherAt, TOGETHER_CAP_MS))
+  const party = gap
+    ? save.party.map(m => ({
+        ...m,
+        togetherMs: (m.togetherMs ?? 0) + Math.round(m.heldItem === 'soothe-bell' ? gap * 1.5 : gap),
+      }))
+    : save.party
+  return { ...save, party, togetherAt: now }
+}
+
+// "1y 3d 2h 7m": from the largest unit that isn't zero, down to minutes.
+export function formatSpan(ms: number): string {
+  let minutes = Math.floor(ms / 60_000)
+  const parts: string[] = []
+  for (const [unit, size] of [
+    ['y', 525_600],
+    ['d', 1440],
+    ['h', 60],
+    ['m', 1],
+  ] as const) {
+    const n = Math.floor(minutes / size)
+    minutes -= n * size
+    if (n || parts.length) parts.push(`${n}${unit}`)
+  }
+  while (parts.length > 1 && parts[parts.length - 1]?.startsWith('0')) parts.pop()
+  return parts.join(' ') || '0m'
+}
+
 export const titleCase = (name: string) =>
   name
     .split('-')
@@ -241,22 +403,45 @@ const bar = (done: number, total: number, width = 10) => {
   return '█'.repeat(full) + '░'.repeat(width - full)
 }
 
-// A member's columns: name, level, xp to the next level, and when it evolves.
+export const TIME_TEXT: Record<Time, string> = { day: 'by day', night: 'at night', dusk: 'at dusk' }
+
+function wayText(w: Way, m: Member): string {
+  const when = 'time' in w && w.time ? ` ${TIME_TEXT[w.time]}` : ''
+  if (w.kind === 'level')
+    return `at Lv ${w.level}${when}${w.partyType ? ` with a ${titleCase(w.partyType)}-type in the party` : ''}`
+  if (w.kind === 'item') return `with ${withArticle(itemName(w.item))}${when}`
+  if (w.kind === 'hold') return `holding ${withArticle(itemName(w.item))}${when}`
+  if (w.kind === 'party') return `with ${titleCase(w.species)} in the party`
+  if (w.kind === 'friendship') {
+    const ms = m.togetherMs ?? 0
+    const left = FRIENDSHIP_MS - ms
+    const pct = Math.min(100, Math.floor((ms / FRIENDSHIP_MS) * 100))
+    return `with friendship${when} (♥ ${pct}%${left > 0 ? `, ${formatSpan(left + 59_999)} to go` : ''})`
+  }
+  return ''
+}
+
+// How a member evolves next: "evolves at Lv 36", "evolves with a Thunder Stone", "final form".
+export function evolvesText(m: Member): string {
+  if (m.heldItem === 'everstone') return 'everstone'
+  if (!m.next) return ''
+  const texts = [...new Set(m.next.map(s => wayText(s.way, m)).filter(Boolean))]
+  if (!texts.length) return 'final form'
+  return `evolves ${texts.length > 3 ? `${texts.slice(0, 3).join(', ')} or another way` : texts.join(' or ')}`
+}
+
+// A member's columns: name, level, xp to the next level, how it evolves, what it holds, time together.
 function memberColumns(m: Member): string[] {
   const lv = level(m.xp)
-  const evolves = m.hasEverstone
-    ? '· everstone'
-    : typeof m.evolveAt === 'number'
-      ? `· evolves at Lv ${m.evolveAt}`
-      : m.evolveAt === null
-        ? '· final form'
-        : ''
+  const evolves = evolvesText(m)
   const sign = m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
   return [
     `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
     `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})`,
-    evolves,
+    evolves ? `· ${evolves}` : '',
+    m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
+    m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
   ]
 }
 
@@ -277,6 +462,23 @@ export function formatParty(save: Save): string {
     'Your party:',
     ...lineUp(save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)])),
   ].join('\n')
+}
+
+// The Bag by tab, the wallet, and who holds what. `cash`: the ledgers' unfolded ₽.
+export function formatBag(save: Save, cash: number): string {
+  const lines = [`Bag · ${formatMoney(balanceOf(save, cash))}`]
+  for (const tab of TABS) {
+    const items = ITEMS.filter(i => i.tab === tab && (save.bag?.[i.id] ?? 0) > 0).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )
+    if (items.length) lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ×${save.bag?.[i.id]}`).join(' · ')}`)
+  }
+  const held = save.party.flatMap(m =>
+    m.heldItem ? [`${displayName(m.species, m.form)}: ${itemName(m.heldItem)}`] : [],
+  )
+  if (held.length) lines.push(`  ${'Held'.padEnd(10)}  ${held.join(' · ')}`)
+  if (lines.length === 1) lines.push('  Empty. Buy items at the PokéMart: /pokemon mart')
+  return lines.join('\n')
 }
 
 export function formatBox(save: Save): string {
