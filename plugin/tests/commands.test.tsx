@@ -2,6 +2,9 @@ import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 import { FRIENDSHIP_MS } from '../hooks/evolution'
+import { martRows } from '../hooks/mart'
+import type { MartProps } from '../hooks/mart'
+import { buyItem } from '../hooks/register'
 import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 import { answerTools, ART, bash, begin, cmd, hourAt, LIST, lv, member, mountBand, until } from './world'
@@ -156,7 +159,7 @@ test('the band draws the party, and size small makes it shorter', async ($, on) 
       ).drawn(),
     )
   const normal = await mount()
-  expect(normal).toContain('"columns":80')
+  expect(normal).toContain('"columns":67')
   const rows = (drawn: string) => Number(/"rows":(\d+)/.exec(drawn)?.[1])
   expect(await cmd($, 'pokemon', 'size small')).toBe('Pokémon size: small.')
   expect(w.saveNow().size).toBe('small')
@@ -407,6 +410,8 @@ async function visited($: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0
 
 test('while aiming, every step a wild Pokémon takes is drawn: clicks are judged on the picture shown', async ($, on) => {
   const { w, aim } = await visited($, on, 'caterpie')
+  // No ₽ button while aiming: the whole band is a click layer then.
+  expect(JSON.stringify(await aim.drawn())).not.toContain('"shop"')
   // The engine redraws the click layer only when the plugin asks.
   let lines = await aimLines(aim)
   const edges = (l: Line[] | null) => {
@@ -493,7 +498,7 @@ test('one that can never be caught breaks free: hidden in the ball, then back ou
   let back = false
   for (let i = 0; i < 60; i++) {
     await w.clock.advance(50)
-    const isShown = cellOf(w.band.cells, 80, CYAN) !== null
+    const isShown = cellOf(w.band.cells, 67, CYAN) !== null
     if (!isShown) hidden = true
     if (hidden && isShown) back = true
   }
@@ -834,7 +839,7 @@ test('a store that cannot be read at start is reported, and works again once it 
   expect(await cmd($, 'pokemon', 'party')).toContain('Lead  Pikachu')
 })
 
-test('another surface drawing at the same time leaves the terminal band running; wide bands are clipped to 512', async ($, on) => {
+test('another surface drawing at the same time leaves the terminal band running; wide bands are clipped to 512, button included; narrow ones have no button', async ($, on) => {
   engineLines(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
@@ -856,7 +861,17 @@ test('another surface drawing at the same time leaves the terminal band running;
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 600 },
   } as never)
-  expect(JSON.stringify(await wide.drawn())).toContain('"columns":512')
+  expect(JSON.stringify(await wide.drawn())).toContain('"columns":499')
+  // Too narrow for the scene and the button: the scene alone.
+  const narrow = await $.ui.mount({
+    plugin: 'pokemon',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 20 },
+  } as never)
+  const drawn = JSON.stringify(await narrow.drawn())
+  expect(drawn).toContain('"columns":20')
+  expect(drawn).not.toContain('"shop"')
 })
 
 test('two members due at once evolve one after the other, each with its whole animation', async ($, on) => {
@@ -1486,4 +1501,177 @@ test('only party time counts: none while off, none in the PC box; a Soothe Bell 
   await w.clock.advance(300_000)
   expect(w.saveNow().party[0]?.togetherMs).toBe(resting)
   expect(await cmd($, 'pokemon', 'party')).toContain('together 2m')
+})
+
+type Band = {
+  pointer: (e: { type: 'down'; x: number; y: number; button: 'left'; in?: string }) => Promise<void>
+  key: (e: { key: string; in?: string }) => Promise<void>
+  post: (data: unknown, scope?: { in?: string }) => Promise<void>
+  drawn: () => Promise<unknown>
+  redraw: () => Promise<void>
+}
+// The props of the `Client` keyed `key` in the band as drawn afresh, or null when it isn't there.
+async function clientProps<T>(band: Band, key: string): Promise<T | null> {
+  await band.redraw()
+  const find = (node: unknown): T | null => {
+    if (typeof node !== 'object' || node === null) return null
+    const n = node as { type?: string; props?: { key?: string; props?: T } }
+    if (n.type === 'Client' && n.props?.key === key) return n.props.props ?? null
+    for (const child of Object.values(node)) {
+      const found = find(child)
+      if (found) return found
+    }
+    return null
+  }
+  return find(await band.drawn())
+}
+const martOf = (band: Band) => clientProps<MartProps>(band, 'mart')
+// Clicks the Mart's control for `act`, where the Mart draws it now.
+async function clickMart(band: Band, act: unknown) {
+  const p = await martOf(band)
+  const hit = p && martRows(p).hits.find(h => JSON.stringify(h.act) === JSON.stringify(act))
+  if (!hit) throw new Error(`no ${JSON.stringify(act)} in the Mart`)
+  await band.pointer({ type: 'down', x: hit.x0, y: hit.y, button: 'left', in: 'mart' })
+}
+// A wheel tick over the band, as the engine raises it: `by` rows, negative toward the top.
+const wheel = ($: { ui: { scroll: (e: never) => Promise<unknown> } }, by: number) =>
+  $.ui.scroll({
+    component: 'AbovePrompt',
+    requestId: 'band',
+    offset: 0,
+    by,
+    bodyRows: 9,
+    contentRows: 9,
+    origin: { kind: 'person' },
+  } as never)
+
+test('the ₽ button opens the PokéMart; Buy takes ₽ and fills the Bag; not enough ₽ changes nothing; x closes it', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  expect(await clientProps(band, 'shop')).toEqual({ balance: 3000, plus: 0 })
+  expect(await martOf(band)).toBeNull()
+  await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
+  expect(await martOf(band)).toMatchObject({ balance: 3000, state: { tab: 0, sel: 0, top: 0, qty: 1 } })
+  expect((await martOf(band))?.icon?.length).toBeGreaterThan(0)
+  await clickMart(band, 'buy')
+  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+  expect(w.saveNow().spent).toBe(3000)
+  expect(await martOf(band)).toMatchObject({ balance: 0, message: 'Bought a Fire Stone!', isError: false })
+  await clickMart(band, 'buy')
+  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+  expect(await martOf(band)).toMatchObject({ message: 'Not enough ₽: ₽3,000 more to go.', isError: true })
+  await band.key({ key: 'down', in: 'mart' })
+  await band.key({ key: '+', in: 'mart' })
+  expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 1, top: 0, qty: 2 })
+  await band.key({ key: 'x', in: 'mart' })
+  expect(await martOf(band)).toBeNull()
+  expect(await clientProps(band, 'shop')).toEqual({ balance: 0, plus: 0 })
+})
+
+test('the mouse wheel over the open Mart moves its selection; with the Mart closed the band scrolls as before', async ($, on) => {
+  // What the engine does with a scroll the plugin passes on.
+  const passed: number[] = []
+  on('ui.scroll', async (_$, e) => {
+    passed.push((e as unknown as { by: number }).by)
+    return {}
+  })
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await wheel($ as never, 1)
+  expect(passed).toEqual([1])
+  await cmd($, 'pokemon', 'mart')
+  await wheel($ as never, 1)
+  await wheel($ as never, 1)
+  expect(passed).toEqual([1])
+  expect((await martOf(band))?.state).toMatchObject({ sel: 2 })
+  await wheel($ as never, -40)
+  expect((await martOf(band))?.state).toMatchObject({ sel: 0, top: 0 })
+})
+
+test('the Mart lists what would evolve your party', async ($, on) => {
+  const stone = { species: 'raichu', way: { kind: 'item' as const, item: 'thunder-stone' } }
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [stone], gender: 'male' })] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  const p = await martOf(band)
+  expect(p?.items.find(i => i.id === 'thunder-stone')?.party).toBe('Pikachu → Raichu')
+  expect(p?.items.find(i => i.id === 'fire-stone')?.party).toBeUndefined()
+})
+
+test('the Mart takes only its own acts: raw buys of anything, bad picks and tabs change nothing', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  await band.redraw()
+  for (const data of [
+    { buy: { id: 'gimmighoul-coin', qty: 1 } },
+    { buy: { id: 'everstone', qty: 1 } },
+    { buy: { id: 'fire-stone', qty: 0 } },
+    { buy: { id: 'fire-stone', qty: 1000 } },
+    { buy: { id: 'fire-stone', qty: 1.5 } },
+    { act: 'teleport' },
+    { act: { pick: -1 } },
+    { act: { pick: 1.5 } },
+    { act: { tab: 'Other' } },
+    'buy',
+  ]) {
+    await band.post(data, { in: 'mart' })
+    expect(w.saveNow().bag).toBeUndefined()
+    expect(w.saveNow().spent).toBeUndefined()
+  }
+  // `{ act: 'buy' }` with a stray field is still a buy of one Fire Stone: the Mart's own quantity counts.
+  await band.post({ act: 'buy', qty: 1000 }, { in: 'mart' })
+  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+  expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
+})
+
+test('/pokemon mart opens it in the band and says so without one; a wild Pokémon and /pokemon off close it', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+  await cmd($, 'pokemon', 'party')
+  expect(await cmd($, 'pokemon', 'mart')).toBe(
+    "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here.",
+  )
+  const band = (await mountBand($)) as Band
+  expect(await cmd($, 'pokemon', 'mart')).toMatch(/^The PokéMart is open above the prompt/)
+  expect(await martOf(band)).not.toBeNull()
+  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/wanders by/)
+  expect(await martOf(band)).toBeNull()
+  await cmd($, 'pokemon', 'mart')
+  await cmd($, 'pokemon', 'off')
+  await cmd($, 'pokemon', 'on')
+  expect(await martOf(band)).toBeNull()
+})
+
+test('earning shows +₽ under the button for a moment', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await $.tool.call(bash('git commit -m x') as never)
+  // The ₽ lands in the background: a command waits for it.
+  await cmd($, 'pokemon', 'party')
+  expect(await clientProps(band, 'shop')).toEqual({ balance: 3100, plus: 100 })
+  await w.clock.advance(1500)
+  expect(await clientProps(band, 'shop')).toEqual({ balance: 3100, plus: 0 })
+})
+
+test('buyItem refuses what the Mart never sells and any quantity but 1 to 999, before it touches anything', async () => {
+  // Any use of the engine fails the test: a refusal reads and writes nothing.
+  const untouched = new Proxy(
+    {},
+    {
+      get: (_, key) => {
+        throw new Error(`buyItem used $.${String(key)}`)
+      },
+    },
+  ) as never
+  const refuse = (id: unknown, qty: unknown) => buyItem(untouched, id, qty)
+  for (const id of ['everstone', 'gimmighoul-coin', 'not-an-item', 7, null])
+    expect(await refuse(id, 1)).toEqual({ text: "That isn't for sale.", isError: true })
+  for (const qty of [0, 1000, 1.5, -1, '2', NaN, null])
+    expect(await refuse('fire-stone', qty)).toEqual({ text: "That isn't a quantity you can buy.", isError: true })
 })

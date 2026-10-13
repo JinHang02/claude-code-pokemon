@@ -6,13 +6,17 @@ import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThr
 import type { Click, Throw, ThrowEvent } from './catch'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Stage } from './evolution'
-import { isForSale, itemById, itemName, MAX_BAG, splitGive, withArticle } from './items'
+import { ICONS } from './item-icons'
+import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
+import { act, isAct, START } from './mart'
+import type { Act, MartProps } from './mart'
 import { lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
   addTogether,
+  balanceOf,
   buy,
   displayName,
   emptySave,
@@ -41,6 +45,7 @@ import {
   storeCaught,
   takeFromBag,
   TIME_TEXT,
+  titleCase,
   withExtra,
   XP,
   xpForLevel,
@@ -76,6 +81,7 @@ import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
+import type { ShopProps } from './shop'
 
 const BASE = 'https://gitlab.com/phoneybadger/pokemon-colorscripts/-/raw/main'
 const POKEAPI = 'https://pokeapi.co/api/v2'
@@ -103,8 +109,9 @@ let ledgerKey = ''
 let extra: Record<string, number> = {}
 // The ledgers' ₽ not yet folded into the save.
 let cash = 0
-// The last ₽ earned, shown on the shop button until `until`.
-let plus: { amount: number; until: number } | null = null
+// ₽ just earned, shown under the button for a moment; each earning's number, so only the latest clears it.
+let plus = 0
+let earnings = 0
 // The save as the party stands: XP from every session's ledger included. For showing and deciding only.
 const view = () => withExtra(save, extra)
 // The ledgers' XP and ₽ not yet folded into the save, counted against the save's own marks.
@@ -124,7 +131,8 @@ const arts = new Map<string, string>()
 // Downloads are kept here between sessions; null where there is no home directory.
 let cacheDir: string | null = null
 
-let band: { requestId: string; columns: number; rows: number } | null = null
+// `columns`: the scene's width; `total`: the band's, the button beside the scene included.
+let band: { requestId: string; columns: number; rows: number; total: number } | null = null
 let fitted: { budget: number; keys: string[]; lefts: Pixels[] } | null = null
 let status: Status = initialStatus()
 let streak = 0
@@ -138,6 +146,10 @@ let wild: { mon: Mon; left: Pixels; pick: Pick } | null = null
 let wildRate: number | null = DEFAULT_RATE
 // A Poké Ball in flight or playing out, at most one.
 let pitch: Throw | null = null
+// The band's corner button takes this many columns beside the scene.
+const BUTTON_COLUMNS = 13
+// The PokéMart: open in the band, the last thing it said, and what is selected in it.
+let mart = { isOpen: false, message: '', isError: false, view: START }
 // While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a click layer over pixel art
 // stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
 const AIM_EVERY = 2
@@ -749,7 +761,11 @@ async function feedCandy($: EngineInterface, query: string, item: Item): Promise
 }
 
 // `qty` of the item `id`, as the Mart posts it: anything but an item for sale and a whole 1..MAX_BAG changes nothing.
-async function buyItem($: EngineInterface, id: unknown, qty: unknown): Promise<{ text: string; isError: boolean }> {
+export async function buyItem(
+  $: EngineInterface,
+  id: unknown,
+  qty: unknown,
+): Promise<{ text: string; isError: boolean }> {
   const item = typeof id === 'string' ? itemById(id) : undefined
   if (!item || !isForSale(item)) return { text: "That isn't for sale.", isError: true }
   if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_BAG)
@@ -765,6 +781,7 @@ async function buyItem($: EngineInterface, id: unknown, qty: unknown): Promise<{
 }
 
 async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
+  if (isOff) closeMart($)
   let was = false
   await mutate($, s => {
     was = Boolean(s.isOff)
@@ -1034,9 +1051,14 @@ async function earn($: EngineInterface, amount: number) {
     leveledUp = view().party.some((m, i) => level(m.xp) > (before[i] ?? 0))
   })
   if (isPaid) {
-    plus = { amount: amount * MONEY_PER_XP, until: Date.now() + 1200 }
+    const mine = ++earnings
+    plus = amount * MONEY_PER_XP
     $.ui.invalidate('ui.render')
-    $.clock.after(1300, () => $.ui.invalidate('ui.render'))
+    $.clock.after(1200, () => {
+      if (mine !== earnings) return
+      plus = 0
+      $.ui.invalidate('ui.render')
+    })
   }
   if (leveledUp) await learnEvolutions($)
 }
@@ -1083,6 +1105,7 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
         }),
     )
     status = startWild(status, band.columns, wild.left.width)
+    closeMart($)
     $.ui.toast(`${isShiny ? '✨ ' : ''}A wild ${mon.name} appeared!`, { timeoutMs: 6000 })
     await mutate($, s => recordSeen(s, pick.species, isShiny, Date.now()))
   } catch (err) {
@@ -1144,6 +1167,70 @@ function afterThrow($: EngineInterface, event: ThrowEvent) {
   else background($, keepCatch($))
 }
 
+function openMart($: EngineInterface) {
+  mart = { isOpen: true, message: '', isError: false, view: START }
+  $.ui.invalidate('ui.render')
+}
+
+function closeMart($: EngineInterface) {
+  if (!mart.isOpen) return
+  mart = { ...mart, isOpen: false }
+  $.ui.invalidate('ui.render')
+}
+
+// What the Mart shows: what's for sale, which party members each would evolve, and the selected item's picture.
+function martProps(): MartProps {
+  const party = view().party
+  const items = forSale().map(i => {
+    const uses = party.flatMap(m =>
+      (m.next ?? [])
+        .filter(st => (st.way.kind === 'item' || st.way.kind === 'hold') && st.way.item === i.id)
+        .map(st => `${displayName(m.species, m.form)} → ${titleCase(st.species)}`),
+    )
+    const { id, name, tab, price, color, text } = i
+    return { id, name, tab, price, color, text, ...(uses.length ? { party: [...new Set(uses)].join(', ') } : {}) }
+  })
+  const selected = items.filter(i => i.tab === TABS[mart.view.tab])[mart.view.sel]
+  const icon = selected && ICONS[selected.id]
+  return {
+    items,
+    tabs: TABS,
+    balance: balanceOf(save, cash),
+    bag: save.bag ?? {},
+    message: mart.message,
+    isError: mart.isError,
+    columns: band?.total ?? 80,
+    rows: band?.rows ?? 9,
+    state: mart.view,
+    ...(icon ? { icon: textRows(icon) } : {}),
+  }
+}
+
+const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
+
+// A click, key or wheel tick in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
+// next props while it stays open.
+async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps } | null> {
+  const done = act(martProps(), mart.view, a)
+  mart = { ...mart, view: done.state }
+  if (done.post && 'close' in done.post) {
+    closeMart($)
+    return null
+  }
+  if (done.post && 'buy' in done.post) {
+    const { text, isError } = await buyItem($, done.post.buy.id, done.post.buy.qty)
+    mart = { ...mart, message: text, isError }
+  }
+  return { props: martProps() }
+}
+
+// `/pokemon mart`: the Mart opens in the band, when there is one.
+function openMartCommand($: EngineInterface): string {
+  if (!band || save.isOff) return "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here."
+  openMart($)
+  return 'The PokéMart is open above the prompt: click an item, then ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.'
+}
+
 // The band's look besides the party: time and place, the visitor as a throw shows it, and the ball.
 const lookNow = (): Look => ({
   phase: phaseNow(),
@@ -1178,6 +1265,8 @@ async function tick($: EngineInterface) {
     return
   }
   if (status.mood?.kind !== 'evolve') evolveFrom = null
+  // The scene keeps moving underneath; nothing is drawn over the Mart.
+  if (mart.isOpen) return
   if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
@@ -1266,6 +1355,8 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return giveItem($, tail)
     case 'take':
       return takeItem($, tail)
+    case 'mart':
+      return openMartCommand($)
     case 'off':
       return setOff($, true)
     case 'on':
@@ -1487,7 +1578,21 @@ export const register: Register = on => {
   on('ui.message', async ($, e, next) => {
     const click = e.element === 'aim' ? readClick(e.data) : null
     if (click) throwAt(click)
+    if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true) openMart($)
+    const posted = e.element === 'mart' && mart.isOpen ? (e.data as { act?: unknown } | null)?.act : undefined
+    if (isAct(posted)) {
+      const answer = await martAct($, posted)
+      if (answer) return answer
+    }
     return next(e)
+  })
+
+  // The wheel over the band moves the open Mart's selection instead of the band.
+  on('ui.scroll', async ($, e, next) => {
+    if (e.component !== 'AbovePrompt' || !mart.isOpen || !e.by) return next(e)
+    await martAct($, { wheel: Math.round(e.by) || Math.sign(e.by) })
+    $.ui.invalidate('ui.render')
+    return {}
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -1498,9 +1603,11 @@ export const register: Register = on => {
       band = null
       return next(e)
     }
-    const { Client, Raster } = $.ui.resolve(e)
-    // As wide as a Raster can be.
-    const columns = Math.min(512, e.props.bodyColumns)
+    const { Box, Client, Raster } = $.ui.resolve(e)
+    // As wide as a Raster can be, less the button beside the scene (none on a band too narrow for both).
+    const total = Math.min(512, e.props.bodyColumns)
+    const button = total > 2 * BUTTON_COLUMNS ? BUTTON_COLUMNS : 0
+    const columns = total - button
     const budget = spriteBudget(save.size, e.props.maxRows, Math.ceil(HEADROOM / 2))
     const keys = mons.map(m => m.key)
     if (!fitted || fitted.budget !== budget || keys.join() !== fitted.keys.join()) {
@@ -1528,16 +1635,24 @@ export const register: Register = on => {
       })),
     }
     status = keepRustleAtEdge(status, columns)
-    band = { requestId: e.requestId, columns, rows }
+    band = { requestId: e.requestId, columns, rows, total }
     isHidden = false
     const img = frame(status, fitted.lefts, columns, rows, lookNow())
     const { cells } = toCells(img)
     lastCells = cells
     isAiming = canAim()
+    if (mart.isOpen) return <Client key="mart" module="./mart.tsx" width={total} height={rows} props={martProps()} />
+    // No button while aiming: the band is a click layer then, and the Mart would hold up the catch.
     if (isAiming)
       return <Client key="aim" module="./aim.tsx" width={columns} height={rows} props={{ lines: textRows(img) }} />
-
-    return <Raster key="scene" columns={columns} rows={rows} cells={cells} />
+    const scene = <Raster key="scene" columns={columns} rows={rows} cells={cells} />
+    if (!button) return scene
+    return (
+      <Box flexDirection="row">
+        {scene}
+        <Client key="shop" module="./shop.tsx" width={button} height={rows} props={buttonProps()} />
+      </Box>
+    )
   })
 
   // Claude Code draws its own spinner (with its tip, task list and token count); only the word turns Pokémon.

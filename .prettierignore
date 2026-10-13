@@ -1,3 +1,4 @@
 plugin/.claude-plugin/types/
 plugin/tests/fixtures/
 specs/evolution-coverage.md
+plugin/hooks/item-icons.ts
