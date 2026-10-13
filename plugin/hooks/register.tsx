@@ -6,18 +6,22 @@ import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThr
 import type { Click, Throw, ThrowEvent } from './catch'
 import { dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Stage } from './evolution'
-import { itemName, withArticle } from './items'
+import { isForSale, itemById, itemName, MAX_BAG, splitGive, withArticle } from './items'
+import type { Item } from './items'
 import { lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
+  buy,
   displayName,
   emptySave,
+  formatBag,
   formatBox,
   formatDex,
   formatParty,
   earnInto,
   evolvesText,
+  extraMoney,
   extraXp,
   foldLedger,
   isName,
@@ -25,8 +29,11 @@ import {
   LEDGER,
   loadLedger,
   loadSave,
+  MAX_LEVEL,
   MAX_PARTY,
+  MONEY_PER_XP,
   newId,
+  putInBag,
   recordCaught,
   recordSeen,
   spriteBudget,
@@ -35,6 +42,7 @@ import {
   TIME_TEXT,
   withExtra,
   XP,
+  xpForLevel,
 } from './save'
 import type { Ledger, Member, Save, Size } from './save'
 import {
@@ -90,8 +98,19 @@ let save: Save = emptySave()
 // This session's XP ledger key, and the ledgers' XP not yet folded into the save, by member id.
 let ledgerKey = ''
 let extra: Record<string, number> = {}
+// The ledgers' ₽ not yet folded into the save.
+let cash = 0
+// The last ₽ earned, shown on the shop button until `until`.
+let plus: { amount: number; until: number } | null = null
 // The save as the party stands: XP from every session's ledger included. For showing and deciding only.
 const view = () => withExtra(save, extra)
+// The ledgers' XP and ₽ not yet folded into the save, counted against the save's own marks.
+function countLedgers(ledgers: Record<string, Ledger>) {
+  extra = extraXp(ledgers, save.folded, save.foldedXp)
+  cash = extraMoney(ledgers, save.folded, save.foldedMoney)
+}
+// Why an item can't be given: the Bag has none.
+const noItem = (name: string) => `You don't have ${withArticle(name)}. Buy one at the PokéMart: /pokemon mart`
 // A ledger nobody has written to for this long belongs to a session that has ended: it's folded into the save.
 const LEDGER_STALE_MS = 24 * 60 * 60_000
 // How many syncs apart stale ledgers are folded, and folded ones removed.
@@ -299,7 +318,7 @@ function mutate($: EngineInterface, change: (s: Save) => Save) {
     save = change(loadSave(await $.store.get('save')))
     await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
-    extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
+    countLedgers(await readLedgers($))
   })
 }
 
@@ -313,7 +332,7 @@ async function sync($: EngineInterface) {
     isNewParty = latest.party.map(keyOf).join() !== save.party.map(keyOf).join()
     isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
     save = latest
-    extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
+    countLedgers(await readLedgers($))
   })
   if (isNewParty) await refreshParty($)
   if (isNewLook) $.ui.invalidate('ui.render')
@@ -347,11 +366,13 @@ async function foldLedgers($: EngineInterface) {
     await mutate($, s => {
       const folded = (s.folded ?? []).filter(k => !gone.includes(k))
       const foldedXp = Object.fromEntries(Object.entries(s.foldedXp ?? {}).filter(([k]) => !gone.includes(k)))
-      const { folded: _, foldedXp: __, ...rest } = s
+      const foldedMoney = Object.fromEntries(Object.entries(s.foldedMoney ?? {}).filter(([k]) => !gone.includes(k)))
+      const { folded: _, foldedXp: __, foldedMoney: ___, ...rest } = s
       return {
         ...rest,
         ...(folded.length ? { folded } : {}),
         ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
+        ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
       }
     })
 }
@@ -579,12 +600,27 @@ async function depositMember($: EngineInterface, query: string): Promise<string>
   return text
 }
 
-async function toggleEverstone($: EngineInterface, query: string): Promise<string> {
-  if (!query.trim()) return 'Which one? /pokemon everstone <name>'
-  let text = 'Your party is empty.'
-  let isDropped = false
+// `/pokemon give <item> <name>`: a stone or trade item evolves it now; a hold item is held; a Rare Candy is a level.
+async function giveItem($: EngineInterface, args: string): Promise<string> {
+  const found = splitGive(slug(args).split('-').filter(Boolean))
+  if (!found) return 'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.'
+  const { item, rest } = found
+  const who = rest.join(' ')
+  if (!who) return `Give ${withArticle(item.name)} to whom? /pokemon give ${item.id} <pokemon>`
+  await sync($)
+  if (item.kind === 'candy') return feedCandy($, who, item)
+  if (item.kind === 'hold') return holdItem($, who, item, `give ${item.id} `)
+  const at = findMember(save, who, `give ${item.id} `)
+  if (typeof at === 'string') return at
+  // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
+  return evolveMember($, at, false, item.id)
+}
+
+// The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
+async function holdItem($: EngineInterface, query: string, item: Item, command: string): Promise<string> {
+  let text = ''
   await mutate($, s => {
-    const at = findMember(s, query, 'everstone ')
+    const at = findMember(s, query, command)
     if (typeof at === 'string') {
       text = at
       return s
@@ -592,19 +628,129 @@ async function toggleEverstone($: EngineInterface, query: string): Promise<strin
     const m = s.party[at]
     if (!m) return s
     const name = displayName(m.species, m.form)
-    isDropped = m.heldItem === 'everstone'
-    text = isDropped
-      ? `${name} dropped its everstone and can evolve again.`
-      : `${name} holds an everstone: it won't evolve.`
-    const { heldItem: _, ...rest } = m
-    return {
-      ...s,
-      party: s.party.map((p, i) => (i === at ? (isDropped ? rest : { ...rest, heldItem: 'everstone' }) : p)),
+    const isFree = item.id === 'everstone'
+    if (!isFree && !s.bag?.[item.id]) {
+      text = noItem(item.name)
+      return s
     }
+    if (m.heldItem === item.id) {
+      text = `${name} is already holding ${withArticle(item.name)}.`
+      return s
+    }
+    let after = isFree ? s : takeFromBag(s, item.id)
+    const old = m.heldItem
+    if (old && old !== 'everstone') {
+      const back = putInBag(after, old)
+      if (!back) {
+        text = `Your Bag can't hold more ${itemName(old)}: take it back first.`
+        return s
+      }
+      after = back
+    }
+    text = isFree ? `${name} holds an everstone: it won't evolve.` : `${name} is now holding ${withArticle(item.name)}.`
+    if (old) text += old === 'everstone' ? ' It dropped its everstone.' : ` Its ${itemName(old)} went back to your Bag.`
+    return { ...after, party: after.party.map((p, i) => (i === at ? { ...p, heldItem: item.id } : p)) }
   })
-  // Already due: it evolves now.
+  // A held item may be what it was waiting for.
+  background($, learnEvolutions($))
+  return text
+}
+
+// `/pokemon take <name>`: its held item back to the Bag; an Everstone is just dropped.
+async function takeItem($: EngineInterface, query: string): Promise<string> {
+  if (!query.trim()) return 'Which one? /pokemon take <name>'
+  let text = ''
+  let isDropped = false
+  await mutate($, s => {
+    const at = findMember(s, query, 'take ')
+    if (typeof at === 'string') {
+      text = at
+      return s
+    }
+    const m = s.party[at]
+    if (!m) return s
+    const name = displayName(m.species, m.form)
+    const { heldItem, ...rest } = m
+    if (!heldItem) {
+      text = `${name} isn't holding anything.`
+      return s
+    }
+    let after = s
+    if (heldItem === 'everstone') {
+      text = `${name} dropped its everstone and can evolve again.`
+      isDropped = true
+    } else {
+      const back = putInBag(s, heldItem)
+      if (!back) {
+        text = `Your Bag can't hold more ${itemName(heldItem)}.`
+        return s
+      }
+      after = back
+      text = `${name}'s ${itemName(heldItem)} went back to your Bag.`
+    }
+    return { ...after, party: after.party.map((p, i) => (i === at ? rest : p)) }
+  })
+  // Already past its level: it evolves now.
   if (isDropped) background($, learnEvolutions($))
   return text
+}
+
+// `/pokemon everstone <name>`: gives it the free Everstone, or takes it back.
+async function toggleEverstone($: EngineInterface, query: string): Promise<string> {
+  if (!query.trim()) return 'Which one? /pokemon everstone <name>'
+  await sync($)
+  const at = findMember(save, query, 'everstone ')
+  if (typeof at === 'number' && save.party[at]?.heldItem === 'everstone') return takeItem($, query)
+  const everstone = itemById('everstone')
+  return everstone ? holdItem($, query, everstone, 'everstone ') : 'Your party is empty.'
+}
+
+// A Rare Candy: one level, up to MAX_LEVEL; the level may bring an evolution.
+async function feedCandy($: EngineInterface, query: string, item: Item): Promise<string> {
+  let text = ''
+  let grew = false
+  await mutate($, s => {
+    const at = findMember(s, query, `give ${item.id} `)
+    if (typeof at === 'string') {
+      text = at
+      return s
+    }
+    const m = s.party[at]
+    if (!m) return s
+    const name = displayName(m.species, m.form)
+    if (!s.bag?.[item.id]) {
+      text = noItem(item.name)
+      return s
+    }
+    const xp = m.xp + (extra[m.id] ?? 0)
+    const lv = level(xp)
+    if (lv >= MAX_LEVEL) {
+      text = `${name} is already Lv ${MAX_LEVEL}.`
+      return s
+    }
+    text = `${name} grew to Lv ${lv + 1}!`
+    grew = true
+    const after = takeFromBag(s, item.id)
+    return { ...after, party: after.party.map((p, i) => (i === at ? { ...p, xp: p.xp + xpForLevel(lv + 1) - xp } : p)) }
+  })
+  if (grew) background($, learnEvolutions($))
+  return text
+}
+
+// `qty` of the item `id`, as the Mart posts it: anything but an item for sale and a whole 1..MAX_BAG changes nothing.
+async function buyItem($: EngineInterface, id: unknown, qty: unknown): Promise<{ text: string; isError: boolean }> {
+  const item = typeof id === 'string' ? itemById(id) : undefined
+  if (!item || !isForSale(item)) return { text: "That isn't for sale.", isError: true }
+  if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_BAG)
+    return { text: "That isn't a quantity you can buy.", isError: true }
+  let result = { text: '', isError: true }
+  const ledgers = await readLedgers($)
+  await mutate($, s => {
+    const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
+    result = { text: bought.text, isError: bought.isError }
+    return bought.save
+  })
+  return result
 }
 
 async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
@@ -745,7 +891,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
   if (!member) return 'Your party is empty.'
   const name = displayName(member.species, member.form)
   // Before any download or animation; the save write checks again.
-  if (given && !isPreview && !save.bag?.[given]) return `You don't have ${withArticle(itemName(given))}.`
+  if (given && !isPreview && !save.bag?.[given]) return noItem(itemName(given))
   try {
     const { stages } = await evolutionsOf($, member)
     const options = stages.filter(s => s.way.kind !== 'shed')
@@ -807,7 +953,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
         return s
       }
       if (given && !s.bag?.[given]) {
-        outcome = `You don't have ${withArticle(itemName(given))}.`
+        outcome = noItem(itemName(given))
         return s
       }
       outcome = ''
@@ -856,6 +1002,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
 async function earn($: EngineInterface, amount: number) {
   await ready
   let leveledUp = false
+  let isPaid = false
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     // Off in another session since this one last synced: no XP either.
@@ -869,10 +1016,16 @@ async function earn($: EngineInterface, amount: number) {
     }
     const own = loadLedger(await $.store.get(ledgerKey))
     await $.store.set(ledgerKey, earnInto(own, latest.party, amount, Date.now()))
+    isPaid = true
     save = latest
-    extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
+    countLedgers(await readLedgers($))
     leveledUp = view().party.some((m, i) => level(m.xp) > (before[i] ?? 0))
   })
+  if (isPaid) {
+    plus = { amount: amount * MONEY_PER_XP, until: Date.now() + 1200 }
+    $.ui.invalidate('ui.render')
+    $.clock.after(1300, () => $.ui.invalidate('ui.render'))
+  }
   if (leveledUp) await learnEvolutions($)
 }
 
@@ -1094,6 +1247,13 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return setSize($, tail.toLowerCase())
     case 'everstone':
       return toggleEverstone($, tail)
+    case 'bag':
+      await sync($)
+      return formatBag(save, cash)
+    case 'give':
+      return giveItem($, tail)
+    case 'take':
+      return takeItem($, tail)
     case 'off':
       return setOff($, true)
     case 'on':
@@ -1160,7 +1320,7 @@ async function load($: EngineInterface) {
     ledgerKey = (await update($, ledger, key => key ?? fresh)) ?? fresh
     await queued(async () => {
       save = loadSave(await $.store.get('save'))
-      extra = extraXp(await readLedgers($), save.folded, save.foldedXp)
+      countLedgers(await readLedgers($))
     })
   } catch (err) {
     await report($, err)
@@ -1184,7 +1344,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · size small|normal|auto · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({

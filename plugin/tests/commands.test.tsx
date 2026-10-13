@@ -1613,3 +1613,150 @@ test('Mantyke evolves once a Remoraid joins the party', async ($, on) => {
   await cmd($, 'pokemon', 'add remoraid')
   await until($, () => w.saveNow().party[0]?.species === 'mantine')
 })
+
+// A reply's ₽20 is earnInto's ×10 on its 2 XP (save.test.ts); here the two tool events, with two members.
+test('work earns ₽ once per event, not per member: a test run ₽50, a commit ₽100', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [] }), member('eevee', { next: [] })],
+  })
+  expect(await cmd($, 'pokemon', 'bag')).toBe('Bag · ₽3,000\n  Empty. Buy items at the PokéMart: /pokemon mart')
+  await $.tool.call(bash('pytest -q') as never)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => [...w.store].some(([k, l]) => k.startsWith('xp:') && (l as { money?: number }).money === 150))
+  expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,150')
+})
+
+test('a finished reply earns ₽20, once for the whole party', async ($, on) => {
+  on('turn.complete', async () => ({ text: '' }))
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [] }), member('eevee', { next: [] })],
+  })
+  await cmd($, 'pokemon', 'party')
+  await $.turn.complete({ reason: 'answer', answer: 'done', durationMs: 1 } as never)
+  await until($, () => [...w.store].some(([k, l]) => k.startsWith('xp:') && (l as { money?: number }).money === 20))
+  expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,020')
+})
+
+test('a Water Stone given to Eevee evolves it into Vaporeon and is used up', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('eevee')], bag: { 'water-stone': 2 } })
+  expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('Eevee evolved into Vaporeon!')
+  expect(w.saveNow().party[0]?.species).toBe('vaporeon')
+  expect(w.saveNow().bag).toEqual({ 'water-stone': 1 })
+  expect(w.toasts).toEqual(['What? Eevee evolved into Vaporeon!'])
+})
+
+test('a stone not in the Bag changes nothing and plays no evolution', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('eevee')] })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  const before = JSON.stringify(w.saveNow())
+  expect(await cmd($, 'pokemon', 'give eevee water stone')).toBe(
+    "You don't have a Water Stone. Buy one at the PokéMart: /pokemon mart",
+  )
+  await cmd($, 'pokemon', 'party')
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+  expect(w.toasts).toEqual([])
+  // An evolution fetches the new form's sprite before it animates: none was.
+  expect(w.fetched.some(url => url.endsWith('/vaporeon'))).toBe(false)
+})
+
+test('give refuses what it cannot do, and changes nothing', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('eevee'), member('charmander')],
+    bag: { 'water-stone': 1 },
+  })
+  // Start-up's own lookup of how they evolve lands first.
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  const before = JSON.stringify(w.saveNow())
+  expect(await cmd($, 'pokemon', 'give fire-stone eevee')).toBe(
+    "You don't have a Fire Stone. Buy one at the PokéMart: /pokemon mart",
+  )
+  expect(await cmd($, 'pokemon', 'give water-stone charmander')).toBe("Charmander can't use a Water Stone.")
+  expect(await cmd($, 'pokemon', 'give water-stone mewtwo')).toMatch(/^No mewtwo in your party\./)
+  expect(await cmd($, 'pokemon', 'give water-stone')).toBe(
+    'Give a Water Stone to whom? /pokemon give water-stone <pokemon>',
+  )
+  expect(await cmd($, 'pokemon', 'give eevee')).toBe(
+    'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.',
+  )
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+})
+
+test('holding: one item each, a new one sends the old back to the Bag; take puts it back', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [] })],
+    bag: { 'lucky-egg': 1, 'soothe-bell': 1 },
+  })
+  expect(await cmd($, 'pokemon', 'give lucky-egg pikachu')).toBe('Pikachu is now holding a Lucky Egg.')
+  expect(w.saveNow().bag).toEqual({ 'soothe-bell': 1 })
+  expect(await cmd($, 'pokemon', 'give pikachu soothe bell')).toBe(
+    'Pikachu is now holding a Soothe Bell. Its Lucky Egg went back to your Bag.',
+  )
+  expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1 })
+  expect(await cmd($, 'pokemon', 'bag')).toContain('  Held        Pikachu: Soothe Bell')
+  expect(await cmd($, 'pokemon', 'take pikachu')).toBe("Pikachu's Soothe Bell went back to your Bag.")
+  expect(await cmd($, 'pokemon', 'take pikachu')).toBe("Pikachu isn't holding anything.")
+  expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1, 'soothe-bell': 1 })
+  expect(w.saveNow().party[0]?.heldItem).toBeUndefined()
+})
+
+test('the everstone stays free: same words as ever, and it never enters the Bag', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], bag: { 'lucky-egg': 1 } })
+  await cmd($, 'pokemon', 'give lucky-egg pikachu')
+  expect(await cmd($, 'pokemon', 'everstone pikachu')).toBe(
+    "Pikachu holds an everstone: it won't evolve. Its Lucky Egg went back to your Bag.",
+  )
+  expect(w.saveNow().party[0]?.heldItem).toBe('everstone')
+  expect(await cmd($, 'pokemon', 'everstone pikachu')).toBe('Pikachu dropped its everstone and can evolve again.')
+  expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1 })
+  expect(await cmd($, 'pokemon', 'give everstone pikachu')).toBe("Pikachu holds an everstone: it won't evolve.")
+  expect(await cmd($, 'pokemon', 'take pikachu')).toBe('Pikachu dropped its everstone and can evolve again.')
+  expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1 })
+})
+
+test('a Rare Candy is one level, and the evolution that level brings', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('charmander', { xp: xpForLevel(15) + 3 })],
+    bag: { 'rare-candy': 1 },
+  })
+  expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
+  expect(w.saveNow().bag).toBeUndefined()
+  await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
+})
+
+test('a Rare Candy is refused at Lv 100, and kept', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('charizard', { xp: xpForLevel(100), next: [] })],
+    bag: { 'rare-candy': 1 },
+  })
+  expect(await cmd($, 'pokemon', 'give rare-candy charizard')).toBe('Charizard is already Lv 100.')
+  expect(w.saveNow().bag).toEqual({ 'rare-candy': 1 })
+})
+
+test('a Lucky Egg holder earns half again', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [], heldItem: 'lucky-egg' }), member('eevee', { next: [] })],
+  })
+  await cmd($, 'pokemon', 'party')
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.partyNow()[0]?.xp === 15)
+  expect(w.partyNow().map(m => m.xp)).toEqual([15, 10])
+})
+
+test('₽ from two sessions adds up', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [] })] })
+  await cmd($, 'pokemon', 'party')
+  w.store.set('xp:other', { at: Date.now(), xp: { p: 10 }, money: 400 })
+  await $.tool.call(bash('git commit -m x') as never)
+  await cmd($, 'pokemon', 'party')
+  expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,500')
+})
