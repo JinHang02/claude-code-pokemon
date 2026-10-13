@@ -10,7 +10,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 - You earn Pokédollars (₽) from the same work that earns XP, ten times over: ₽20 when Claude finishes a reply, ₽50
   when a test run passes, ₽100 for a commit. It's one wallet: ₽ is earned once per event, not per party member.
-  Everyone starts with ₽3,000, as in Pokémon Red and Blue.
+  Everyone starts with ₽3,000, as in Pokémon Red and Blue: existing saves get ₽3,000 too, and ₽ is earned from this
+  version on (earlier work isn't paid back).
 - A `🛒 ₽ 1,240` button sits in the band's top-right corner and shows `+₽20` as you earn. Big balances show as
   `₽ 100k` or `₽ 1.2M`. Click it to open the PokéMart inside the band: four tabs (Stones, Hold items, Special,
   Other), each item with its description from the games, and a "Your party:" line when it would evolve one of yours.
@@ -19,13 +20,14 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - In the Mart: click into it, then `↑` `↓` to choose, `←` `→` for tabs, `-` `+` or `◀` `▶` for how many, `Max`
   for as many as you can afford, `Enter` or `Buy` to buy, `x` or `✕` to close. The mouse wheel over the band scrolls
   the list. `/pokemon mart` opens it too.
-- Prices: evolution stones ₽3,000, hold and special items and the Linking Cord ₽5,000, Rare Candy ₽4,800, Soothe
-  Bell ₽4,000, Lucky Egg ₽10,000. The Bag holds up to 999 of each.
+- Prices: Stones ₽3,000; Rare Candy ₽4,800; Soothe Bell ₽4,000; Lucky Egg ₽10,000; everything else ₽5,000. The Bag
+  holds up to 999 of each.
 
 ### Added: the Bag and held items
 
 - `/pokemon bag` lists your items by tab, your ₽, and who holds what.
-- `/pokemon give <item> <pokemon>` (either order: `give pikachu thunder stone` works too). A stone, a trade item
+- `/pokemon give <item> <pokemon>` (either order, and item names work with spaces or hyphens: `give pikachu thunder stone` and
+  `give thunder-stone pikachu` both work). A stone, a trade item
   or the Linking Cord evolves the Pokémon at once and is used up. A hold item is held. A Rare Candy raises one
   level. An item that does nothing for that Pokémon is refused, and nothing is used up.
 - One held item per Pokémon, as in the games: giving another puts the old one back in the Bag.
