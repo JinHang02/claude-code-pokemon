@@ -345,6 +345,7 @@ export function putInBag(save: Save, id: string): Save | null {
 
 // `qty` of `item` bought with what the wallet holds (`cash`: the ledgers' unfolded ₽), or why not.
 export function buy(save: Save, cash: number, item: Item, qty: number): { save: Save; text: string; isError: boolean } {
+  if (!Number.isInteger(qty) || qty < 1) return { save, text: "That isn't a quantity you can buy.", isError: true }
   const have = save.bag?.[item.id] ?? 0
   const room = MAX_BAG - have
   const cost = item.price * qty

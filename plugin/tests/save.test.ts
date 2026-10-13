@@ -328,6 +328,11 @@ test("buying: the price comes off, the Bag fills to 999, and nothing changes whe
     text: 'Not enough ₽: ₽3,000 more to go.',
     isError: true,
   })
+  for (const qty of [0, -1, 1.5, NaN]) {
+    const bad = buy(s, 0, stoneItem, qty)
+    expect(bad.save).toBe(s)
+    expect(bad.isError).toBe(true)
+  }
   const rich = buy(loadSave({ earned: 10_000_000 }), 0, itemById('rare-candy')!, 998)
   expect(rich.text).toBe('Bought 998 × Rare Candy!')
   expect(buy(rich.save, 0, itemById('rare-candy')!, 2).text).toBe('Your Bag has room for 1 more.')
