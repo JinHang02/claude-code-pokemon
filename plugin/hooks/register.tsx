@@ -5,7 +5,7 @@ import type { Mon } from '../types'
 import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
 import type { Click, Throw, ThrowEvent } from './catch'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
-import type { ChainLink, Stage } from './evolution'
+import type { ChainLink, Gender, Stage } from './evolution'
 import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -908,9 +908,7 @@ const learnEvolutions = ($: EngineInterface) => (learning = learning.catch(() =>
 // at a time. Nothing evolves while the party is off.
 async function checkEvolutions($: EngineInterface) {
   for (const member of save.party.filter(m => m.next === undefined || m.gender === undefined)) {
-    // Its gender first (kept through evolutions when the species allows it): some evolutions are for one only.
-    const { genderRate } = await evolutionsOf($, member)
-    const gender = genderOf(genderRate, member.gender)
+    const gender = await settleGender($, member)
     const { stages } = await evolutionsOf($, { ...member, gender })
     await mutate($, s => ({
       ...s,
@@ -932,6 +930,21 @@ async function checkEvolutions($: EngineInterface) {
   }
 }
 
+// A member's gender, rolled from its species' ratio and saved when it has none yet (kept through evolutions when the
+// species allows it): some evolutions are for one only. One saved meanwhile, by another check, is the one kept.
+async function settleGender($: EngineInterface, member: Member): Promise<Gender> {
+  if (member.gender !== undefined) return member.gender
+  const { genderRate } = await evolutionsOf($, member)
+  let gender = genderOf(genderRate, undefined)
+  const isIt = (m: Member) => m.id === member.id && m.species === member.species
+  await mutate($, s => {
+    const was = s.party.find(isIt)?.gender
+    if (was !== undefined) gender = was
+    return was !== undefined ? s : { ...s, party: s.party.map(m => (isIt(m) ? { ...m, gender } : m)) }
+  })
+  return gender
+}
+
 // Evolves party member `at` into a form it can reach now: by itself, or by the item `given` from the Bag (used up
 // in the same write). The animation plays from its current sprite. A preview plays it and puts the old form back
 // afterwards; a real one saves the new form and tells the person.
@@ -942,7 +955,9 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
   // Before any download or animation; the save write checks again.
   if (given && !isPreview && !save.bag?.[given]) return noItem(itemName(given))
   try {
-    const { stages } = await evolutionsOf($, member)
+    // Its gender before its stages, as a check would: a Dawn Stone makes a Gallade only of a male Kirlia.
+    const gender = isPreview ? member.gender : await settleGender($, member)
+    const { stages } = await evolutionsOf($, { ...member, gender })
     const options = stages.filter(s => s.way.kind !== 'shed')
     const context = await evolutionContext($)
     const byItem = options.filter(s => s.way.kind === 'item' && s.way.item === given)

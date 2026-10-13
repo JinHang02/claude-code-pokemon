@@ -7,7 +7,23 @@ import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
 import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
-import { answerTools, ART, bash, begin, cmd, hourAt, LIST, lv, member, mountBand, until } from './world'
+import {
+  answerTools,
+  ART,
+  bash,
+  begin,
+  CHAINS,
+  cmd,
+  end,
+  GENDER_RATES,
+  hourAt,
+  LIST,
+  lv,
+  member,
+  mountBand,
+  named,
+  until,
+} from './world'
 import type { Net } from './world'
 
 test('a first session gets a random lead, saved for next time', async ($, on) => {
@@ -979,6 +995,60 @@ test('gender follows the species, shows in the party, and decides gender-only ev
     'mothim:regular:male',
   ])
   expect(await cmd($, 'pokemon', 'party')).toContain('Mothim ♂')
+})
+
+// Kirlia: Gardevoir at Lv 30, or Gallade with a Dawn Stone, males only.
+const psychic = {
+  species: named('kirlia'),
+  evolves_to: [
+    end('gardevoir', [{ trigger: named('level-up'), min_level: 30 }]),
+    end('gallade', [{ trigger: named('use-item'), item: named('dawn-stone'), gender: 2 }]),
+  ],
+}
+// A Kirlia given a Dawn Stone while start-up is still looking up its gender: `rate` decides the gender.
+async function dawnStoneOnFreshKirlia(
+  $: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0],
+  on: On,
+  rate: number,
+) {
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify([...LIST, ...['kirlia', 'gardevoir', 'gallade'].map(name => ({ name, forms: ['regular'] }))]),
+    chains: { ...CHAINS, kirlia: psychic, gardevoir: psychic, gallade: psychic },
+    genderRates: { ...GENDER_RATES, kirlia: rate },
+  }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [], gender: 'male' })], bag: { 'dawn-stone': 1 } },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  // Its evolution data is slow to come: summoned seconds ago, its gender isn't known yet.
+  let open = () => {}
+  net.speciesStall = new Promise<void>(resolve => (open = resolve))
+  await cmd($, 'pokemon', 'add kirlia')
+  expect(w.saveNow().party[1]?.gender).toBeUndefined()
+  const given = cmd($, 'pokemon', 'give dawn stone kirlia')
+  await w.clock.advance(50)
+  net.speciesStall = undefined
+  open()
+  return { w, text: await given }
+}
+
+test('a Dawn Stone given to a Kirlia whose gender is still unknown makes a Gallade only of a male', async ($, on) => {
+  const { w, text } = await dawnStoneOnFreshKirlia($, on, 8)
+  expect(text).toBe("Kirlia can't use a Dawn Stone.")
+  expect(w.saveNow().party[1]).toMatchObject({ species: 'kirlia', gender: 'female' })
+  expect(w.saveNow().bag).toEqual({ 'dawn-stone': 1 })
+})
+
+test('a Dawn Stone given to a male Kirlia whose gender was still unknown makes a Gallade', async ($, on) => {
+  const { w, text } = await dawnStoneOnFreshKirlia($, on, 0)
+  expect(text).toBe('Kirlia evolved into Gallade!')
+  expect(w.saveNow().party[1]).toMatchObject({ species: 'gallade', gender: 'male' })
 })
 
 test('a piped test run reacts to its summary; one still running in the background reacts to nothing', async ($, on) => {
