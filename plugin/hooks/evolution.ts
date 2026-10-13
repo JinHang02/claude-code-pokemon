@@ -1,11 +1,24 @@
+import type { Phase } from './backdrop'
+import { isForSale, itemById } from './items'
+
 type Named = { name: string }
 
-// One way a species is reached: the level it needs, and the PokeAPI forms it starts from and ends as
-// (`meowth-galar` only; `raichu-alola`).
-// `gender`: 1 when only females evolve this way, 2 when only males.
+// One way a species is reached in PokeAPI's chain: the trigger and what it needs. `gender`: 1 when only females
+// evolve this way, 2 when only males. The forms it starts from and ends as (`meowth-galar` only; `raichu-alola`).
 export type EvolutionDetail = {
+  trigger?: Named | null
   min_level?: number | null
   gender?: number | null
+  item?: Named | null
+  held_item?: Named | null
+  trade_species?: Named | null
+  min_happiness?: number | null
+  min_affection?: number | null
+  known_move?: Named | null
+  known_move_type?: Named | null
+  party_species?: Named | null
+  party_type?: Named | null
+  time_of_day?: string | null
   required_pokemon_form?: Named | null
   evolved_pokemon_form?: Named | null
 }
@@ -17,15 +30,85 @@ export type ChainLink = {
   evolution_details?: EvolutionDetail[]
 }
 
-// Evolutions with no level in the games (a stone, a trade, friendship, a held item...) happen here, unless
-// another branch evolves by level: then they happen at that level, so neither branch shuts out the other.
-export const OTHER_EVOLVE_LEVEL = 30
+export type Time = 'day' | 'night' | 'dusk'
+
+// How an evolution happens here. `level`: at that level, at that time, with a party member of that type.
+// `item`: given, at once. `hold`: while held. `friendship`: after FRIENDSHIP_MS together. `party`: with that species
+// in the party. `shed`: comes along when its pre-evolution evolves (Shedinja).
+export type Way =
+  | { kind: 'level'; level: number; time?: Time; partyType?: string; isFallback?: true }
+  | { kind: 'item'; item: string; time?: Time }
+  | { kind: 'hold'; item: string; time?: Time }
+  | { kind: 'friendship'; time?: Time }
+  | { kind: 'party'; species: string }
+  | { kind: 'shed' }
 
 // `form`: the PokeAPI form the evolution leads to (`raichu-alola`), when the games name one.
-export type Stage = { species: string; level: number; form?: string }
+export type Stage = { species: string; form?: string; way: Way }
+
+// Evolutions the games tie to what the plugin can't do (a move, steps, a battle) happen at this level at the
+// earliest, and FALLBACK_GAP levels after the species was reached, so none comes straight after another.
+export const FALLBACK_LEVEL = 30
+export const FALLBACK_GAP = 10
+export const FRIENDSHIP_MS = 10 * 60 * 60_000
+
+const TIMES: Record<string, Time> = { day: 'day', night: 'night', dusk: 'dusk', 'full-moon': 'night' }
+// Forms the games pick by the time of day without naming them in the chain.
+const TIME_FORMS: Record<string, Partial<Record<Time, string>>> = {
+  lycanroc: { day: 'lycanroc-midday', night: 'lycanroc-midnight', dusk: 'lycanroc-dusk' },
+}
+
+const sold = (item: Named | null | undefined) => (item && isForSale(itemById(item.name)) ? item.name : null)
+// Needs an item the Mart doesn't sell (another Sweet, a Gen 9 item): another detail covers the species.
+const isUnsold = (d: EvolutionDetail) => Boolean((d.item && !sold(d.item)) || (d.held_item && !sold(d.held_item)))
+
+// How one PokeAPI detail works here, or null when it needs what the plugin doesn't have.
+export function wayOf(d: EvolutionDetail): Way | null {
+  const time = TIMES[d.time_of_day ?? '']
+  const at = time ? { time } : {}
+  if (d.known_move || d.known_move_type) return null
+  const trigger = d.trigger?.name ?? 'level-up'
+  if (typeof d.min_level === 'number')
+    return { kind: 'level', level: d.min_level, ...at, ...(d.party_type ? { partyType: d.party_type.name } : {}) }
+  if (trigger === 'use-item') {
+    const item = sold(d.item)
+    return item ? { kind: 'item', item, ...at } : null
+  }
+  if (trigger === 'trade') {
+    const item = d.held_item ? sold(d.held_item) : 'linking-cord'
+    return item ? { kind: 'item', item, ...at } : null
+  }
+  if (trigger === 'shed') return { kind: 'shed' }
+  if (d.held_item) {
+    const item = sold(d.held_item)
+    return item ? { kind: 'hold', item, ...at } : null
+  }
+  if (trigger !== 'level-up') return null
+  if (d.min_happiness || d.min_affection) return { kind: 'friendship', ...at }
+  if (d.party_species) return { kind: 'party', species: d.party_species.name }
+  return null
+}
 
 const find = (chain: ChainLink, name: string): ChainLink | undefined =>
   chain.species.name === name ? chain : chain.evolves_to.map(c => find(c, name)).find(Boolean)
+
+const parentOf = (chain: ChainLink, name: string): ChainLink | undefined =>
+  chain.evolves_to.some(c => c.species.name === name)
+    ? chain
+    : chain.evolves_to.map(c => parentOf(c, name)).find(Boolean)
+
+// The level `name` is reached at here: its pre-evolution's level, or the fallback it came by; 1 otherwise.
+function reachedAt(chain: ChainLink, name: string): number {
+  const parent = parentOf(chain, name)
+  const details = parent?.evolves_to.find(c => c.species.name === name)?.evolution_details ?? []
+  if (!parent) return 1
+  const ways = details.map(wayOf)
+  const levels = ways.flatMap(w => (w?.kind === 'level' ? [w.level] : []))
+  if (levels.length) return Math.min(...levels)
+  return ways.some(Boolean) || details.some(isUnsold) ? 1 : fallbackFrom(chain, parent.species.name)
+}
+
+const fallbackFrom = (chain: ChainLink, name: string) => Math.max(FALLBACK_LEVEL, reachedAt(chain, name) + FALLBACK_GAP)
 
 export type Gender = 'female' | 'male' | null
 
@@ -40,11 +123,12 @@ export function genderOf(rate: unknown, was: Gender | undefined, rand = Math.ran
 
 const GENDER_CODES: Record<number, Gender> = { 1: 'female', 2: 'male' }
 
-// What `name` evolves into and at which level, from the PokeAPI form `formName` (`meowth-galar`); empty for a
-// final stage or a name not in the chain. Ways for the other gender never apply (`gender` undefined: any).
-// A form with evolutions of its own takes only those; a form the games give none (Gigantamax) evolves as the
-// plain species; the plain species also answers to the games' own name for it (`burmy-plant`: a form missing
-// from `forms`, the species' forms in the sprite list); otherwise the evolutions no form is named for apply.
+// What `name` evolves into and how, from the PokeAPI form `formName` (`meowth-galar`); empty for a final stage or a
+// name not in the chain. Ways for the other gender never apply (`gender` undefined: any). A form with evolutions of
+// its own takes only those; a form the games give none (Gigantamax) evolves as the plain species; the plain species
+// also answers to the games' own name for it (`burmy-plant`: a form missing from `forms`, the species' forms in the
+// sprite list); otherwise the evolutions no form is named for apply. A species and form the plugin has no way to
+// reach gets the fallback level.
 export function nextStages(
   chain: ChainLink,
   name: string,
@@ -66,18 +150,62 @@ export function nextStages(
         )
       : []
   const chosen = [forForm(formName), forForm(name), asPlain].find(w => w.length) ?? ways.filter(w => !required(w))
-  const stages = new Map<string, { species: string; form?: string; level: number | null }>()
+  const stages = new Map<string, Stage>()
+  // Species and forms some detail leads to that the plugin can't carry out: the fallback, unless another way can.
+  const stuck = new Map<string, Stage>()
   for (const { child, detail } of chosen) {
-    const form = detail.evolved_pokemon_form?.name
-    const key = `${child.species.name}|${form ?? ''}`
-    const level = typeof detail.min_level === 'number' ? detail.min_level : null
-    const had = stages.get(key)?.level ?? null
-    const best = had === null ? level : level === null ? had : Math.min(had, level)
-    stages.set(key, { species: child.species.name, ...(form ? { form } : {}), level: best })
+    const species = child.species.name
+    const way = wayOf(detail)
+    const time = way && 'time' in way ? way.time : undefined
+    const form = detail.evolved_pokemon_form?.name ?? (time ? TIME_FORMS[species]?.[time] : undefined)
+    const target = `${species}|${form ?? ''}`
+    if (!way) {
+      if (!isUnsold(detail) && !stuck.has(target))
+        stuck.set(target, {
+          species,
+          ...(form ? { form } : {}),
+          way: { kind: 'level', level: fallbackFrom(chain, name), isFallback: true },
+        })
+      continue
+    }
+    // The same way in several games is one stage; a level one keeps its lowest level.
+    const { level: _, ...shape } = way.kind === 'level' ? way : { ...way, level: 0 }
+    const key = `${target}|${JSON.stringify(shape)}`
+    const had = stages.get(key)?.way
+    if (had?.kind === 'level' && way.kind === 'level' && had.level <= way.level) continue
+    stages.set(key, { species, ...(form ? { form } : {}), way })
   }
-  const levels = [...stages.values()].map(s => s.level).filter((l): l is number => l !== null)
-  const otherLevel = levels.length ? Math.max(...levels) : OTHER_EVOLVE_LEVEL
-  return [...stages.values()].map(s => ({ ...s, level: s.level ?? otherLevel }))
+  const reached = new Set([...stages.values()].map(s => `${s.species}|${s.form ?? ''}`))
+  for (const [target, stage] of stuck) if (!reached.has(target)) stages.set(`${target}|fallback`, stage)
+  return [...stages.values()]
+}
+
+// What an evolution check sees: the Pokémon's level, held item and time together; the time of day; the party's
+// species and types.
+export type DueContext = {
+  level: number
+  phase: Phase
+  heldItem?: string
+  togetherMs: number
+  party: string[]
+  partyTypes: string[]
+}
+
+// "day" in the games includes the morning.
+export const timeMatches = (time: Time | undefined, phase: Phase) =>
+  !time || (time === 'day' ? phase === 'day' || phase === 'dawn' : time === phase)
+
+// The stages that happen by themselves now. Given items and Shedinja never do; an Everstone stops them all.
+export function dueStages(stages: Stage[], c: DueContext): Stage[] {
+  if (c.heldItem === 'everstone') return []
+  return stages.filter(({ way }) => {
+    if ('time' in way && !timeMatches(way.time, c.phase)) return false
+    if (way.kind === 'level') return c.level >= way.level && (!way.partyType || c.partyTypes.includes(way.partyType))
+    if (way.kind === 'hold') return c.heldItem === way.item
+    if (way.kind === 'friendship') return c.togetherMs >= FRIENDSHIP_MS
+    if (way.kind === 'party') return c.party.includes(way.species)
+    return false
+  })
 }
 
 // The plugin's form for an evolved `stage` (forms as the sprite list names them: `alola`, `galar`...): the one

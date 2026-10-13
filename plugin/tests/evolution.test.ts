@@ -1,19 +1,37 @@
 import { expect, test } from 'claude-code/testing'
 
-import { evolvedForm, genderOf, nextStages, OTHER_EVOLVE_LEVEL, pokeapiForm } from '../hooks/evolution'
-import type { ChainLink } from '../hooks/evolution'
+import {
+  dueStages,
+  evolvedForm,
+  FRIENDSHIP_MS,
+  genderOf,
+  nextStages,
+  pokeapiForm,
+  timeMatches,
+  wayOf,
+} from '../hooks/evolution'
+import type { ChainLink, Stage } from '../hooks/evolution'
 
 const link = (name: string, details: ChainLink['evolution_details'], ...evolves_to: ChainLink[]): ChainLink => ({
   species: { name },
   evolution_details: details,
   evolves_to,
 })
+const lv = (species: string, level: number, extra: Partial<Stage> = {}): Stage => ({
+  species,
+  ...extra,
+  way: { kind: 'level', level },
+})
+const fallback = (species: string, level: number, extra: Partial<Stage> = {}): Stage => ({
+  species,
+  ...extra,
+  way: { kind: 'level', level, isFallback: true },
+})
 const charmander = link(
   'charmander',
   [],
   link('charmeleon', [{ min_level: 16 }], link('charizard', [{ min_level: 36 }])),
 )
-const pichu = link('pichu', [], link('pikachu', [{ min_level: null }], link('raichu', [{ min_level: null }])))
 const eevee = link('eevee', [], link('vaporeon', [{}]), link('espeon', [{ min_level: null }]))
 const wurmple = link(
   'wurmple',
@@ -23,27 +41,167 @@ const wurmple = link(
 )
 
 test('level evolutions happen at the level from the games', () => {
-  expect(nextStages(charmander, 'charmander')).toEqual([{ species: 'charmeleon', level: 16 }])
-  expect(nextStages(charmander, 'charmeleon')).toEqual([{ species: 'charizard', level: 36 }])
+  expect(nextStages(charmander, 'charmander')).toEqual([lv('charmeleon', 16)])
+  expect(nextStages(charmander, 'charmeleon')).toEqual([lv('charizard', 36)])
   expect(nextStages(charmander, 'charizard')).toEqual([])
   expect(nextStages(charmander, 'mew')).toEqual([])
 })
 
-test('stones, friendship and other conditions happen at a set level', () => {
-  expect(OTHER_EVOLVE_LEVEL).toBe(30)
-  expect(nextStages(pichu, 'pichu')).toEqual([{ species: 'pikachu', level: 30 }])
-  expect(nextStages(pichu, 'pikachu')).toEqual([{ species: 'raichu', level: 30 }])
+const named = (name: string) => ({ name })
+const realPichu = link(
+  'pichu',
+  [],
+  link(
+    'pikachu',
+    [{ trigger: named('level-up'), min_happiness: 220 }],
+    link('raichu', [{ trigger: named('use-item'), item: named('thunder-stone') }]),
+  ),
+)
+
+test('each PokeAPI detail becomes the way it works here', () => {
+  expect(wayOf({ trigger: named('level-up'), min_level: 16 })).toEqual({ kind: 'level', level: 16 })
+  expect(wayOf({ trigger: named('level-up'), min_level: 25, time_of_day: 'night' })).toEqual({
+    kind: 'level',
+    level: 25,
+    time: 'night',
+  })
+  expect(wayOf({ trigger: named('level-up'), min_level: 32, party_type: named('dark') })).toEqual({
+    kind: 'level',
+    level: 32,
+    partyType: 'dark',
+  })
+  expect(wayOf({ trigger: named('use-item'), item: named('thunder-stone') })).toEqual({
+    kind: 'item',
+    item: 'thunder-stone',
+  })
+  expect(wayOf({ trigger: named('use-item'), item: named('peat-block'), time_of_day: 'full-moon' })).toEqual({
+    kind: 'item',
+    item: 'peat-block',
+    time: 'night',
+  })
+  // A trade while holding an item is giving that item; a plain trade is the Linking Cord.
+  expect(wayOf({ trigger: named('trade'), held_item: named('reaper-cloth') })).toEqual({
+    kind: 'item',
+    item: 'reaper-cloth',
+  })
+  expect(wayOf({ trigger: named('trade') })).toEqual({ kind: 'item', item: 'linking-cord' })
+  expect(wayOf({ trigger: named('trade'), trade_species: named('shelmet') })).toEqual({
+    kind: 'item',
+    item: 'linking-cord',
+  })
+  expect(wayOf({ trigger: named('level-up'), held_item: named('razor-claw'), time_of_day: 'night' })).toEqual({
+    kind: 'hold',
+    item: 'razor-claw',
+    time: 'night',
+  })
+  expect(wayOf({ trigger: named('spin'), held_item: named('strawberry-sweet'), time_of_day: 'day' })).toEqual({
+    kind: 'hold',
+    item: 'strawberry-sweet',
+    time: 'day',
+  })
+  expect(wayOf({ trigger: named('level-up'), min_happiness: 160, time_of_day: 'day' })).toEqual({
+    kind: 'friendship',
+    time: 'day',
+  })
+  expect(wayOf({ trigger: named('level-up'), party_species: named('remoraid') })).toEqual({
+    kind: 'party',
+    species: 'remoraid',
+  })
+  expect(wayOf({ trigger: named('shed') })).toEqual({ kind: 'shed' })
+  // Moves, unsold items, places and battles: nothing the plugin can do.
+  expect(wayOf({ trigger: named('level-up'), known_move_type: named('fairy'), min_happiness: 160 })).toBeNull()
+  expect(wayOf({ trigger: named('level-up'), known_move: named('ancient-power') })).toBeNull()
+  expect(wayOf({ trigger: named('use-item'), item: named('syrupy-apple') })).toBeNull()
+  expect(wayOf({ trigger: named('spin'), held_item: named('ribbon-sweet') })).toBeNull()
+  expect(wayOf({ trigger: named('level-up') })).toBeNull()
+  expect(wayOf({ trigger: named('three-critical-hits') })).toBeNull()
+})
+
+test('stones and friendship evolve the way the games do', () => {
+  expect(nextStages(realPichu, 'pichu')).toEqual([{ species: 'pikachu', way: { kind: 'friendship' } }])
+  expect(nextStages(realPichu, 'pikachu')).toEqual([
+    { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } },
+  ])
+})
+
+test('what the plugin cannot do falls back to a level 10 past the one the species was reached at, at least 30', () => {
+  const ice = link(
+    'swinub',
+    [],
+    link(
+      'piloswine',
+      [{ trigger: named('level-up'), min_level: 33 }],
+      link('mamoswine', [{ trigger: named('level-up'), known_move: named('ancient-power') }]),
+    ),
+  )
+  expect(nextStages(ice, 'piloswine')).toEqual([fallback('mamoswine', 43)])
+  const mime = link('mime-jr', [], link('mr-mime', [{ trigger: named('level-up'), known_move: named('mimic') }]))
+  expect(nextStages(mime, 'mime-jr')).toEqual([fallback('mr-mime', 30)])
+})
+
+test('Shedinja comes along with Ninjask; the time of day names Lycanroc', () => {
+  const bug = link(
+    'nincada',
+    [],
+    link('ninjask', [{ trigger: named('level-up'), min_level: 20 }]),
+    link('shedinja', [{ trigger: named('shed') }]),
+  )
+  expect(nextStages(bug, 'nincada')).toEqual([lv('ninjask', 20), { species: 'shedinja', way: { kind: 'shed' } }])
+  const dog = link(
+    'rockruff',
+    [],
+    link('lycanroc', [
+      { trigger: named('level-up'), min_level: 25, time_of_day: 'day' },
+      { trigger: named('level-up'), min_level: 25, time_of_day: 'night' },
+    ]),
+  )
+  expect(nextStages(dog, 'rockruff')).toEqual([
+    { species: 'lycanroc', form: 'lycanroc-midday', way: { kind: 'level', level: 25, time: 'day' } },
+    { species: 'lycanroc', form: 'lycanroc-midnight', way: { kind: 'level', level: 25, time: 'night' } },
+  ])
+})
+
+test('the same way in several games is one stage, at the lowest level', () => {
+  const darumaka = link(
+    'darumaka',
+    [],
+    link('darmanitan', [
+      { trigger: named('level-up'), min_level: 35 },
+      { trigger: named('level-up'), min_level: 35 },
+    ]),
+  )
+  expect(nextStages(darumaka, 'darumaka')).toEqual([lv('darmanitan', 35)])
+})
+
+test('what is due: level and time, a held item, friendship time, a party member, never with an Everstone', () => {
+  const base = { level: 20, phase: 'day' as const, togetherMs: 0, party: [], partyTypes: [] }
+  const night = { species: 'lycanroc', way: { kind: 'level', level: 25, time: 'night' } } as Stage
+  expect(dueStages([night], { ...base, level: 25 })).toEqual([])
+  expect(dueStages([night], { ...base, level: 25, phase: 'night' })).toEqual([night])
+  // Dawn is morning: "day" evolutions happen then too.
+  expect(timeMatches('day', 'dawn')).toBe(true)
+  expect(timeMatches('dusk', 'night')).toBe(false)
+  expect(timeMatches(undefined, 'night')).toBe(true)
+  const claw = { species: 'weavile', way: { kind: 'hold', item: 'razor-claw', time: 'night' } } as Stage
+  expect(dueStages([claw], { ...base, phase: 'night' })).toEqual([])
+  expect(dueStages([claw], { ...base, phase: 'night', heldItem: 'razor-claw' })).toEqual([claw])
+  const love = { species: 'crobat', way: { kind: 'friendship' } } as Stage
+  expect(dueStages([love], { ...base, togetherMs: FRIENDSHIP_MS - 1 })).toEqual([])
+  expect(dueStages([love], { ...base, togetherMs: FRIENDSHIP_MS })).toEqual([love])
+  const fish = { species: 'mantine', way: { kind: 'party', species: 'remoraid' } } as Stage
+  expect(dueStages([fish], { ...base, party: ['mantyke', 'remoraid'] })).toEqual([fish])
+  const panda = { species: 'pangoro', way: { kind: 'level', level: 32, partyType: 'dark' } } as Stage
+  expect(dueStages([panda], { ...base, level: 32 })).toEqual([])
+  expect(dueStages([panda], { ...base, level: 32, partyTypes: ['normal', 'dark'] })).toEqual([panda])
+  // Given items and Shedinja are never due by themselves.
+  const stone = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as Stage
+  expect(dueStages([stone, { species: 'shedinja', way: { kind: 'shed' } }], { ...base, level: 100 })).toEqual([])
+  expect(dueStages([lv('charmeleon', 16)], { ...base, level: 16, heldItem: 'everstone' })).toEqual([])
 })
 
 test('branching evolutions offer every branch with its own level', () => {
-  expect(nextStages(eevee, 'eevee')).toEqual([
-    { species: 'vaporeon', level: 30 },
-    { species: 'espeon', level: 30 },
-  ])
-  expect(nextStages(wurmple, 'wurmple')).toEqual([
-    { species: 'silcoon', level: 7 },
-    { species: 'cascoon', level: 7 },
-  ])
+  expect(nextStages(eevee, 'eevee')).toEqual([fallback('vaporeon', 30), fallback('espeon', 30)])
+  expect(nextStages(wurmple, 'wurmple')).toEqual([lv('silcoon', 7), lv('cascoon', 7)])
 })
 
 // Shapes from PokeAPI's real chains: forms named on each way a species is reached.
@@ -69,41 +227,45 @@ const mimeJr = link(
 const slowpoke = link('slowpoke', [], link('slowbro', [{ min_level: 37 }]), link('slowking', [{ min_level: null }]))
 
 test('a regional form evolves only the way its region does', () => {
-  expect(nextStages(meowth, 'meowth', 'meowth')).toEqual([{ species: 'persian', level: 28 }])
-  expect(nextStages(meowth, 'meowth', 'meowth-galar')).toEqual([{ species: 'perrserker', level: 28 }])
-  expect(nextStages(meowth, 'meowth', 'meowth-alola')).toEqual([
-    { species: 'persian', form: 'persian-alola', level: 30 },
-  ])
+  expect(nextStages(meowth, 'meowth', 'meowth')).toEqual([lv('persian', 28)])
+  expect(nextStages(meowth, 'meowth', 'meowth-galar')).toEqual([lv('perrserker', 28)])
+  expect(nextStages(meowth, 'meowth', 'meowth-alola')).toEqual([fallback('persian', 30, { form: 'persian-alola' })])
   // A form with no evolutions of its own (Gigantamax) evolves as the plain species.
-  expect(nextStages(meowth, 'meowth', 'meowth-gmax')).toEqual([{ species: 'persian', level: 28 }])
+  expect(nextStages(meowth, 'meowth', 'meowth-gmax')).toEqual([lv('persian', 28)])
   expect(nextStages(mimeJr, 'mr-mime', 'mr-mime')).toEqual([])
-  expect(nextStages(mimeJr, 'mr-mime', 'mr-mime-galar')).toEqual([{ species: 'mr-rime', level: 42 }])
+  expect(nextStages(mimeJr, 'mr-mime', 'mr-mime-galar')).toEqual([lv('mr-rime', 42)])
   expect(nextStages(mimeJr, 'mime-jr')).toEqual([
-    { species: 'mr-mime', level: 30 },
-    { species: 'mr-mime', form: 'mr-mime-galar', level: 30 },
+    fallback('mr-mime', 30),
+    fallback('mr-mime', 30, { form: 'mr-mime-galar' }),
   ])
 })
 
-test('a branch with no level evolves alongside its levelled sibling, so neither shuts the other out', () => {
-  expect(nextStages(slowpoke, 'slowpoke')).toEqual([
-    { species: 'slowbro', level: 37 },
-    { species: 'slowking', level: 37 },
-  ])
+test("a branch with no way here falls back to its own level, not its sibling's", () => {
+  expect(nextStages(slowpoke, 'slowpoke')).toEqual([lv('slowbro', 37), fallback('slowking', 30)])
 })
 
 test("the evolved form: the one the games name if it has a sprite, else the member's own if the species has it", () => {
   expect(pokeapiForm('meowth', 'galar')).toBe('meowth-galar')
   expect(pokeapiForm('pikachu', 'regular')).toBe('pikachu')
   const raichu = ['regular', 'alola']
-  expect(evolvedForm({ species: 'raichu', level: 30, form: 'raichu-alola' }, 'regular', raichu)).toBe('alola')
-  expect(evolvedForm({ species: 'lycanroc', level: 25, form: 'lycanroc-midday' }, 'regular', ['regular', 'dusk'])).toBe(
-    'regular',
-  )
-  expect(evolvedForm({ species: 'raichu', level: 30 }, 'gmax', raichu)).toBe('regular')
-  expect(evolvedForm({ species: 'ninetales', level: 30 }, 'alola', ['regular', 'alola'])).toBe('alola')
+  expect(
+    evolvedForm({ species: 'raichu', form: 'raichu-alola', way: { kind: 'level', level: 30 } }, 'regular', raichu),
+  ).toBe('alola')
+  expect(
+    evolvedForm({ species: 'lycanroc', form: 'lycanroc-midday', way: { kind: 'level', level: 25 } }, 'regular', [
+      'regular',
+      'dusk',
+    ]),
+  ).toBe('regular')
+  expect(evolvedForm(lv('raichu', 30), 'gmax', raichu)).toBe('regular')
+  expect(evolvedForm(lv('ninetales', 30), 'alola', ['regular', 'alola'])).toBe('alola')
   const darmanitan = ['regular', 'galar', 'galar-zen', 'zen']
   expect(
-    evolvedForm({ species: 'darmanitan', level: 35, form: 'darmanitan-galar-standard' }, 'galar', darmanitan),
+    evolvedForm(
+      { species: 'darmanitan', form: 'darmanitan-galar-standard', way: { kind: 'level', level: 35 } },
+      'galar',
+      darmanitan,
+    ),
   ).toBe('galar')
 })
 
@@ -139,13 +301,11 @@ test('gender: single-gender species always have theirs, others keep theirs or ro
 
 test('a gender-only evolution waits for the right gender; a cloak decides only the female line', () => {
   const forms = ['sandy', 'trash']
-  expect(nextStages(burmy, 'burmy', 'burmy', 'female', forms)).toEqual([
-    { species: 'wormadam', form: 'wormadam-plant', level: 20 },
-  ])
-  expect(nextStages(burmy, 'burmy', 'burmy', 'male', forms)).toEqual([{ species: 'mothim', level: 20 }])
+  expect(nextStages(burmy, 'burmy', 'burmy', 'female', forms)).toEqual([lv('wormadam', 20, { form: 'wormadam-plant' })])
+  expect(nextStages(burmy, 'burmy', 'burmy', 'male', forms)).toEqual([lv('mothim', 20)])
   expect(nextStages(burmy, 'burmy', 'burmy-sandy', 'female', forms)).toEqual([
-    { species: 'wormadam', form: 'wormadam-sandy', level: 20 },
+    lv('wormadam', 20, { form: 'wormadam-sandy' }),
   ])
-  expect(nextStages(burmy, 'burmy', 'burmy-sandy', 'male', forms)).toEqual([{ species: 'mothim', level: 20 }])
+  expect(nextStages(burmy, 'burmy', 'burmy-sandy', 'male', forms)).toEqual([lv('mothim', 20)])
   expect(nextStages(burmy, 'burmy', 'burmy', null, forms)).toEqual([])
 })
