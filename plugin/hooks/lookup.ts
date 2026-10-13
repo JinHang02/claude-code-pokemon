@@ -1,3 +1,5 @@
+import { ITEMS } from './items'
+import type { Item } from './items'
 import { titleCase } from './save'
 
 export type Species = { name: string; forms: string[] }
@@ -119,6 +121,28 @@ export function lookup(list: Species[], words: string[]): Lookup {
   if (pick) return { pick }
   const guess = closestPick(list, words)
   return typeof guess === 'string' ? { error: guess } : { guess }
+}
+
+// The item a give most likely meant when none is spelled exactly (`thunderstone`, `upgrade`, `fire ston`): a run of
+// words at the front or the back a near miss of an item's id or name, the closest one, and the words left over for
+// the Pokémon. Null when nothing is close.
+export function guessItem(words: string[]): { item: Item; rest: string[] } | null {
+  let best: { item: Item; rest: string[]; d: number } | null = null
+  for (let n = words.length; n > 0; n--) {
+    const splits: [string[], string[]][] = [
+      [words.slice(0, n), words.slice(n)],
+      [words.slice(words.length - n), words.slice(0, words.length - n)],
+    ]
+    for (const [run, rest] of splits) {
+      const wanted = run.join('-')
+      for (const item of ITEMS)
+        for (const name of new Set([item.id, slug(item.name)])) {
+          const d = distance(wanted, name, typos(wanted))
+          if (d <= typos(wanted) && (!best || d < best.d)) best = { item, rest, d }
+        }
+    }
+  }
+  return best && { item: best.item, rest: best.rest }
 }
 
 // The words that pick `p` exactly: "charizard mega x".

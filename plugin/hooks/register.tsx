@@ -11,7 +11,7 @@ import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withA
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
 import type { Act, MartProps } from './mart'
-import { lookup, randomPick, slug, spell } from './lookup'
+import { guessItem, lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -629,8 +629,14 @@ async function depositMember($: EngineInterface, query: string): Promise<string>
 
 // `/pokemon give <item> <name>`: a stone or trade item evolves it now; a hold item is held; a Rare Candy is a level.
 async function giveItem($: EngineInterface, args: string): Promise<string> {
-  const found = splitGive(slug(args).split('-').filter(Boolean))
-  if (!found) return 'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.'
+  const words = slug(args).split('-').filter(Boolean)
+  const found = splitGive(words)
+  if (!found) {
+    const guess = guessItem(words)
+    return guess
+      ? `Did you mean ${guess.item.name}? Run /pokemon give ${guess.item.id} ${guess.rest.join(' ') || '<pokemon>'}`
+      : 'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.'
+  }
   const { item, rest } = found
   const who = rest.join(' ')
   if (!who) return `Give ${withArticle(item.name)} to whom? /pokemon give ${item.id} <pokemon>`

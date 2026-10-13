@@ -1365,6 +1365,25 @@ test('give refuses what it cannot do, and changes nothing', async ($, on) => {
   expect(JSON.stringify(w.saveNow())).toBe(before)
 })
 
+test('an item name a little off gets a suggestion that keeps the Pokémon; one far off gets the usual help', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })] })
+  await cmd($, 'pokemon', 'party')
+  const before = JSON.stringify(w.saveNow())
+  expect(await cmd($, 'pokemon', 'give thunderstone pikachu')).toBe(
+    'Did you mean Thunder Stone? Run /pokemon give thunder-stone pikachu',
+  )
+  expect(await cmd($, 'pokemon', 'give upgrade porygon')).toBe(
+    'Did you mean Up-Grade? Run /pokemon give up-grade porygon',
+  )
+  expect(await cmd($, 'pokemon', 'give fire ston eevee')).toBe(
+    'Did you mean Fire Stone? Run /pokemon give fire-stone eevee',
+  )
+  expect(await cmd($, 'pokemon', 'give banana pikachu')).toBe(
+    'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.',
+  )
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+})
+
 test('holding: one item each, a new one sends the old back to the Bag; take puts it back', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),

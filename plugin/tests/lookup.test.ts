@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { lookup, randomPick, slug, spell } from '../hooks/lookup'
+import { guessItem, lookup, randomPick, slug, spell } from '../hooks/lookup'
 
 const LIST = [
   { name: 'charizard', forms: ['regular', 'gmax', 'mega-x', 'mega-y'] },
@@ -61,4 +61,18 @@ test('random picks are usually the regular form, sometimes another', () => {
   const list = [{ name: 'vulpix', forms: ['regular', 'alola'] }]
   expect(randomPick(list, () => 0.5)).toEqual({ dex: 0, species: 'vulpix', form: 'regular' })
   expect(randomPick(list, () => 0.01)).toEqual({ dex: 0, species: 'vulpix', form: 'alola' })
+})
+
+test('an item name a little off is guessed, with the words left for the Pokémon; one far off is not', () => {
+  const guess = (text: string) => {
+    const found = guessItem(slug(text).split('-'))
+    return found && [found.item.id, found.rest.join(' ')]
+  }
+  expect(guess('thunderstone pikachu')).toEqual(['thunder-stone', 'pikachu'])
+  expect(guess('upgrade porygon')).toEqual(['up-grade', 'porygon'])
+  expect(guess('fire ston eevee')).toEqual(['fire-stone', 'eevee'])
+  expect(guess('eevee watr stone')).toEqual(['water-stone', 'eevee'])
+  expect(guess('kings rok slowpoke')).toEqual(['kings-rock', 'slowpoke'])
+  expect(guess('banana pikachu')).toBeNull()
+  expect(guess('eevee')).toBeNull()
 })
