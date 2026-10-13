@@ -1396,6 +1396,11 @@ test('the everstone stays free: same words as ever, and it never enters the Bag'
   expect(await cmd($, 'pokemon', 'give everstone pikachu')).toBe("Pikachu holds an everstone: it won't evolve.")
   expect(await cmd($, 'pokemon', 'take pikachu')).toBe('Pikachu dropped its everstone and can evolve again.')
   expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1 })
+  await cmd($, 'pokemon', 'everstone pikachu')
+  expect(await cmd($, 'pokemon', 'give lucky-egg pikachu')).toBe(
+    'Pikachu is now holding a Lucky Egg. It dropped its everstone and can evolve again.',
+  )
+  expect(w.saveNow().bag).toBeUndefined()
 })
 
 test('a Rare Candy is one level, and the evolution that level brings', async ($, on) => {
@@ -1560,7 +1565,7 @@ test('the ₽ button opens the PokéMart; Buy takes ₽ and fills the Bag; not e
   expect(await martOf(band)).toMatchObject({ balance: 0, message: 'Bought a Fire Stone!', isError: false })
   await clickMart(band, 'buy')
   expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
-  expect(await martOf(band)).toMatchObject({ message: 'Not enough ₽: ₽3,000 more to go.', isError: true })
+  expect(await martOf(band)).toMatchObject({ message: 'Not enough ₽: 3,000 more to go.', isError: true })
   await band.key({ key: 'down', in: 'mart' })
   await band.key({ key: '+', in: 'mart' })
   expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 1, top: 0, qty: 2 })

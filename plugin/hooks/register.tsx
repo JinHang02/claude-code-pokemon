@@ -675,7 +675,11 @@ async function holdItem($: EngineInterface, query: string, item: Item, command: 
       after = back
     }
     text = isFree ? `${name} holds an everstone: it won't evolve.` : `${name} is now holding ${withArticle(item.name)}.`
-    if (old) text += old === 'everstone' ? ' It dropped its everstone.' : ` Its ${itemName(old)} went back to your Bag.`
+    if (old)
+      text +=
+        old === 'everstone'
+          ? ' It dropped its everstone and can evolve again.'
+          : ` Its ${itemName(old)} went back to your Bag.`
     return { ...after, party: after.party.map((p, i) => (i === at ? { ...p, heldItem: item.id } : p)) }
   })
   // A held item may be what it was waiting for.

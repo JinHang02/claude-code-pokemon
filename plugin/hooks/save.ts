@@ -352,7 +352,8 @@ export function buy(save: Save, cash: number, item: Item, qty: number): { save: 
   const left = balanceOf(save, cash)
   if (!room) return { save, text: `Your Bag can't hold more ${item.name}.`, isError: true }
   if (qty > room) return { save, text: `Your Bag has room for ${room} more.`, isError: true }
-  if (left < cost) return { save, text: `Not enough ₽: ${formatMoney(cost - left)} more to go.`, isError: true }
+  if (left < cost)
+    return { save, text: `Not enough ₽: ${(cost - left).toLocaleString('en-US')} more to go.`, isError: true }
   return {
     save: { ...save, spent: (save.spent ?? 0) + cost, bag: { ...save.bag, [item.id]: have + qty } },
     text: qty === 1 ? `Bought ${withArticle(item.name)}!` : `Bought ${qty} × ${item.name}!`,

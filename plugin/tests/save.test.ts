@@ -325,7 +325,7 @@ test("buying: the price comes off, the Bag fills to 999, and nothing changes whe
   expect(balanceOf(one.save, 0)).toBe(0)
   expect(buy(one.save, 0, stoneItem, 1)).toEqual({
     save: one.save,
-    text: 'Not enough ₽: ₽3,000 more to go.',
+    text: 'Not enough ₽: 3,000 more to go.',
     isError: true,
   })
   for (const qty of [0, -1, 1.5, NaN]) {
