@@ -17,7 +17,8 @@ export type Member = {
   next?: Stage[]
   // The one item it holds, as in the games: an Everstone stops it evolving.
   heldItem?: string
-  // Time in the party while Claude Code was open: friendship evolutions come from it.
+  // Time in the party while Claude Code was open: friendship evolutions come from it. Kept under its own store key
+  // (`Together`) and filled in by withTogether for showing and deciding; never stored in the save.
   togetherMs?: number
   // From its species' ratio, as in the games; null for a genderless one, absent until looked up.
   gender?: 'female' | 'male' | null
@@ -47,8 +48,6 @@ export type Save = {
   spent?: number
   earned?: number
   foldedMoney?: Record<string, number>
-  // When time together was last added, by any session.
-  togetherAt?: number
 }
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
@@ -57,6 +56,12 @@ export type Ledger = { at: number; xp: Record<string, number>; money: number }
 
 // Store keys of session ledgers start with this.
 export const LEDGER = 'xp:'
+
+// Time together by member id (so it stays through evolution, deposit and withdraw), under its own store key: the
+// heartbeat writes only this, never the save, so it can't undo a purchase, a catch or an evolution another session
+// saved meanwhile. `at`: when time was last added, by any session; 0 before the first beat.
+export type Together = { at: number; ms: Record<string, number> }
+export const TOGETHER = 'together'
 
 export const MAX_PARTY = 3
 export const XP = { reply: 2, tests: 5, commit: 10 }
@@ -130,17 +135,17 @@ function loadMember(raw: unknown, at: number): Member | null {
       : raw.hasEverstone === true
         ? { heldItem: 'everstone' }
         : {}),
-    ...(count(raw.togetherMs) ? { togetherMs: count(raw.togetherMs) } : {}),
     ...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === null ? { gender: raw.gender } : {}),
     ...(raw.isCaught === true ? { isCaught: true as const } : {}),
   }
 }
 
-// A stored save, with anything malformed replaced by its default, field by field.
-export function loadSave(raw: unknown): Save {
-  const s = isObject(raw) ? raw : {}
+// A stored save's party and PC box, and the time together its members kept before the `together` key, by the ids
+// they load with.
+function loadMembers(s: Record<string, unknown>): { party: Member[]; box: Member[]; ms: Record<string, number> } {
   // Ids are unique across party and box: a repeat becomes `<id>-<slot>`, then `-2`, `-3`... until free.
   const ids = new Set<string>()
+  const ms = tally()
   const load = (raw: unknown, at: number) => {
     const member = loadMember(raw, at)
     if (!member) return null
@@ -148,6 +153,7 @@ export function loadSave(raw: unknown): Save {
     if (ids.has(id)) id = `${member.id}-${at}`
     for (let n = 2; ids.has(id); n++) id = `${member.id}-${at}-${n}`
     ids.add(id)
+    if (isObject(raw) && count(raw.togetherMs)) ms[id] = count(raw.togetherMs)
     return id === member.id ? member : { ...member, id }
   }
   const party: Member[] = []
@@ -163,6 +169,14 @@ export function loadSave(raw: unknown): Save {
     if (member) box.push(member)
   }
   box.push(...overflow)
+  return { party, box, ms }
+}
+
+// A stored save, with anything malformed replaced by its default, field by field. Time together kept in it by an
+// earlier version is left out: it lives under its own key (togetherOf moves it there).
+export function loadSave(raw: unknown): Save {
+  const s = isObject(raw) ? raw : {}
+  const { party, box } = loadMembers(s)
   const folded = Array.isArray(s.folded) ? s.folded.filter(isLedgerKey) : []
   const foldedXp: Record<string, Record<string, number>> = {}
   for (const [key, xp] of Object.entries(isObject(s.foldedXp) ? s.foldedXp : {}))
@@ -195,8 +209,22 @@ export function loadSave(raw: unknown): Save {
     ...(count(s.spent) ? { spent: count(s.spent) } : {}),
     ...(count(s.earned) ? { earned: count(s.earned) } : {}),
     ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
-    ...(count(s.togetherAt) ? { togetherAt: count(s.togetherAt) } : {}),
   }
+}
+
+// The stored time together, with anything malformed dropped.
+export function loadTogether(raw: unknown): Together {
+  const t = isObject(raw) ? raw : {}
+  const ms = tally()
+  for (const [id, n] of Object.entries(isObject(t.ms) ? t.ms : {})) if (count(n)) ms[id] = count(n)
+  return { at: count(t.at), ms }
+}
+
+// The time together a save from before the `together` key kept itself (each member's `togetherMs` and the save's
+// `togetherAt`): what seeds the key.
+export function togetherOf(raw: unknown): Together {
+  const s = isObject(raw) ? raw : {}
+  return { at: count(s.togetherAt), ms: loadMembers(s).ms }
 }
 
 const isLedgerKey = (k: unknown): k is string => typeof k === 'string' && k.startsWith(LEDGER)
@@ -361,17 +389,33 @@ export function buy(save: Save, cash: number, item: Item, qty: number): { save: 
   }
 }
 
-// Time together since the last beat (from any session), capped, added to each party member.
-export function addTogether(save: Save, now: number): Save {
-  const gap = save.togetherAt === undefined ? 0 : Math.max(0, Math.min(now - save.togetherAt, TOGETHER_CAP_MS))
-  const party = gap
-    ? save.party.map(m => ({
-        ...m,
-        togetherMs: (m.togetherMs ?? 0) + Math.round(m.heldItem === 'soothe-bell' ? gap * 1.5 : gap),
-      }))
-    : save.party
-  return { ...save, party, togetherAt: now }
+// Time together since the last beat (from any session), capped, added to each member of the save's party (a Soothe
+// Bell holder's ×1.5). Time of a member no longer in the party or the PC box (released) is dropped.
+export function addTogether(t: Together, save: Save, now: number): Together {
+  const gap = t.at ? Math.max(0, Math.min(now - t.at, TOGETHER_CAP_MS)) : 0
+  const kept = new Set([...save.party, ...(save.box ?? [])].map(m => m.id))
+  const ms = tally()
+  for (const [id, n] of Object.entries(t.ms)) if (kept.has(id)) ms[id] = n
+  if (gap)
+    for (const m of save.party)
+      ms[m.id] =
+        (Object.hasOwn(ms, m.id) ? (ms[m.id] ?? 0) : 0) + Math.round(m.heldItem === 'soothe-bell' ? gap * 1.5 : gap)
+  return { at: now, ms }
 }
+
+// A member with its time together from `ms` (by member id), for showing and deciding.
+export function withTime(m: Member, ms: Record<string, number>): Member {
+  const { togetherMs: _, ...rest } = m
+  const n = Object.hasOwn(ms, m.id) ? (ms[m.id] ?? 0) : 0
+  return n ? { ...rest, togetherMs: n } : rest
+}
+
+// The save with every member's time together: for showing and deciding, never storing.
+export const withTogether = (save: Save, ms: Record<string, number>): Save => ({
+  ...save,
+  party: save.party.map(m => withTime(m, ms)),
+  ...(save.box ? { box: save.box.map(m => withTime(m, ms)) } : {}),
+})
 
 // "1y 3d 2h 7m": from the largest unit that isn't zero, down to minutes.
 export function formatSpan(ms: number): string {

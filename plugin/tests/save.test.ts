@@ -19,6 +19,7 @@ import {
   level,
   loadLedger,
   loadSave,
+  loadTogether,
   putInBag,
   recordCaught,
   recordSeen,
@@ -27,7 +28,9 @@ import {
   storeCaught,
   takeFromBag,
   TOGETHER_CAP_MS,
+  togetherOf,
   withExtra,
+  withTogether,
   xpForLevel,
 } from '../hooks/save'
 import type { Member } from '../hooks/save'
@@ -270,25 +273,33 @@ test('a 1.2.0 save loads: the everstone is held, cached levels are looked up aga
   expect(balanceOf(old, 0)).toBe(STARTING_MONEY)
 })
 
-test('next stages, held items, time together and the Bag load only when well formed', () => {
-  const s = loadSave({
+test('next stages, held items and the Bag load only when well formed; time together stays out of the save', () => {
+  const raw = {
     party: [
       { id: 'a', species: 'pikachu', form: 'regular', next: [stone], heldItem: 'lucky-egg', togetherMs: 5000 },
       { id: 'b', species: 'eevee', form: 'regular', next: [{ species: 'x', way: { kind: 'teleport' } }] },
       { id: 'c', species: 'onix', form: 'regular', heldItem: 'gimmighoul-coin', togetherMs: -4 },
     ],
+    box: [{ id: 'a', species: 'pichu', form: 'regular', togetherMs: 7000 }],
     bag: { 'fire-stone': 2, 'rare-candy': 1000, everstone: 1, constructor: 3, 'ice-stone': 0.5 },
     spent: 300,
     earned: 50,
     togetherAt: 99,
-  })
-  expect(s.party[0]).toMatchObject({ next: [stone], heldItem: 'lucky-egg', togetherMs: 5000 })
+  }
+  const s = loadSave(raw)
+  expect(s.party[0]).toMatchObject({ next: [stone], heldItem: 'lucky-egg' })
   // One unreadable stage: the whole list is looked up again.
   expect(s.party[1]?.next).toBeUndefined()
   expect('heldItem' in (s.party[2] ?? {})).toBe(false)
-  expect('togetherMs' in (s.party[2] ?? {})).toBe(false)
   expect(s.bag).toEqual({ 'fire-stone': 2, 'rare-candy': 999 })
-  expect([s.spent, s.earned, s.togetherAt]).toEqual([300, 50, 99])
+  expect([s.spent, s.earned]).toEqual([300, 50])
+  // A save from before the `together` key: its time moves there, by the ids its members load with.
+  expect(JSON.stringify(s)).not.toContain('together')
+  expect(s.box?.[0]?.id).toBe('a-0')
+  expect(togetherOf(raw)).toEqual({ at: 99, ms: { a: 5000, 'a-0': 7000 } })
+  expect(togetherOf(undefined)).toEqual({ at: 0, ms: {} })
+  expect(loadTogether({ at: -1, ms: { a: 60_000, b: 'x', c: -5, d: 1.5 } })).toEqual({ at: 0, ms: { a: 60_000, d: 1 } })
+  expect(loadTogether(null)).toEqual({ at: 0, ms: {} })
 })
 
 test('earning: ₽ once per event, XP per member, a Lucky Egg holder gets half again', () => {
@@ -350,16 +361,24 @@ test('the Bag: taking one out removes an emptied item; putting one back stops at
 test('time together: the gap since the last beat, capped, a Soothe Bell ×1.5, the same stamp for every session', () => {
   const a = { id: 'a', species: 'pichu', form: 'regular', isShiny: false, xp: 0, evolutions: 0 }
   const b = { ...a, id: 'b', heldItem: 'soothe-bell' }
-  const first = addTogether(loadSave({ party: [a, b] }), 1_000)
-  expect(first.togetherAt).toBe(1_000)
-  expect(first.party.map(m => m.togetherMs ?? 0)).toEqual([0, 0])
-  const next = addTogether(first, 61_000)
-  expect(next.party.map(m => m.togetherMs)).toEqual([60_000, 90_000])
+  const save = loadSave({ party: [a, b], box: [{ ...a, id: 'c' }] })
+  const first = addTogether(loadTogether(undefined), save, 1_000)
+  expect(first).toEqual({ at: 1_000, ms: {} })
+  const next = addTogether(first, save, 61_000)
+  expect(next.ms).toEqual({ a: 60_000, b: 90_000 })
   // A laptop closed for a weekend adds the cap, not the weekend.
-  const back = addTogether(next, 61_000 + 3 * 86_400_000)
-  expect(back.party[0]?.togetherMs).toBe(60_000 + TOGETHER_CAP_MS)
+  const back = addTogether(next, save, 61_000 + 3 * 86_400_000)
+  expect(back.ms.a).toBe(60_000 + TOGETHER_CAP_MS)
   // A second session beating just after adds only the moment since.
-  expect(addTogether(back, 61_000 + 3 * 86_400_000 + 1_000).party[0]?.togetherMs).toBe(60_000 + TOGETHER_CAP_MS + 1_000)
+  expect(addTogether(back, save, 61_000 + 3 * 86_400_000 + 1_000).ms.a).toBe(60_000 + TOGETHER_CAP_MS + 1_000)
+  // The PC box keeps its time without adding to it; a member gone from both (released) is dropped.
+  const kept = addTogether({ at: 1_000, ms: { a: 5, c: 7, gone: 9 } }, save, 2_000)
+  expect(kept.ms).toEqual({ a: 1_005, b: 1_500, c: 7 })
+  // Shown on the members, never stored in the save.
+  const shown = withTogether(save, kept.ms)
+  expect(shown.party.map(m => m.togetherMs)).toEqual([1_005, 1_500])
+  expect(shown.box?.[0]?.togetherMs).toBe(7)
+  expect(withTogether(shown, {}).party[0]).toEqual(save.party[0])
   expect(formatSpan(((365 + 3) * 24 * 60 + 2 * 60 + 7) * 60_000 + 59_000)).toBe('1y 3d 2h 7m')
   expect(formatSpan(30_000)).toBe('0m')
   expect(formatSpan(2 * 60 * 60_000)).toBe('2h')
@@ -392,10 +411,13 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
   expect(evolveLevel(m({ next: [stone, { species: 'x', way: { kind: 'level', level: 40 } }] }))).toBe(40)
   expect(evolveLevel(m({ next: [stone] }))).toBeNull()
   expect(evolveLevel(m({}))).toBeUndefined()
-  const s = loadSave({
-    party: [m({ heldItem: 'soothe-bell', togetherMs: 2 * 3_600_000, next: [stone] })],
-    bag: { 'thunder-stone': 1, 'fire-stone': 2, 'metal-coat': 1, 'rare-candy': 3 },
-  })
+  const s = withTogether(
+    loadSave({
+      party: [m({ heldItem: 'soothe-bell', next: [stone] })],
+      bag: { 'thunder-stone': 1, 'fire-stone': 2, 'metal-coat': 1, 'rare-candy': 3 },
+    }),
+    { x: 2 * 3_600_000 },
+  )
   expect(formatParty(s)).toContain('Eevee  Lv 1')
   expect(formatParty(s)).toContain('together 2h')
   expect(formatParty(s)).toContain('holds a Soothe Bell')

@@ -80,12 +80,13 @@ PATHS.forEach((p, n) =>
       if (w.kind === 'level' && w.partyType) party.push(member('umbreon'))
       if (w.kind === 'shed') start.xp = xpForLevel(p.siblingLevel ?? 20) - 5
       if (w.kind === 'item' || w.kind === 'hold') save.bag = { [w.item]: 1 }
-      if (w.kind === 'friendship') {
-        start.togetherMs = FRIENDSHIP_MS - 30_000
-        save.togetherAt = now
-      }
+      // Time together lives under its own store key, by member id.
+      const together = { at: now, ms: { [start.id]: FRIENDSHIP_MS - 30_000 } }
       if (w.kind === 'party') party.push(member(w.species))
-      const env = await begin($, on, save, undefined, undefined, net(now))
+      const env = await begin($, on, save, undefined, undefined, {
+        ...net(now),
+        ...(w.kind === 'friendship' ? { keys: { together } } : {}),
+      })
       const mine = () => env.saveNow().party.find(m => m.id === start.id)
       const evolved = () => mine()?.species !== p.from
       // A command at a time, for background work (an evolution's fetches) to land.

@@ -34,6 +34,7 @@ import {
   LEDGER,
   loadLedger,
   loadSave,
+  loadTogether,
   MAX_LEVEL,
   MAX_PARTY,
   MONEY_PER_XP,
@@ -46,7 +47,11 @@ import {
   takeFromBag,
   TIME_TEXT,
   titleCase,
+  TOGETHER,
+  togetherOf,
   withExtra,
+  withTime,
+  withTogether,
   XP,
   xpForLevel,
 } from './save'
@@ -90,7 +95,8 @@ const SHINY_ODDS = 1 / 32
 const LIST_MAX_AGE_MS = 30 * 24 * 60 * 60_000
 // How often a session picks up what other sessions saved (and retries a party it couldn't draw).
 const SYNC_MS = 10_000
-// How often time together is added, in every session; the shared stamp keeps two sessions from counting it twice.
+// How often time together is added, in every session; the shared stamp in its store key keeps two sessions from
+// counting it twice.
 const TOGETHER_EVERY_MS = 60_000
 // A download taking longer than this has failed.
 const FETCH_TIMEOUT_MS = 20_000
@@ -112,8 +118,12 @@ let cash = 0
 // ₽ just earned, shown under the button for a moment; each earning's number, so only the latest clears it.
 let plus = 0
 let earnings = 0
-// The save as the party stands: XP from every session's ledger included. For showing and deciding only.
-const view = () => withExtra(save, extra)
+// Time together by member id, from its own store key.
+let times = loadTogether(undefined).ms
+// A save as the party stands: XP from every session's ledger and time together included. For showing and deciding
+// only.
+const viewOf = (s: Save) => withTogether(withExtra(s, extra), times)
+const view = () => viewOf(save)
 // The ledgers' XP and ₽ not yet folded into the save, counted against the save's own marks.
 function countLedgers(ledgers: Record<string, Ledger>) {
   extra = extraXp(ledgers, save.folded, save.foldedXp)
@@ -334,7 +344,9 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 // and adopts the result, so sessions running side by side never undo each other.
 function mutate($: EngineInterface, change: (s: Save) => Save) {
   return queued(async () => {
-    save = change(loadSave(await $.store.get('save')))
+    const raw = await $.store.get('save')
+    await seedTogether($, raw)
+    save = change(loadSave(raw))
     await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
     countLedgers(await readLedgers($))
@@ -352,6 +364,7 @@ async function sync($: EngineInterface) {
     isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
     save = latest
     countLedgers(await readLedgers($))
+    times = loadTogether(await $.store.get(TOGETHER)).ms
   })
   if (isNewParty) await refreshParty($)
   if (isNewLook) $.ui.invalidate('ui.render')
@@ -405,12 +418,34 @@ async function retry($: EngineInterface) {
   else if (isPartyStale) await refreshParty($)
 }
 
-// Time together for the party, then any evolution it (or the hour) has brought.
+// A save from before the `together` key kept time together in itself (`raw`, read just before): it seeds the key
+// once, before this session writes the save (which drops it) or adds time. A key already there was seeded (or
+// beaten into) by another session: it is left alone.
+let isSeeded = false
+async function seedTogether($: EngineInterface, raw: unknown) {
+  if (isSeeded) return
+  if ((await $.store.get(TOGETHER)) === undefined) await $.store.set(TOGETHER, togetherOf(raw))
+  isSeeded = true
+}
+
+// Time together for the party, then any evolution it (or the hour) has brought. Only the `together` key is written,
+// never the save: a purchase, catch or evolution another session saves meanwhile can't be undone by it. Two sessions
+// beating at the same moment may lose a minute between them, nothing more.
 async function together($: EngineInterface) {
   if (save.isOff || !save.party.length) return
   const now = await $.clock.now()
-  await mutate($, s => (s.isOff ? s : addTogether(s, now)))
-  await learnEvolutions($)
+  let isBeat = false
+  await queued(async () => {
+    const raw = await $.store.get('save')
+    await seedTogether($, raw)
+    const latest = loadSave(raw)
+    if (latest.isOff || !latest.party.length) return
+    const added = addTogether(loadTogether(await $.store.get(TOGETHER)), latest, now)
+    await $.store.set(TOGETHER, added)
+    times = added.ms
+    isBeat = true
+  })
+  if (isBeat) await learnEvolutions($)
 }
 
 // Fetches every party member's sprite and publishes the party for drawing. A refresh overtaken by a newer
@@ -547,7 +582,7 @@ function findMember(s: Save, query: string, command: string): number | string {
   const words = slug(query).split('-').filter(Boolean)
   const found = words.length ? lookup(namesOf(s.party), words) : { error: '' }
   if ('guess' in found) return didYouMean(found.guess, command)
-  return `No ${query.trim()} in your party. ${formatParty(withExtra(s, extra))}`
+  return `No ${query.trim()} in your party. ${formatParty(viewOf(s))}`
 }
 
 // `/pokemon <name>` for a Pokémon in the PC box and not the party: it leads, and the old lead goes into the box.
@@ -965,7 +1000,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
       ? options
       : given
         ? byItem.filter(s => timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase))
-        : dueFor({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, context)
+        : dueFor(withTime({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, times), context)
     // A preview shows any branch; a real evolution takes this Pokémon's own.
     const next = isPreview ? allowed[Math.floor(Math.random() * allowed.length)] : chooseStage(member.id, allowed)
     if (!next) {
@@ -982,7 +1017,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
           : `${name} can't use ${withArticle(itemName(given))}.`
       }
       return options.length
-        ? `${name} ${evolvesText({ ...member, next: stages })}.`
+        ? `${name} ${evolvesText(withTime({ ...member, next: stages }, times))}.`
         : `${name} doesn't evolve any further.`
     }
     const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
@@ -1481,8 +1516,11 @@ async function load($: EngineInterface) {
     const fresh = `${LEDGER}${newId()}${newId()}`
     ledgerKey = (await update($, ledger, key => key ?? fresh)) ?? fresh
     await queued(async () => {
-      save = loadSave(await $.store.get('save'))
+      const raw = await $.store.get('save')
+      await seedTogether($, raw)
+      save = loadSave(raw)
       countLedgers(await readLedgers($))
+      times = loadTogether(await $.store.get(TOGETHER)).ms
     })
   } catch (err) {
     await report($, err)

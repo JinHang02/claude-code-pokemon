@@ -3,7 +3,7 @@ import type { On } from 'claude-code'
 import { expect, mock } from 'claude-code/testing'
 
 import type { Stage } from '../hooks/evolution'
-import type { Member, Save } from '../hooks/save'
+import type { Member, Save, Together } from '../hooks/save'
 
 export const ART = '\x1b[38;2;255;0;0m\x1b[48;2;0;0;255m▀\x1b[0m\x1b[38;2;0;255;0m▄\n\x1b[38;2;255;0;0m█\x1b[0m '
 export const LIST = [
@@ -194,7 +194,8 @@ export const hourAt = (hour: number) => ((((hour - offsetHours) % 24) + 24) % 24
 
 // What the fake network and store do: go offline, stall every download, serve another species list, refuse reads.
 // `sprites`: art by sprite file, where a test gives one its own. `chains`, `genderRates`, `captureRates`, `types`:
-// PokeAPI as a test wants it, over the made-up defaults. `now`: where the clock starts.
+// PokeAPI as a test wants it, over the made-up defaults. `now`: where the clock starts. `keys`: other store keys, as
+// earlier sessions left them (`together`). `beforeSet`: told each key the plugin is about to store, before it lands.
 export type Net = {
   isOnline: boolean
   list: string
@@ -209,6 +210,8 @@ export type Net = {
   captureRates?: Record<string, number>
   types?: Record<string, string[]>
   now?: number
+  keys?: Record<string, unknown>
+  beforeSet?: (key: string) => void
 }
 
 // The engine around the plugin: a fake network, store, clock zone and UI calls; resolves the store and toasts.
@@ -241,7 +244,10 @@ export function world(
     files.set(e.path, e.text)
     return { value: undefined }
   })
-  const store = new Map<string, unknown>(saved ? [['save', saved]] : [])
+  const store = new Map<string, unknown>([
+    ...(saved ? [['save', saved] as const] : []),
+    ...Object.entries(net.keys ?? {}),
+  ])
   const toasts: string[] = []
   const fetched: string[] = []
   on('http.fetch', async (_$, e) => {
@@ -277,6 +283,7 @@ export function world(
     return { value: store.get(e.key) }
   })
   on('store.set', async (_$, e) => {
+    net.beforeSet?.(e.key)
     store.set(e.key, JSON.parse(JSON.stringify(e.value)))
     return { value: undefined }
   })
@@ -310,7 +317,9 @@ export function world(
       xp: m.xp + ledgers.reduce((sum, [, l]) => sum + ((l as { xp: Record<string, number> }).xp[m.id] ?? 0), 0),
     }))
   }
-  return { saveNow, partyNow, toasts, fetched, files, clock, band, store, net }
+  // Time together by member id, as stored under its own key.
+  const togetherNow = () => (store.get('together') as Together | undefined)?.ms ?? {}
+  return { saveNow, partyNow, togetherNow, toasts, fetched, files, clock, band, store, net }
 }
 
 // The world, then a session starting in it, as a person opening Claude Code.

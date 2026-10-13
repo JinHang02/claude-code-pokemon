@@ -6,6 +6,7 @@ import { martRows } from '../hooks/mart'
 import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
 import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
+import type { Save } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 import {
   answerTools,
@@ -1558,8 +1559,23 @@ test('₽ from two sessions adds up', async ($, on) => {
   expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,500')
 })
 
+// Time together as earlier sessions left it in its own store key: `ms` by member id, last added at `at`.
+const together = (ms: Record<string, number>, at = 0, now?: number): Net => ({
+  isOnline: true,
+  list: JSON.stringify(LIST),
+  ...(now !== undefined ? { now } : {}),
+  keys: { together: { at, ms } },
+})
+
 test('time together brings friendship evolutions: Pichu becomes Pikachu after 10 hours', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pichu', { togetherMs: FRIENDSHIP_MS - 90_000 })] })
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pichu', { id: 'p' })] },
+    ART,
+    undefined,
+    together({ p: FRIENDSHIP_MS - 90_000 }),
+  )
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   expect(await cmd($, 'pokemon', 'party')).toContain('evolves with friendship (♥ 99%, 2m to go)')
   expect(w.saveNow().party[0]?.species).toBe('pichu')
@@ -1570,34 +1586,32 @@ test('time together brings friendship evolutions: Pichu becomes Pikachu after 10
 })
 
 test('Eevee by friendship: Umbreon at night, Espeon by day', async ($, on) => {
-  const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(23) }
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('eevee', { togetherMs: FRIENDSHIP_MS - 30_000 })] },
+    { ...emptySave(), party: [member('eevee', { id: 'e' })] },
     ART,
     undefined,
-    net,
+    together({ e: FRIENDSHIP_MS - 30_000 }, 0, hourAt(23)),
   )
   await w.clock.advance(120_000)
   await until($, () => w.saveNow().party[0]?.species === 'umbreon')
 })
 
 test('Eevee by day becomes Espeon', async ($, on) => {
-  const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(12) }
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('eevee', { togetherMs: FRIENDSHIP_MS - 30_000 })] },
+    { ...emptySave(), party: [member('eevee', { id: 'e' })] },
     ART,
     undefined,
-    net,
+    together({ e: FRIENDSHIP_MS - 30_000 }, 0, hourAt(12)),
   )
   await w.clock.advance(120_000)
   await until($, () => w.saveNow().party[0]?.species === 'espeon')
 })
 
-test('only party time counts: none while off, none in the PC box; a Soothe Bell makes it 1.5 times', async ($, on) => {
+test('only party time counts: none while off, none in the PC box; a Soothe Bell makes it 1.5 times; a long gap counts 2 minutes', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [
@@ -1607,17 +1621,102 @@ test('only party time counts: none while off, none in the PC box; a Soothe Bell 
     box: [member('eevee', { id: 'b' })],
   })
   await w.clock.advance(60_000)
-  const start = w.saveNow().party.map(m => m.togetherMs ?? 0)
+  const start = w.togetherNow()
   await w.clock.advance(120_000)
-  const party = w.saveNow().party
-  expect((party[0]?.togetherMs ?? 0) - (start[0] ?? 0)).toBe(120_000)
-  expect((party[1]?.togetherMs ?? 0) - (start[1] ?? 0)).toBe(180_000)
-  expect(w.saveNow().box?.[0]?.togetherMs).toBeUndefined()
+  expect((w.togetherNow().p ?? 0) - (start.p ?? 0)).toBe(120_000)
+  expect((w.togetherNow().s ?? 0) - (start.s ?? 0)).toBe(180_000)
+  expect(w.togetherNow().b).toBeUndefined()
   await cmd($, 'pokemon', 'off')
-  const resting = w.saveNow().party[0]?.togetherMs
+  const resting = w.togetherNow().p
   await w.clock.advance(300_000)
-  expect(w.saveNow().party[0]?.togetherMs).toBe(resting)
+  expect(w.togetherNow().p).toBe(resting)
   expect(await cmd($, 'pokemon', 'party')).toContain('together 2m')
+  // Back on after five minutes: the first beat adds the cap, not the five minutes.
+  await cmd($, 'pokemon', 'on')
+  await w.clock.advance(60_000)
+  expect(w.togetherNow().p).toBe((resting ?? 0) + 120_000)
+})
+
+test("heartbeats never write the save: another session's purchase landing mid-beat survives, and a minute counts once", async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [], gender: 'male' })] })
+  await cmd($, 'pokemon', 'party')
+  // The first beat sets the shared stamp.
+  await w.clock.advance(60_000)
+  const writes: string[] = []
+  let isArmed = false
+  w.net.beforeSet = key => {
+    writes.push(key)
+    // Another session buys a Fire Stone after this session's next beat read the store, before it writes.
+    if (isArmed && (key === 'save' || key === 'together')) {
+      isArmed = false
+      w.store.set('save', { ...w.saveNow(), bag: { 'fire-stone': 1 }, spent: 3000 })
+    }
+  }
+  await w.clock.advance(59_000)
+  isArmed = true
+  await w.clock.advance(1_000)
+  expect(isArmed).toBe(false)
+  // Another session's beat, 30 s after this one's: this one's next beat adds only the 30 s since.
+  const after = w.store.get('together') as { at: number; ms: Record<string, number> }
+  w.store.set('together', { at: after.at + 30_000, ms: { p: (after.ms.p ?? 0) + 30_000 } })
+  await w.clock.advance(60_000)
+  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+  expect(w.saveNow().spent).toBe(3000)
+  expect(writes.filter(k => k === 'save')).toEqual([])
+  expect(w.togetherNow().p).toBe(120_000)
+  expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽0')
+})
+
+test('a member keeps its time together through evolution, deposit and withdraw; a release drops it', async ($, on) => {
+  const w = await begin(
+    $,
+    on,
+    {
+      ...emptySave(),
+      party: [
+        member('charmander', { id: 'c', xp: xpForLevel(16) - 1 }),
+        member('pikachu', { id: 'p', next: [], gender: 'male' }),
+        member('eevee', { id: 'e', next: [], gender: 'male' }),
+      ],
+      bag: { 'rare-candy': 1 },
+    },
+    ART,
+    undefined,
+    together({ c: 5 * 3_600_000, p: 3_600_000, e: 60_000 }),
+  )
+  expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
+  await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
+  expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
+  await cmd($, 'pokemon', 'deposit charmeleon')
+  await w.clock.advance(120_000)
+  expect(w.togetherNow().c).toBe(5 * 3_600_000)
+  expect(await cmd($, 'pokemon', 'box')).toContain('together 5h')
+  await cmd($, 'pokemon', 'release eevee')
+  await cmd($, 'pokemon', 'add charmeleon')
+  expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
+  await w.clock.advance(60_000)
+  expect(w.togetherNow().e).toBeUndefined()
+  expect(w.togetherNow().c).toBe(5 * 3_600_000 + 60_000)
+})
+
+test('a save from 1.3.0 betas moves its time together to its own key once, before the save is written', async ($, on) => {
+  // As a beta kept it: on each member and the save.
+  const beta = {
+    ...emptySave(),
+    party: [{ ...member('pikachu', { id: 'p' }), togetherMs: 3 * 3_600_000 }],
+    box: [{ ...member('eevee', { id: 'b' }), togetherMs: 60_000 }],
+    togetherAt: 5,
+  }
+  const w = await begin($, on, beta as Save)
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  expect(w.store.get('together')).toEqual({ at: 5, ms: { p: 3 * 3_600_000, b: 60_000 } })
+  expect(JSON.stringify(w.saveNow())).not.toContain('together')
+  expect(await cmd($, 'pokemon', 'party')).toContain('together 3h')
+  // A beta window still writing its old fields changes nothing here.
+  w.store.set('save', { ...w.saveNow(), party: [{ ...w.saveNow().party[0], togetherMs: 9 * 3_600_000 }] })
+  await cmd($, 'pokemon', 'size small')
+  expect(w.togetherNow().p).toBe(3 * 3_600_000)
+  expect(await cmd($, 'pokemon', 'party')).toContain('together 3h')
 })
 
 type Band = {
