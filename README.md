@@ -92,10 +92,10 @@ They evolve **the way they do in the games**: Charmander at Lv 16, Charmeleon at
 
 `/pokemon party` shows how each one evolves, and how long it's been with you.
 
-Love your Pikachu just the way it is? Give it an everstone:
+Love your Charmander just the way it is? Give it an everstone and it won't evolve by itself. A stone or trade item you `/pokemon give` it still works:
 
 ```text
-/pokemon everstone pikachu
+/pokemon everstone charmander
 ```
 
 <br clear="right">
@@ -187,7 +187,7 @@ A Pokémon holds one item at a time, as in the games. A Lucky Egg earns its hold
 | `/pokemon party`                        | Levels, XP to go, and who evolves when                                                                                                                                              |
 | `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                          |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                     |
-| `/pokemon everstone <name>`             | Give (or take back) a free Everstone: it stops that Pokémon's evolution                                                                                                             |
+| `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                         |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                         |
 | `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                       |
 | `/pokemon give <item> <name>`           | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level                                        |

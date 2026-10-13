@@ -16,7 +16,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   `₽ 100k` or `₽ 1.2M`. Click it to open the PokéMart inside the band: four tabs (Stones, Hold items, Special,
   Other), each item with its description from the games, and a "Your party:" line when it would evolve one of yours.
   Item pictures show when the band is at least 8 rows tall, otherwise a coloured ◆.
-- The Mart won't open while a wild Pokémon is out ("catch it or let it go first").
+- The Mart won't open while a wild Pokémon is out ("catch it or let it go first"), and the ₽ button hides until it
+  has gone.
 - In the Mart: click into it, then `↑` `↓` to choose, `←` `→` for tabs, `-` `+` or `◀` `▶` for how many, `Max`
   for as many as you can afford, `Enter` or `Buy` to buy, `x` or `✕` to close. The mouse wheel over the band scrolls
   the list. `/pokemon mart` opens it too.
@@ -25,13 +26,14 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ### Added: the Bag and held items
 
-- `/pokemon bag` lists your items by tab, your ₽, and who holds what.
+- `/pokemon bag` lists your items by tab, your ₽, and who holds what, in the party and the PC box.
 - `/pokemon give <item> <pokemon>` (either order, and item names work with spaces or hyphens: `give pikachu thunder stone` and
   `give thunder-stone pikachu` both work). A stone, a trade item
   or the Linking Cord evolves the Pokémon at once and is used up. A hold item is held. A Rare Candy raises one
-  level. An item that does nothing for that Pokémon is refused, and nothing is used up.
+  level. An item that does nothing for that Pokémon is refused, and nothing is used up. An item name a little off
+  gets a suggestion: `Did you mean Thunder Stone? Run /pokemon give thunder-stone pikachu`.
 - One held item per Pokémon, as in the games: giving another puts the old one back in the Bag.
-  `/pokemon take <pokemon>` puts it back by hand.
+  `/pokemon take <pokemon>` puts it back by hand, from a Pokémon in the PC box too.
 - Lucky Egg: its holder earns half as much XP again. Soothe Bell: its holder's time together counts 1.5 times.
 
 ### Added: friendship from time together
@@ -75,6 +77,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ### Known limitations
 
+- **Close other Claude Code windows before upgrading:** a window still running 1.2.0 can write the save without the
+  new Bag, ₽ and held items.
 - **Esc doesn't close the Mart:** Claude Code keeps Escape to give the keyboard back to the prompt. Use `x` or `✕`.
 - **17 evolutions keep a level**, because the games tie them to something the plugin has no way to do (a move,
   steps, a battle). They happen at Lv 30, or 10 levels after the Pokémon reached its stage when that's later:
