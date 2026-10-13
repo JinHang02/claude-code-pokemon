@@ -4,8 +4,9 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Mon } from '../types'
 import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
 import type { Click, Throw, ThrowEvent } from './catch'
-import { evolvedForm, genderOf, nextStages, pokeapiForm } from './evolution'
+import { dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Stage } from './evolution'
+import { itemName, withArticle } from './items'
 import { lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
@@ -16,9 +17,9 @@ import {
   formatDex,
   formatParty,
   earnInto,
+  evolvesText,
   extraXp,
   foldLedger,
-  isDueToEvolve,
   isName,
   level,
   LEDGER,
@@ -30,6 +31,8 @@ import {
   recordSeen,
   spriteBudget,
   storeCaught,
+  takeFromBag,
+  TIME_TEXT,
   withExtra,
   XP,
 } from './save'
@@ -172,9 +175,9 @@ const keyOf = (m: Member) => `${m.species}|${m.form}|${m.isShiny}`
 
 // Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
 // when it claims UTC, the host's answer from session start is used.
-const localHour = () => {
+const localHour = (ms = Date.now()) => {
   const own = -new Date().getTimezoneOffset()
-  return Math.floor((Date.now() / 60_000 + (own !== 0 ? own : (tzOffsetMin ?? 0))) / 60)
+  return Math.floor((ms / 60_000 + (own !== 0 ? own : (tzOffsetMin ?? 0))) / 60)
 }
 
 const isShowing = () => shown !== null && tickNo < shown.until
@@ -589,14 +592,17 @@ async function toggleEverstone($: EngineInterface, query: string): Promise<strin
     const m = s.party[at]
     if (!m) return s
     const name = displayName(m.species, m.form)
-    isDropped = Boolean(m.hasEverstone)
+    isDropped = m.heldItem === 'everstone'
     text = isDropped
       ? `${name} dropped its everstone and can evolve again.`
       : `${name} holds an everstone: it won't evolve.`
-    const { hasEverstone: _, ...rest } = m
-    return { ...s, party: s.party.map((p, i) => (i === at ? (isDropped ? rest : { ...rest, hasEverstone: true }) : p)) }
+    const { heldItem: _, ...rest } = m
+    return {
+      ...s,
+      party: s.party.map((p, i) => (i === at ? (isDropped ? rest : { ...rest, heldItem: 'everstone' }) : p)),
+    }
   })
-  // Already past its level: it evolves now.
+  // Already due: it evolves now.
   if (isDropped) background($, learnEvolutions($))
   return text
 }
@@ -626,8 +632,7 @@ async function setSize($: EngineInterface, size: string): Promise<string> {
   return `Pokémon size: ${size}.`
 }
 
-// What `member` can evolve into and at which levels, as in the games (empty at a final stage), and its species'
-// gender ratio.
+// What `member` can evolve into and how, as in the games (empty at a final stage), and its species' gender ratio.
 async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stages: Stage[]; genderRate: unknown }> {
   const list = await loadSpecies($)
   const res = await cachedFetch(
@@ -650,26 +655,70 @@ async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stage
   return { stages: stages.filter(n => list.some(s => s.name === n.species)), genderRate }
 }
 
+// A species' types, from PokeAPI (cached). Offline, none: an evolution that needs a type waits.
+const types = new Map<string, string[]>()
+async function typesOf($: EngineInterface, name: string): Promise<string[]> {
+  const known = types.get(name)
+  if (known) return known
+  try {
+    const res = await cachedFetch($, `${POKEAPI}/pokemon/${name}`, `pokeapi/pokemon-${name}.json`, isJson)
+    if (!res.ok) return []
+    const raw = (JSON.parse(res.text) as { types?: unknown }).types
+    const found = (Array.isArray(raw) ? raw : []).flatMap((t: { type?: { name?: unknown } }) => {
+      const type = t.type?.name
+      return isName(type) ? [type] : []
+    })
+    types.set(name, found)
+    return found
+  } catch {
+    return []
+  }
+}
+
+type Surroundings = { phase: Phase; party: string[]; partyTypes: string[] }
+
+// The time of day and the party, as evolutions see them; types are fetched only when a member needs one.
+async function evolutionContext($: EngineInterface): Promise<Surroundings> {
+  const hour = localHour(await $.clock.now())
+  const party = save.party.map(m => m.species)
+  const needsTypes = save.party.some(m => m.next?.some(s => s.way.kind === 'level' && s.way.partyType))
+  const partyTypes = needsTypes ? (await Promise.all(party.map(p => typesOf($, p)))).flat() : []
+  return { phase: phaseAt(((hour % 24) + 24) % 24), party, partyTypes }
+}
+
+// The stages `m` reaches by itself now.
+const dueFor = (m: Member, c: Surroundings): Stage[] =>
+  dueStages(m.next ?? [], {
+    level: level(m.xp),
+    phase: c.phase,
+    ...(m.heldItem ? { heldItem: m.heldItem } : {}),
+    togetherMs: m.togetherMs ?? 0,
+    party: c.party,
+    partyTypes: c.partyTypes,
+  })
+
 // Evolution checks run one at a time, so no Pokémon evolves twice. A failed check was already reported
 // by its caller and doesn't hold up the next.
 let learning: Promise<void> = Promise.resolve()
 const learnEvolutions = ($: EngineInterface) => (learning = learning.catch(() => {}).then(() => checkEvolutions($)))
 
-// Looks up the evolution level of every party member that doesn't know it yet, then evolves any already due,
-// one animation at a time. Nothing evolves while the party is off.
+// Looks up how every party member that doesn't know it yet evolves, then evolves any already due, one animation
+// at a time. Nothing evolves while the party is off.
 async function checkEvolutions($: EngineInterface) {
-  for (const member of save.party.filter(m => m.evolveAt === undefined || m.gender === undefined)) {
+  for (const member of save.party.filter(m => m.next === undefined || m.gender === undefined)) {
     // Its gender first (kept through evolutions when the species allows it): some evolutions are for one only.
     const { genderRate } = await evolutionsOf($, member)
     const gender = genderOf(genderRate, member.gender)
     const { stages } = await evolutionsOf($, { ...member, gender })
-    const evolveAt = stages.length ? Math.min(...stages.map(o => o.level)) : null
     await mutate($, s => ({
       ...s,
-      party: s.party.map(m => (m.id === member.id && m.species === member.species ? { ...m, evolveAt, gender } : m)),
+      party: s.party.map(m =>
+        m.id === member.id && m.species === member.species ? { ...m, next: stages, gender } : m,
+      ),
     }))
   }
-  const isDue = (id: string) => view().party.some(m => m.id === id && isDueToEvolve(m))
+  const context = await evolutionContext($)
+  const isDue = (id: string) => view().party.some(m => m.id === id && dueFor(m, context).length > 0)
   for (const { id } of save.party) {
     if (save.isOff || !isDue(id)) continue
     // The one before finishes its animation first; nothing to wait for when no band is drawn.
@@ -681,24 +730,39 @@ async function checkEvolutions($: EngineInterface) {
   }
 }
 
-// Evolves party member `at` into a form its level allows: the animation plays from its current sprite. A
-// preview plays it and puts the old form back afterwards; a real one saves the new form and tells the person.
-async function evolveMember($: EngineInterface, at: number, isPreview = false): Promise<string> {
+// Evolves party member `at` into a form it can reach now: by itself, or by the item `given` from the Bag (used up
+// in the same write). The animation plays from its current sprite. A preview plays it and puts the old form back
+// afterwards; a real one saves the new form and tells the person.
+async function evolveMember($: EngineInterface, at: number, isPreview = false, given?: string): Promise<string> {
   const member = save.party[at]
   if (!member) return 'Your party is empty.'
   const name = displayName(member.species, member.form)
   try {
-    const { stages: options } = await evolutionsOf($, member)
-    const allowed = isPreview ? options : options.filter(o => o.level <= level(member.xp + (extra[member.id] ?? 0)))
+    const { stages } = await evolutionsOf($, member)
+    const options = stages.filter(s => s.way.kind !== 'shed')
+    const context = await evolutionContext($)
+    const byItem = options.filter(s => s.way.kind === 'item' && s.way.item === given)
+    const allowed = isPreview
+      ? options
+      : given
+        ? byItem.filter(s => timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase))
+        : dueFor({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, context)
     const next = allowed[Math.floor(Math.random() * allowed.length)]
     if (!next) {
       if (!isPreview && !options.length)
         await mutate($, s => ({
           ...s,
-          party: s.party.map(m => (m.id === member.id ? { ...m, evolveAt: null } : m)),
+          party: s.party.map(m => (m.id === member.id ? { ...m, next: [] } : m)),
         }))
+      if (given) {
+        const way = byItem[0]?.way
+        const time = way?.kind === 'item' ? way.time : undefined
+        return time
+          ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}.`
+          : `${name} can't use ${withArticle(itemName(given))}.`
+      }
       return options.length
-        ? `${name} evolves at Lv ${Math.min(...options.map(o => o.level))}.`
+        ? `${name} ${evolvesText({ ...member, next: stages })}.`
         : `${name} doesn't evolve any further.`
     }
     const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
@@ -708,9 +772,9 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false): 
     const slot = isPreview ? at : save.party.findIndex(m => m.id === member.id && m.species === member.species)
     const now = save.party[slot]
     if (!now) return `${name} already evolved.`
-    if (!isPreview && now.hasEverstone) return `${name} holds an everstone: it won't evolve.`
+    if (!isPreview && !given && now.heldItem === 'everstone') return `${name} holds an everstone: it won't evolve.`
     evolveFrom = fitted?.lefts[slot] ?? null
-    const { evolveAt: _, ...rest } = member
+    const { next: _, ...rest } = member
     const evolved: Member = { ...rest, species: next.species, form, isShiny, evolutions: member.evolutions + 1 }
     const newName = displayName(next.species, form)
     const mon: Mon = { key: keyOf(evolved), name: newName, isShiny, ...parseAnsi(art) }
@@ -720,30 +784,57 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false): 
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
       return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
     }
+    // Shedinja comes along when Nincada evolves by level, with Nincada's level and shininess.
+    const shed = next.way.kind === 'level' ? stages.find(s => s.way.kind === 'shed') : undefined
+    let shedText = ''
     // Another session may have evolved it first: then that evolution stands.
     let outcome = `${name} already evolved.`
     await mutate($, s => {
       const i = s.party.findIndex(m => m.id === member.id && m.species === member.species)
       const latest = s.party[i]
       if (!latest) return s
-      if (latest.hasEverstone) {
+      if (!given && latest.heldItem === 'everstone') {
         outcome = `${name} holds an everstone: it won't evolve.`
         return s
       }
-      outcome = ''
-      const { evolveAt: __, ...kept } = latest
-      const grown: Member = { ...kept, species: next.species, form, isShiny, evolutions: latest.evolutions + 1 }
-      return {
-        ...recordSeen(s, next.species, isShiny, Date.now()),
-        party: s.party.map((m, j) => (j === i ? grown : m)),
+      if (given && !s.bag?.[given]) {
+        outcome = `You don't have ${withArticle(itemName(given))}.`
+        return s
       }
+      outcome = ''
+      const { next: __, heldItem, ...kept } = latest
+      // A held item that made it evolve is used up; any other stays held.
+      const keeps = heldItem && !(next.way.kind === 'hold' && next.way.item === heldItem)
+      const grown: Member = {
+        ...kept,
+        ...(keeps ? { heldItem } : {}),
+        species: next.species,
+        form,
+        isShiny,
+        evolutions: latest.evolutions + 1,
+      }
+      const seen = recordSeen(given ? takeFromBag(s, given) : s, next.species, isShiny, Date.now())
+      const after = { ...seen, party: seen.party.map((m, j) => (j === i ? grown : m)) }
+      if (!shed) return after
+      const shedinja: Member = {
+        id: newId(),
+        species: shed.species,
+        form: 'regular',
+        isShiny,
+        xp: latest.xp,
+        evolutions: 1,
+      }
+      const stored = storeCaught(recordSeen(after, shed.species, isShiny, Date.now()), shedinja)
+      const shedName = displayName(shed.species)
+      shedText = stored.isInParty ? ` ${shedName} joined your party!` : ` ${shedName} went to the PC box.`
+      return stored.save
     })
-    if (!outcome) $.ui.toast(`What? ${name} evolved into ${newName}!`)
+    if (!outcome) $.ui.toast(`What? ${name} evolved into ${newName}!${shedText}`)
     // Also redraws over any refresh that was already under way with the old sprite.
     await refreshParty($)
     if (outcome) return outcome
     background($, learnEvolutions($))
-    return `${name} evolved into ${newName}!`
+    return `${name} evolved into ${newName}!${shedText}`
   } catch (err) {
     if (!isPreview) await report($, err)
     return `${name} couldn't evolve right now: ${err instanceof Error ? err.message : String(err)}`

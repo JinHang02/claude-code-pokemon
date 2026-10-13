@@ -1,8 +1,9 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import type { Stage } from '../hooks/evolution'
 import type { Member, Save } from '../hooks/save'
-import { emptySave, xpForLevel } from '../hooks/save'
+import { emptySave, evolveLevel, xpForLevel } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 
 const ART = '\x1b[38;2;255;0;0m\x1b[48;2;0;0;255m▀\x1b[0m\x1b[38;2;0;255;0m▄\n\x1b[38;2;255;0;0m█\x1b[0m '
@@ -21,6 +22,22 @@ const LIST = [
   { name: 'wormadam', forms: ['regular', 'sandy'] },
   { name: 'mothim', forms: ['regular'] },
   { name: 'caterpie', forms: ['regular'] },
+  { name: 'pichu', forms: ['regular'] },
+  { name: 'espeon', forms: ['regular'] },
+  { name: 'umbreon', forms: ['regular'] },
+  { name: 'rockruff', forms: ['regular'] },
+  { name: 'lycanroc', forms: ['regular', 'dusk', 'midnight'] },
+  { name: 'pancham', forms: ['regular'] },
+  { name: 'pangoro', forms: ['regular'] },
+  { name: 'nincada', forms: ['regular'] },
+  { name: 'ninjask', forms: ['regular'] },
+  { name: 'shedinja', forms: ['regular'] },
+  { name: 'duskull', forms: ['regular'] },
+  { name: 'dusclops', forms: ['regular'] },
+  { name: 'dusknoir', forms: ['regular'] },
+  { name: 'mantyke', forms: ['regular'] },
+  { name: 'mantine', forms: ['regular'] },
+  { name: 'remoraid', forms: ['regular'] },
   { name: 'mewtwo', forms: ['regular'] },
 ]
 const fire = {
@@ -33,15 +50,10 @@ const fire = {
     },
   ],
 }
+// Made up for plumbing: here Pikachu evolves by level, so a second species can evolve beside Charmander.
 const electric = {
-  species: { name: 'pichu' },
-  evolves_to: [
-    {
-      species: { name: 'pikachu' },
-      evolution_details: [{ min_level: null }],
-      evolves_to: [{ species: { name: 'raichu' }, evolution_details: [{ min_level: null }], evolves_to: [] }],
-    },
-  ],
+  species: { name: 'pikachu' },
+  evolves_to: [{ species: { name: 'raichu' }, evolution_details: [{ min_level: 30 }], evolves_to: [] }],
 }
 const bees = {
   species: { name: 'combee' },
@@ -71,10 +83,64 @@ const cloaks = {
     { species: { name: 'mothim' }, evolution_details: [{ min_level: 20, gender: 2 }], evolves_to: [] },
   ],
 }
+const named = (name: string) => ({ name })
+const end = (species: string, details: object[]) => ({
+  species: named(species),
+  evolution_details: details,
+  evolves_to: [],
+})
+const babies = {
+  species: named('pichu'),
+  evolves_to: [end('pikachu', [{ trigger: named('level-up'), min_happiness: 220 }])],
+}
+const fox = {
+  species: named('eevee'),
+  evolves_to: [
+    end('vaporeon', [{ trigger: named('use-item'), item: named('water-stone') }]),
+    end('espeon', [{ trigger: named('level-up'), min_happiness: 160, time_of_day: 'day' }]),
+    end('umbreon', [{ trigger: named('level-up'), min_happiness: 160, time_of_day: 'night' }]),
+  ],
+}
+const dog = {
+  species: named('rockruff'),
+  evolves_to: [
+    end('lycanroc', [
+      { trigger: named('level-up'), min_level: 25, time_of_day: 'day', required_pokemon_form: named('rockruff') },
+      { trigger: named('level-up'), min_level: 25, time_of_day: 'night', required_pokemon_form: named('rockruff') },
+    ]),
+  ],
+}
+const panda = {
+  species: named('pancham'),
+  evolves_to: [end('pangoro', [{ trigger: named('level-up'), min_level: 32, party_type: named('dark') }])],
+}
+const bug = {
+  species: named('nincada'),
+  evolves_to: [
+    end('ninjask', [{ trigger: named('level-up'), min_level: 20 }]),
+    end('shedinja', [{ trigger: named('shed') }]),
+  ],
+}
+const ghost = {
+  species: named('duskull'),
+  evolves_to: [
+    {
+      species: named('dusclops'),
+      evolution_details: [{ trigger: named('level-up'), min_level: 37 }],
+      evolves_to: [end('dusknoir', [{ trigger: named('trade'), held_item: named('reaper-cloth') }])],
+    },
+  ],
+}
+const kite = {
+  species: named('mantyke'),
+  evolves_to: [end('mantine', [{ trigger: named('level-up'), party_species: named('remoraid') }])],
+}
 // Each species' gender ratio in eighths female, where a test fixes it: these always come out one way.
 const GENDER_RATES: Record<string, number> = { combee: 8, vespiquen: 8, burmy: 0, mothim: 0 }
 // Capture rates where a test fixes them: Caterpie always caught, Mewtwo never.
 const CAPTURE_RATES: Record<string, number> = { caterpie: 255, mewtwo: 0 }
+// Each species' types where a test needs one: Pancham evolves only with a Dark type in the party.
+const TYPES: Record<string, string[]> = { umbreon: ['dark'] }
 // Each species' evolution chain, as PokeAPI links it.
 const CHAINS: Record<string, unknown> = {
   charmander: fire,
@@ -82,6 +148,23 @@ const CHAINS: Record<string, unknown> = {
   charizard: fire,
   pikachu: electric,
   raichu: electric,
+  pichu: babies,
+  eevee: fox,
+  vaporeon: fox,
+  espeon: fox,
+  umbreon: fox,
+  rockruff: dog,
+  lycanroc: dog,
+  pancham: panda,
+  pangoro: panda,
+  nincada: bug,
+  ninjask: bug,
+  shedinja: bug,
+  duskull: ghost,
+  dusclops: ghost,
+  dusknoir: ghost,
+  mantyke: kite,
+  mantine: kite,
   combee: bees,
   vespiquen: bees,
   burmy: cloaks,
@@ -98,6 +181,11 @@ const member = (species: string, extra: Partial<Member> = {}): Member => ({
   evolutions: 0,
   ...extra,
 })
+const lv = (species: string, level: number): Stage => ({ species, way: { kind: 'level', level } })
+// The plugin's hour at clock 0 is its own UTC offset, or the +0800 the fake `date` answers when it claims UTC.
+const offsetHours = (-new Date().getTimezoneOffset() || 480) / 60
+// The clock time (from 0) at which the plugin's local hour is `hour`.
+const hourAt = (hour: number) => ((((hour - offsetHours) % 24) + 24) % 24) * 3_600_000
 
 // What the fake network and store do: go offline, stall every download, serve another species list, refuse reads.
 // `sprites`: art by sprite file, where a test gives one its own.
@@ -110,6 +198,8 @@ type Net = {
   isStoreBroken?: boolean
   cacheAgeMs?: number
   sprites?: Record<string, string>
+  // Where the fake clock starts.
+  now?: number
 }
 
 // The engine around the plugin: a fake network, store, clock zone and UI calls; resolves the store and toasts.
@@ -120,7 +210,7 @@ function world(
   files = new Map<string, string>(),
   net: Net = { isOnline: true, list: JSON.stringify(LIST) },
 ) {
-  const clock = mock.clock(on)
+  const clock = mock.clock(on, net.now === undefined ? undefined : { now: net.now })
   // The band's state as the terminal reports it: a hidden band refuses frames.
   const band = { isHidden: false, frames: 0, refused: 0, cells: '', invalidated: 0 }
   on('ui.blit', async (_$, e) => {
@@ -160,6 +250,8 @@ function world(
           ...(species in CAPTURE_RATES ? { capture_rate: CAPTURE_RATES[species] } : {}),
         }),
       )
+    const mon = /\/pokemon\/([a-z0-9-]+)$/.exec(e.url)?.[1]
+    if (mon) return ok(JSON.stringify({ types: (TYPES[mon] ?? ['normal']).map(name => ({ type: { name } })) }))
     const chain = /chain\/([a-z-]+)/.exec(e.url)?.[1]
     if (chain) return ok(JSON.stringify({ chain: CHAINS[chain] ?? { species: { name: chain }, evolves_to: [] } }))
     const file = /\/colorscripts\/small\/(?:regular|shiny)\/([a-z0-9-]+)$/.exec(e.url)?.[1]
@@ -296,42 +388,26 @@ test('passing tests and commits earn xp; a lone failed grep does nothing', async
 test('Charmander evolves at Lv 16, as in the games: saved, seen, announced, and Charmeleon learns its own level', async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('charmander', { xp: xpForLevel(16) - 5 })] })
-  await until($, () => w.saveNow().party[0]?.evolveAt === 16)
+  await until($, () => evolveLevel(w.saveNow().party[0]) === 16)
   await $.tool.call(bash('git commit -m "ship it"') as never)
-  await until($, () => w.saveNow().party[0]?.evolveAt === 36 && w.toasts.length > 0)
-  expect(w.saveNow().party[0]).toMatchObject({ species: 'charmeleon', evolutions: 1, evolveAt: 36 })
+  await until($, () => evolveLevel(w.saveNow().party[0]) === 36 && w.toasts.length > 0)
+  expect(w.saveNow().party[0]).toMatchObject({ species: 'charmeleon', evolutions: 1, next: [lv('charizard', 36)] })
   expect(w.saveNow().dex.charmeleon?.seen).toBe(1)
   expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!'])
   expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon +Lv 16 /)
-})
-
-test('Pikachu needs a Thunder Stone in the games, so it evolves at Lv 30 here', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { xp: xpForLevel(20) - 5 })] })
-  await until($, () => w.saveNow().party[0]?.evolveAt === 30)
-  expect(await cmd($, 'pokemon', 'party')).toContain('evolves at Lv 30')
-  await $.tool.call(bash('git commit -m x') as never)
-  await cmd($, 'pokemon', 'party')
-  expect(w.saveNow().party[0]?.species).toBe('pikachu')
-  w.saveNow().party[0]!.xp = xpForLevel(30) - 5
-})
-
-test('Pikachu at Lv 30 becomes Raichu', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { xp: xpForLevel(30) - 5, evolveAt: 30 })] })
-  await $.tool.call(bash('git commit -m x') as never)
-  await until($, () => w.saveNow().party[0]?.species === 'raichu' && w.toasts.length > 0)
-  expect(w.toasts).toEqual(['What? Pikachu evolved into Raichu!'])
 })
 
 test('a final stage is marked done; an everstone stops evolution', async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
-    party: [member('charizard', { xp: xpForLevel(40) }), member('pikachu', { xp: xpForLevel(30) - 5, evolveAt: 30 })],
+    party: [
+      member('charizard', { xp: xpForLevel(40) }),
+      member('pikachu', { xp: xpForLevel(30) - 5, next: [lv('raichu', 30)] }),
+    ],
   })
   expect(await cmd($, 'pokemon', 'everstone pikachu')).toBe("Pikachu holds an everstone: it won't evolve.")
-  await until($, () => w.saveNow().party[0]?.evolveAt === null)
+  await until($, () => w.saveNow().party[0]?.next?.length === 0)
   await $.tool.call(bash('git commit -m x') as never)
   await cmd($, 'pokemon', 'party')
   expect(w.saveNow().party.map(m => m.species)).toEqual(['charizard', 'pikachu'])
@@ -345,7 +421,7 @@ test('an everstone given while an evolution downloads stops it, and the everston
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
-    party: [member('charmander', { xp: xpForLevel(16) - 5, evolveAt: 16 })],
+    party: [member('charmander', { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)] })],
   })
   await cmd($, 'pokemon', 'party')
   let open = () => {}
@@ -357,7 +433,7 @@ test('an everstone given while an evolution downloads stops it, and the everston
   open()
   await commit
   await cmd($, 'pokemon', 'party')
-  expect(w.saveNow().party[0]).toMatchObject({ species: 'charmander', hasEverstone: true })
+  expect(w.saveNow().party[0]).toMatchObject({ species: 'charmander', heldItem: 'everstone' })
   expect(w.toasts).toEqual([])
 })
 
@@ -387,7 +463,7 @@ test('/pokedex shows sightings and the party', async ($, on) => {
   await cmd($, 'pokemon', 'add shiny vaporeon')
   const dex = await cmd($, 'pokedex')
   // Eevee may be a lucky shiny (1 in 32); the asked-for Vaporeon always is.
-  expect(dex).toMatch(/Pokédex: 2 \/ 15 seen · 0 caught · [12] shiny/)
+  expect(dex).toMatch(new RegExp(`Pokédex: 2 / ${LIST.length} seen · 0 caught · [12] shiny`))
   expect(dex).toMatch(/Shinies: (Eevee, )?Vaporeon/)
   expect(dex).toMatch(/Lead {2}Pikachu +Lv 1 /)
 })
@@ -420,7 +496,7 @@ test('downloads land in ~/.cache and the next session reads them back instead', 
   const files = new Map<string, string>()
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, ART, files)
   await cmd($, 'pokemon', 'add eevee')
-  await until($, () => w.saveNow().party.every(m => m.evolveAt !== undefined))
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
   const dir = '/home/ash/.cache/claude-code-pokemon/'
   const cached = [...files.keys()].map(f => f.replace(dir, ''))
   expect(cached).toContain('pokemon.json')
@@ -438,9 +514,9 @@ test('a warm cache means no downloads at all', async ($, on) => {
     [`${dir}/sprites/regular/pikachu`, ART],
   ])
   // Its evolution level and gender already known, so there's nothing to look up either.
-  const party = [member('pikachu', { evolveAt: 30, gender: 'male' })]
+  const party = [member('pikachu', { next: [lv('raichu', 30)], gender: 'male' })]
   const w = await begin($, on, { ...emptySave(), party }, ART, files)
-  expect(await cmd($, 'pokedex')).toContain('/ 15 seen')
+  expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
   expect(w.fetched).toEqual([])
 })
 
@@ -482,7 +558,7 @@ const mountBand = ($: { ui: { mount: (t: never) => Promise<unknown> } }) =>
 
 test('two sessions side by side: xp from both adds up and neither overwrites the other', async ($, on) => {
   answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   // Meanwhile another Claude Code session earns xp and meets a Mew.
   const other = w.saveNow()
@@ -497,7 +573,7 @@ test('two sessions side by side: xp from both adds up and neither overwrites the
 })
 
 test("another session's changes show up here within seconds, without typing anything", async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   await mountBand($)
   await w.clock.advance(2000)
@@ -511,7 +587,7 @@ test("another session's changes show up here within seconds, without typing anyt
 
 test('/pokemon off puts them in their Poké Balls: nothing drawn, no xp; /pokemon on brings them back', async ($, on) => {
   answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   await mountBand($)
   await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
@@ -536,7 +612,7 @@ test('/pokemon off puts them in their Poké Balls: nothing drawn, no xp; /pokemo
 })
 
 test('a bare add catches a random Pokémon; a bare remove releases a random member, never the lead', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   expect(await cmd($, 'pokemon', 'remove')).toContain('would leave your party empty')
   expect(await cmd($, 'pokemon', 'add')).toMatch(/joined your party!$|is already in your party\.$/)
   await cmd($, 'pokemon', 'add eevee')
@@ -548,7 +624,10 @@ test('a bare add catches a random Pokémon; a bare remove releases a random memb
 })
 
 test('only an exact spelling catches a Pokémon; anything close gets a suggestion and changes nothing', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 }), member('charmander')] })
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [lv('raichu', 30)] }), member('charmander')],
+  })
   expect(await cmd($, 'pokemon', 'charized')).toBe('Did you mean Charizard? Run /pokemon charizard')
   expect(await cmd($, 'pokemon', 'pika')).toBe('Did you mean Pikachu? Run /pokemon pikachu')
   expect(await cmd($, 'pokemon', 'shiny charizard mega')).toBe(
@@ -558,7 +637,7 @@ test('only an exact spelling catches a Pokémon; anything close gets a suggestio
   expect(await cmd($, 'pokemon', 'remove charm')).toBe('Did you mean Charmander? Run /pokemon remove charmander')
   expect(await cmd($, 'pokemon', 'everstone pika')).toBe('Did you mean Pikachu? Run /pokemon everstone pikachu')
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'charmander'])
-  expect(w.saveNow().party.some(m => m.hasEverstone)).toBe(false)
+  expect(w.saveNow().party.some(m => m.heldItem)).toBe(false)
   expect(await cmd($, 'pokemon', 'charizard mega x')).toContain('Charizard (Mega X) appeared!')
 })
 
@@ -649,7 +728,7 @@ async function visited($: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] },
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
     TALL,
     undefined,
     throwNet(),
@@ -692,7 +771,14 @@ test('while aiming, every step a wild Pokémon takes is drawn: clicks are judged
 
 test('a wild Pokémon can be aimed at only once its catch rate is known, so a sure catch stays sure', async ($, on) => {
   const net = throwNet()
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, TALL, undefined, net)
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+    TALL,
+    undefined,
+    net,
+  )
   await cmd($, 'pokemon', 'party')
   const aim = (await mountBand($ as never)) as Aim
   await cmd($, 'pokemon-play', 'day')
@@ -755,7 +841,7 @@ test('the click layer is there only while a wild Pokémon can be aimed at; a sec
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] },
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
     TALL,
     undefined,
     throwNet(),
@@ -781,7 +867,7 @@ test('a wild Pokémon still downloading when another steps out stays away: one v
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] },
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
     TALL,
     undefined,
     throwNet(),
@@ -810,7 +896,10 @@ test('/pokemon-play wild takes a name: a misspelled one calls nobody, a real one
 })
 
 test('a wild Pokémon, end to end: the grass rustles, then a "!" over the party, and a toast names it', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 }), member('eevee')] })
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { next: [lv('raichu', 30)] }), member('eevee')],
+  })
   await cmd($, 'pokemon', 'party')
   const band = (await mountBand($)) as Aim
   await w.clock.advance(500)
@@ -847,7 +936,7 @@ const DURATION = { word: 'Baked', durationMs: 64_000 } as const
 
 test("the spinner keeps Claude Code's own line with a Pokémon word; the closing line is all Pokémon", async ($, on) => {
   const engine = engineLines(on)
-  await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   const spinner = await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'Spinner', props: SPINNER })
   // Drawn by the engine (tip, task list and token count included), from props with the word swapped.
   expect(engine.at(-1)).toEqual({ ...SPINNER, word: pickFor(WORKING, 'Drizzling') })
@@ -868,7 +957,7 @@ test("the spinner keeps Claude Code's own line with a Pokémon word; the closing
 
 test('/pokemon off leaves the spinner and the closing line as the engine draws them', async ($, on) => {
   const engine = engineLines(on)
-  await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'off')
   await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'Spinner', props: SPINNER })
   expect(engine.at(-1)).toEqual(SPINNER)
@@ -879,7 +968,7 @@ test('/pokemon off leaves the spinner and the closing line as the engine draws t
 
 test("the desktop spinner keeps its own words: there it names the step it's on", async ($, on) => {
   const engine = engineLines(on)
-  await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   const props = { ...SPINNER, word: 'Creating notes.md', mode: 'tool-use' } as const
   await $.ui.mount({ plugin: 'pokemon', surface: 'desktop', component: 'Spinner', props })
   expect(engine.at(-1)).toEqual(props)
@@ -891,7 +980,7 @@ test('a name made only of symbols catches nothing, releases no one and holds no 
   expect(await cmd($, 'pokemon', 'add ピカチュウ')).toBe('No Pokémon called "ピカチュウ".')
   expect(await cmd($, 'pokemon', 'remove ♀')).toContain('No ♀ in your party.')
   expect(await cmd($, 'pokemon', 'everstone')).toBe('Which one? /pokemon everstone <name>')
-  expect(w.partyNow().map(m => [m.species, m.xp, Boolean(m.hasEverstone)])).toEqual([
+  expect(w.partyNow().map(m => [m.species, m.xp, m.heldItem === 'everstone'])).toEqual([
     ['pikachu', 400, false],
     ['eevee', 0, false],
   ])
@@ -911,7 +1000,7 @@ test('remove names the right one of two forms; leading again records no new sigh
 
 test('another session turning the party off stops xp at once; /pokemon on says they were resting', async ($, on) => {
   answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   w.store.set('save', { ...w.saveNow(), isOff: true })
   await $.tool.call(bash('git commit -m x') as never)
@@ -924,13 +1013,13 @@ test('two of one species: only the one due evolves, and the other keeps its ever
   const w = await begin($, on, {
     ...emptySave(),
     party: [
-      member('charmeleon', { id: 'calm', xp: 0, evolveAt: 36, hasEverstone: true }),
-      member('charmeleon', { id: 'due', xp: xpForLevel(36) - 5, evolveAt: 36 }),
+      member('charmeleon', { id: 'calm', xp: 0, next: [lv('charizard', 36)], heldItem: 'everstone' }),
+      member('charmeleon', { id: 'due', xp: xpForLevel(36) - 5, next: [lv('charizard', 36)] }),
     ],
   })
   await $.tool.call(bash('git commit -m x') as never)
   await until($, () => w.saveNow().party.some(m => m.species === 'charizard'))
-  expect(w.saveNow().party.map(m => [m.id, m.species, Boolean(m.hasEverstone)])).toEqual([
+  expect(w.saveNow().party.map(m => [m.id, m.species, m.heldItem === 'everstone'])).toEqual([
     ['calm', 'charmeleon', true],
     ['due', 'charizard', false],
   ])
@@ -940,7 +1029,7 @@ test('two of one species: only the one due evolves, and the other keeps its ever
 test('dropping an everstone evolves a Pokémon already past its level', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
-    party: [member('charmander', { xp: xpForLevel(20), evolveAt: 16, hasEverstone: true })],
+    party: [member('charmander', { xp: xpForLevel(20), next: [lv('charmeleon', 16)], heldItem: 'everstone' })],
   })
   expect(await cmd($, 'pokemon', 'everstone charmander')).toBe('Charmander dropped its everstone and can evolve again.')
   await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
@@ -950,7 +1039,7 @@ test('nothing evolves while the party is off; /pokemon on lets it', async ($, on
   const w = await begin($, on, {
     ...emptySave(),
     isOff: true,
-    party: [member('charmander', { xp: xpForLevel(16), evolveAt: 16 })],
+    party: [member('charmander', { xp: xpForLevel(16), next: [lv('charmeleon', 16)] })],
   })
   for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
   expect(w.saveNow().party[0]?.species).toBe('charmander')
@@ -961,7 +1050,7 @@ test('nothing evolves while the party is off; /pokemon on lets it', async ($, on
 
 test('a tool call refused beneath the plugin earns nothing', async ($, on) => {
   on('tool.call', async () => ({ deny: 'blocked by policy' }))
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await $.tool.call(bash('git commit -m x') as never)
   await $.tool.call(bash('pytest -q') as never)
   await cmd($, 'pokemon', 'party')
@@ -981,10 +1070,17 @@ test('offline at the first start: said once, and a first Pokémon arrives once b
 
 test('a saved party that could not be drawn offline is drawn once back online', async ($, on) => {
   engineLines(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, ART, undefined, {
-    isOnline: false,
-    list: JSON.stringify(LIST),
-  })
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+    ART,
+    undefined,
+    {
+      isOnline: false,
+      list: JSON.stringify(LIST),
+    },
+  )
   await mountBand($)
   await w.clock.advance(2000)
   expect(w.band.frames).toBe(0)
@@ -998,7 +1094,7 @@ test('a saved party that could not be drawn offline is drawn once back online', 
 test('a broken cache (a crash mid-write) is downloaded again', async ($, on) => {
   const dir = '/home/ash/.cache/claude-code-pokemon'
   const files = new Map([[`${dir}/pokemon.json`, '[{"name": "pika']])
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, ART, files)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] }, ART, files)
   expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
   expect(JSON.parse(files.get(`${dir}/pokemon.json`) ?? '')).toEqual(LIST)
   expect(w.toasts).toEqual([])
@@ -1006,7 +1102,7 @@ test('a broken cache (a crash mid-write) is downloaded again', async ($, on) => 
 
 test('a broken download (a Wi-Fi login page) is never cached, and is reported', async ($, on) => {
   const login = '<html>Sign in to the hotel Wi-Fi</html>'
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, login)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] }, login)
   await cmd($, 'pokemon', 'party')
   expect([...w.files.keys()].some(f => f.includes('/sprites/'))).toBe(false)
   expect(w.toasts.some(t => t.includes('broken download'))).toBe(true)
@@ -1018,20 +1114,27 @@ test('an old species list still serves when its refresh fails', async ($, on) =>
     [`${dir}/pokemon.json`, JSON.stringify(LIST)],
     [`${dir}/sprites/regular/pikachu`, ART],
   ])
-  await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, ART, files, {
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] }, ART, files, {
     isOnline: false,
     list: JSON.stringify(LIST),
     cacheAgeMs: 40 * 24 * 60 * 60_000,
   })
-  expect(await cmd($, 'pokedex')).toContain('/ 15 seen')
+  expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
 })
 
 test('a stalled download never holds up a command', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, ART, undefined, {
-    isOnline: true,
-    list: JSON.stringify(LIST),
-    stall: new Promise(() => {}),
-  })
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+    ART,
+    undefined,
+    {
+      isOnline: true,
+      list: JSON.stringify(LIST),
+      stall: new Promise(() => {}),
+    },
+  )
   const reply = cmd($, 'pokemon', 'off')
   await w.clock.advance(6000)
   expect(await reply).toBe('Your Pokémon are resting in their Poké Balls. /pokemon on brings them back.')
@@ -1049,11 +1152,18 @@ test('names in the downloaded list that are not plain names never become files',
 })
 
 test('a store that cannot be read at start is reported, and works again once it can', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] }, ART, undefined, {
-    isOnline: true,
-    list: JSON.stringify(LIST),
-    isStoreBroken: true,
-  })
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+    ART,
+    undefined,
+    {
+      isOnline: true,
+      list: JSON.stringify(LIST),
+      isStoreBroken: true,
+    },
+  )
   expect(await cmd($, 'pokemon', 'party')).toMatch(/^Couldn't reach the Pokémon: /)
   expect(w.toasts.filter(t => t.startsWith('Pokémon: ')).length).toBe(1)
   w.net.isStoreBroken = false
@@ -1090,8 +1200,8 @@ test('two members due at once evolve one after the other, each with its whole an
   const w = await begin($, on, {
     ...emptySave(),
     party: [
-      member('charmander', { xp: xpForLevel(16) - 5, evolveAt: 16 }),
-      member('pikachu', { xp: xpForLevel(30) - 5, evolveAt: 30 }),
+      member('charmander', { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)] }),
+      member('pikachu', { xp: xpForLevel(30) - 5, next: [lv('raichu', 30)] }),
     ],
   })
   await cmd($, 'pokemon', 'party')
@@ -1109,8 +1219,8 @@ test('with no band drawn (a `claude -p` run), evolutions never wait for an anima
   const w = await begin($, on, {
     ...emptySave(),
     party: [
-      member('charmander', { xp: xpForLevel(16) - 5, evolveAt: 16 }),
-      member('pikachu', { xp: xpForLevel(30) - 5, evolveAt: 30 }),
+      member('charmander', { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)] }),
+      member('pikachu', { xp: xpForLevel(30) - 5, next: [lv('raichu', 30)] }),
     ],
   })
   await $.tool.call(bash('git commit -m x') as never)
@@ -1120,7 +1230,7 @@ test('with no band drawn (a `claude -p` run), evolutions never wait for an anima
 
 test("a space too short for the band shows Claude Code's own row instead", async ($, on) => {
   const engine = engineLines(on)
-  await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   const short = await $.ui.mount({
     plugin: 'pokemon',
@@ -1134,7 +1244,7 @@ test("a space too short for the band shows Claude Code's own row instead", async
 
 test('each session keeps its XP under its own key, so sessions writing at once never lose any', async ($, on) => {
   answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   // Another session's ledger, written between this session's own writes.
   for (let i = 1; i <= 3; i++) {
@@ -1152,7 +1262,10 @@ test(
   "an ended session's ledger is folded into the save, then removed, and its XP is never counted twice",
   { timeoutMs: 30_000 },
   async ($, on) => {
-    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', xp: 5, evolveAt: 30 })] })
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { id: 'p', xp: 5, next: [lv('raichu', 30)] })],
+    })
     w.store.set('xp:gone', { at: Date.now() - 2 * 24 * 60 * 60_000, xp: { p: 40 } })
     await cmd($, 'pokemon', 'party')
     expect(w.partyNow()[0]?.xp).toBe(45)
@@ -1176,7 +1289,7 @@ test('gender follows the species, shows in the party, and decides gender-only ev
     ...emptySave(),
     party: [member('combee', { xp: xpForLevel(21) - 5 }), member('burmy', { form: 'sandy', xp: xpForLevel(20) - 5 })],
   })
-  await until($, () => w.saveNow().party.every(m => m.evolveAt !== undefined))
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
   expect(w.saveNow().party.map(m => m.gender)).toEqual(['female', 'male'])
   expect(await cmd($, 'pokemon', 'party')).toContain('Combee ♀')
   await $.tool.call(bash('git commit -m x') as never)
@@ -1196,7 +1309,7 @@ test('a piped test run reacts to its summary; one still running in the backgroun
     const stdout = command.includes('broken') ? '== 1 failed, 2 passed in 0.1s ==' : '== 3 passed in 0.1s =='
     return { result: { stdout, stderr: '', interrupted: false } }
   })
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { evolveAt: 30 })] })
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   await $.tool.call(bash('pytest 2>&1 | tail -5') as never)
   await cmd($, 'pokemon', 'party')
@@ -1300,9 +1413,15 @@ test('an everstone holder never evolves when the party is reordered during an ev
   const w = await begin($, on, {
     ...emptySave(),
     party: [
-      member('charmander', { id: 'a', xp: xpForLevel(16) - 5, evolveAt: 16, gender: 'male' }),
-      member('charmeleon', { id: 'e', xp: xpForLevel(40), evolveAt: 36, hasEverstone: true, gender: 'male' }),
-      member('pikachu', { id: 'd', xp: xpForLevel(30) - 5, evolveAt: 30, gender: 'male' }),
+      member('charmander', { id: 'a', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),
+      member('charmeleon', {
+        id: 'e',
+        xp: xpForLevel(40),
+        next: [lv('charizard', 36)],
+        heldItem: 'everstone',
+        gender: 'male',
+      }),
+      member('pikachu', { id: 'd', xp: xpForLevel(30) - 5, next: [lv('raichu', 30)], gender: 'male' }),
     ],
   })
   await cmd($, 'pokemon', 'party')
@@ -1313,7 +1432,7 @@ test('an everstone holder never evolves when the party is reordered during an ev
   expect(await cmd($, 'pokemon', 'pikachu')).toBe('Pikachu leads the party again (Lv 30).')
   for (let i = 0; i < 40 && w.toasts.length < 2; i++) await w.clock.advance(500)
   for (let i = 0; i < 10; i++) await w.clock.advance(500)
-  expect(w.saveNow().party.map(m => [m.id, m.species, Boolean(m.hasEverstone)])).toEqual([
+  expect(w.saveNow().party.map(m => [m.id, m.species, m.heldItem === 'everstone'])).toEqual([
     ['d', 'raichu', false],
     ['a', 'charmeleon', false],
     ['e', 'charmeleon', true],
@@ -1331,7 +1450,10 @@ test('a slow party refresh in flight never draws over an evolution', async ($, o
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('pikachu', { id: 'p', xp: xpForLevel(30) - 5, evolveAt: 30, gender: 'male' })] },
+    {
+      ...emptySave(),
+      party: [member('pikachu', { id: 'p', xp: xpForLevel(30) - 5, next: [lv('raichu', 30)], gender: 'male' })],
+    },
     ART,
     undefined,
     net,
@@ -1348,7 +1470,7 @@ test('a slow party refresh in flight never draws over an evolution', async ($, o
   net.stall = new Promise<void>(r => (release = r))
   w.store.set('save', {
     ...w.saveNow(),
-    party: [...w.saveNow().party, member('eevee', { id: 'v', evolveAt: null, gender: 'male' })],
+    party: [...w.saveNow().party, member('eevee', { id: 'v', next: [], gender: 'male' })],
   })
   await w.clock.advance(10_500)
   await $.tool.call(bash('git commit -m x') as never)
@@ -1363,4 +1485,100 @@ test('a slow party refresh in flight never draws over an evolution', async ($, o
   // Raichu leads, drawn in front: its colour shows; Pikachu's is nowhere. (Eevee may stand fully behind it.)
   expect(colors.has(0x00ff00)).toBe(true)
   expect(colors.has(0xff0000)).toBe(false)
+})
+
+test('Rockruff evolves at Lv 25 into the Lycanroc of the hour: Midnight at night', async ($, on) => {
+  answerTools(on)
+  const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(23) }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('rockruff', { xp: xpForLevel(25) - 5 })] },
+    ART,
+    undefined,
+    net,
+  )
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party[0]?.species === 'lycanroc')
+  expect(w.saveNow().party[0]?.form).toBe('midnight')
+})
+
+test('Rockruff by day becomes Midday Lycanroc, the plain form', async ($, on) => {
+  answerTools(on)
+  const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(12) }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('rockruff', { xp: xpForLevel(25) - 5 })] },
+    ART,
+    undefined,
+    net,
+  )
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party[0]?.species === 'lycanroc')
+  expect(w.saveNow().party[0]?.form).toBe('regular')
+})
+
+test('Pancham evolves at Lv 32 only with a Dark-type in the party', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('pancham', { xp: xpForLevel(32) - 5 })] })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
+  expect(w.saveNow().party[0]?.species).toBe('pancham')
+  expect(await cmd($, 'pokemon', 'party')).toContain('evolves at Lv 32 with a Dark-type in the party')
+  await cmd($, 'pokemon', 'add umbreon')
+  await until($, () => w.saveNow().party[0]?.species === 'pangoro' && w.toasts.length > 0)
+  expect(w.toasts).toEqual(['What? Pancham evolved into Pangoro!'])
+})
+
+test('Nincada becomes Ninjask at Lv 20, and Shedinja comes along: to the party, or the PC box when full', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('nincada', { xp: xpForLevel(20) - 5 })] })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.toasts.length === 1)
+  expect(w.toasts).toEqual(['What? Nincada evolved into Ninjask! Shedinja joined your party!'])
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['ninjask', 'shedinja'])
+  expect(w.saveNow().dex.shedinja?.seen).toBe(1)
+})
+
+test('with a full party, Shedinja goes to the PC box', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [
+      member('nincada', { xp: xpForLevel(20) - 5 }),
+      member('pikachu', { next: [] }),
+      member('charmander', { next: [] }),
+    ],
+  })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.toasts.length === 1)
+  expect(w.toasts).toEqual(['What? Nincada evolved into Ninjask! Shedinja went to the PC box.'])
+  expect(w.saveNow().box?.map(m => m.species)).toEqual(['shedinja'])
+})
+
+test('Dusclops waits for a Reaper Cloth: past Lv 30 it stays, and the party says what it needs', async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('dusclops', { xp: xpForLevel(45) })] })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
+  expect(w.saveNow().party[0]?.species).toBe('dusclops')
+  expect(await cmd($, 'pokemon', 'party')).toContain('evolves with a Reaper Cloth')
+  expect(w.toasts).toEqual([])
+})
+
+test('Mantyke evolves once a Remoraid joins the party', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('mantyke')] })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
+  expect(w.saveNow().party[0]?.species).toBe('mantyke')
+  expect(await cmd($, 'pokemon', 'party')).toContain('evolves with Remoraid in the party')
+  await cmd($, 'pokemon', 'add remoraid')
+  await until($, () => w.saveNow().party[0]?.species === 'mantine')
 })
