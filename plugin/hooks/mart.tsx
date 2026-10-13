@@ -62,6 +62,7 @@ export const KEYS: Record<string, Act> = {
 export const ICON_ROWS = 8
 const ICON_COLUMNS = 12
 
+// The same as items.ts' MAX_BAG: this module imports types only, so it keeps its own copy.
 const MAX_BAG = 999
 const BLUE = '#3a6ea5'
 const PAPER = '#f4f1e6'

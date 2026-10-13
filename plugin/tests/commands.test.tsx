@@ -1629,8 +1629,8 @@ test('the Mart takes only its own acts: raw buys of anything, bad picks and tabs
   expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
 })
 
-test('/pokemon mart opens it in the band and says so without one; a wild Pokémon and /pokemon off close it', async ($, on) => {
-  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+test('/pokemon mart opens it in the band and says so without one; /pokemon off closes it', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
   expect(await cmd($, 'pokemon', 'mart')).toBe(
     "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here.",
@@ -1638,12 +1638,39 @@ test('/pokemon mart opens it in the band and says so without one; a wild Pokémo
   const band = (await mountBand($)) as Band
   expect(await cmd($, 'pokemon', 'mart')).toMatch(/^The PokéMart is open above the prompt/)
   expect(await martOf(band)).not.toBeNull()
-  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/wanders by/)
-  expect(await martOf(band)).toBeNull()
-  await cmd($, 'pokemon', 'mart')
   await cmd($, 'pokemon', 'off')
   await cmd($, 'pokemon', 'on')
   expect(await martOf(band)).toBeNull()
+})
+
+test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  expect(await martOf(band)).not.toBeNull()
+  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/wanders by/)
+  expect(await martOf(band)).toBeNull()
+  expect(await cmd($, 'pokemon', 'mart')).toBe('A wild Caterpie is out: catch it or let it go first.')
+  expect(await martOf(band)).toBeNull()
+})
+
+test('the party turned off in another session closes the Mart: it stays closed when they come back', async ($, on) => {
+  engineLines(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  expect(await martOf(band)).not.toBeNull()
+  // Another session turns them off, then on again; this one picks each up at its next sync.
+  w.store.set('save', { ...w.saveNow(), isOff: true })
+  await w.clock.advance(10_000)
+  await band.redraw()
+  const { isOff: _, ...back } = w.saveNow()
+  w.store.set('save', back)
+  await w.clock.advance(10_000)
+  expect(await martOf(band)).toBeNull()
+  expect(await clientProps(band, 'shop')).not.toBeNull()
 })
 
 test('earning shows +₽ under the button for a moment', async ($, on) => {

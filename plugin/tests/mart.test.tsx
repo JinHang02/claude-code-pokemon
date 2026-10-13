@@ -4,6 +4,7 @@ import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START } from '..
 import type { Act, MartProps, MartState } from '../hooks/mart'
 import { ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
+import { walletLabel } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
 
 const props = (extra: Partial<MartProps> = {}): MartProps => ({
@@ -166,4 +167,14 @@ test('a short band (small sprites) still fits: fewer list rows, the actions on t
   expect(drawn[5]).toContain('Buy ₽3,000')
   // Too narrow for every control: cut at the edge, never wider than the band.
   for (const line of lines(props({ columns: 40 }))) expect([...line].length).toBe(40)
+})
+
+test('the button fits its 13 columns: the full wallet up to ₽99,999, a short one past it', () => {
+  // 🛒 takes two columns.
+  const columns = (label: string) => [...label].length + 1
+  expect(walletLabel(99_999)).toBe(' 🛒 ₽ 99,999 ')
+  expect(walletLabel(100_000)).toBe(' 🛒 ₽ 100k ')
+  expect(walletLabel(1_234_567)).toBe(' 🛒 ₽ 1.2M ')
+  for (const n of [0, 99_999, 100_000, 999_999, 1_000_000, 999_999_999, 123_456_789_012])
+    expect(columns(walletLabel(n))).toBeLessThanOrEqual(13)
 })

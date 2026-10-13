@@ -1227,6 +1227,8 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
 // `/pokemon mart`: the Mart opens in the band, when there is one.
 function openMartCommand($: EngineInterface): string {
   if (!band || save.isOff) return "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here."
+  // The visitor would go on walking under the Mart, out of reach: no Mart while it's out (the button hides then too).
+  if (status.wild || pitch) return `A wild ${wild?.mon.name ?? 'Pokémon'} is out: catch it or let it go first.`
   openMart($)
   return 'The PokéMart is open above the prompt: click an item, then ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.'
 }
@@ -1601,6 +1603,8 @@ export const register: Register = on => {
     if (e.surface !== 'terminal') return next(e)
     if (!mons.length || save.isOff || e.props.hasSurvey) {
       band = null
+      // Off, maybe from another session: the Mart doesn't come back with the party.
+      if (save.isOff) mart = { ...mart, isOpen: false }
       return next(e)
     }
     const { Box, Client, Raster } = $.ui.resolve(e)
