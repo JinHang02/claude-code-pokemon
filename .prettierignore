@@ -1,1 +1,3 @@
 plugin/.claude-plugin/types/
+plugin/tests/fixtures/
+specs/evolution-coverage.md

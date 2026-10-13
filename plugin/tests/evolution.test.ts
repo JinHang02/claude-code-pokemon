@@ -309,3 +309,58 @@ test('a gender-only evolution waits for the right gender; a cloak decides only t
   expect(nextStages(burmy, 'burmy', 'burmy-sandy', 'male', forms)).toEqual([lv('mothim', 20)])
   expect(nextStages(burmy, 'burmy', 'burmy', null, forms)).toEqual([])
 })
+
+// Every way out of Scatterbug and Sinistea names a form the sprite list doesn't have; Wooper's Paldean way names one
+// too, beside a way of its own.
+const scatterbug = link(
+  'scatterbug',
+  [],
+  link('spewpa', [
+    { min_level: 9, required_pokemon_form: form('scatterbug-meadow'), evolved_pokemon_form: form('spewpa-meadow') },
+    { min_level: 9, required_pokemon_form: form('scatterbug-polar'), evolved_pokemon_form: form('spewpa-polar') },
+  ]),
+)
+const sinistea = link(
+  'sinistea',
+  [],
+  link('polteageist', [
+    {
+      trigger: form('use-item'),
+      item: form('cracked-pot'),
+      required_pokemon_form: form('sinistea-phony'),
+      evolved_pokemon_form: form('polteageist-phony'),
+    },
+    {
+      trigger: form('use-item'),
+      item: form('chipped-pot'),
+      required_pokemon_form: form('sinistea-antique'),
+      evolved_pokemon_form: form('polteageist-antique'),
+    },
+  ]),
+)
+const wooper = link(
+  'wooper',
+  [],
+  link('quagsire', [{ min_level: 20 }]),
+  link('clodsire', [{ min_level: 20, required_pokemon_form: form('wooper-paldea') }]),
+)
+
+test('a species whose every way names a form the sprites lack evolves by those ways; one with its own keeps it', () => {
+  expect(nextStages(scatterbug, 'scatterbug', 'scatterbug', 'male', [])).toEqual([
+    lv('spewpa', 9, { form: 'spewpa-meadow' }),
+    lv('spewpa', 9, { form: 'spewpa-polar' }),
+  ])
+  expect(nextStages(sinistea, 'sinistea', 'sinistea', null, [])).toEqual([
+    { species: 'polteageist', form: 'polteageist-phony', way: { kind: 'item', item: 'cracked-pot' } },
+    { species: 'polteageist', form: 'polteageist-antique', way: { kind: 'item', item: 'chipped-pot' } },
+  ])
+  expect(nextStages(wooper, 'wooper', 'wooper', 'female', [])).toEqual([lv('quagsire', 20)])
+})
+
+test('a link with no way at all is no evolution: PokeAPI ties Phione to Manaphy, which only breeds it', () => {
+  const phione: ChainLink = {
+    species: { name: 'phione' },
+    evolves_to: [{ species: { name: 'manaphy' }, evolves_to: [] }],
+  }
+  expect(nextStages(phione, 'phione', 'phione', null, [])).toEqual([])
+})

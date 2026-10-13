@@ -125,31 +125,30 @@ const GENDER_CODES: Record<number, Gender> = { 1: 'female', 2: 'male' }
 
 // What `name` evolves into and how, from the PokeAPI form `formName` (`meowth-galar`); empty for a final stage or a
 // name not in the chain. Ways for the other gender never apply (`gender` undefined: any). A form with evolutions of
-// its own takes only those; a form the games give none (Gigantamax) evolves as the plain species; the plain species
-// also answers to the games' own name for it (`burmy-plant`: a form missing from `forms`, the species' forms in the
-// sprite list); otherwise the evolutions no form is named for apply. A species and form the plugin has no way to
-// reach gets the fallback level.
+// its own takes only those; a form the games give none (Gigantamax) evolves as the plain species; then the
+// evolutions no form is named for apply; failing those, the plain species answers to the games' own names for it
+// (`burmy-plant`, every Scatterbug pattern: forms missing from `forms`, the species' forms in the sprite list, when
+// given). A species and form the plugin has no way to reach gets the fallback level.
 export function nextStages(
   chain: ChainLink,
   name: string,
   formName = name,
   gender?: Gender,
-  forms: string[] = [],
+  forms?: string[],
 ): Stage[] {
+  // A child with no way at all isn't an evolution (Phione → Manaphy: only breeding links them).
   const ways = (find(chain, name)?.evolves_to ?? [])
-    .flatMap(child =>
-      (child.evolution_details?.length ? child.evolution_details : [{}]).map(detail => ({ child, detail })),
-    )
+    .flatMap(child => (child.evolution_details ?? []).map(detail => ({ child, detail })))
     .filter(w => gender === undefined || !w.detail.gender || GENDER_CODES[w.detail.gender] === gender)
   const required = (w: (typeof ways)[number]) => w.detail.required_pokemon_form?.name
   const forForm = (form: string) => ways.filter(w => required(w) === form)
   const asPlain =
-    formName === name && forms.length
+    formName === name && forms
       ? ways.filter(
           w => required(w)?.startsWith(`${name}-`) && !forms.includes(required(w)?.slice(name.length + 1) ?? ''),
         )
       : []
-  const chosen = [forForm(formName), forForm(name), asPlain].find(w => w.length) ?? ways.filter(w => !required(w))
+  const chosen = [forForm(formName), forForm(name), ways.filter(w => !required(w)), asPlain].find(w => w.length) ?? []
   const stages = new Map<string, Stage>()
   // Species and forms some detail leads to that the plugin can't carry out: the fallback, unless another way can.
   const stuck = new Map<string, Stage>()
