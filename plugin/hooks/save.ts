@@ -371,8 +371,7 @@ export function putInBag(save: Save, id: string): Save | null {
   return have >= MAX_BAG ? null : { ...save, bag: { ...save.bag, [id]: have + 1 } }
 }
 
-// The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named, for
-// a take first). An Everstone is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps
+// The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named). An Everstone is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps
 // the member; its time together goes at the next beat.
 export function releaseMember(
   save: Save,
@@ -385,7 +384,7 @@ export function releaseMember(
   if (isParty && save.party.length === 1) return 'Pick a new lead first.'
   const item = m.heldItem === 'everstone' ? undefined : m.heldItem
   const held = item ? putInBag(save, item) : save
-  if (!held) return `Your Bag can't hold another ${itemName(item ?? '')}. /pokemon take ${query.trim()} first.`
+  if (!held) return `Your Bag can't hold another ${itemName(item ?? '')} (${MAX_BAG} already). Use one first.`
   const box = (save.box ?? []).filter((_, i) => isParty || i !== spot.at)
   const { box: _, ...rest } = held
   const back = item ? ` Its ${itemName(item)} went back to the Bag.` : ''

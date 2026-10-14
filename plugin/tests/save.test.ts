@@ -466,6 +466,6 @@ test('a release: from the party or the PC box, its held item back to the Bag, th
   expect(releaseMember(s, { place: 'party', at: 0 }, 'pikachu')).toBe('Pick a new lead first.')
   const full = loadSave({ party: [pikachu], box: [eevee], bag: { 'fire-stone': 999 } })
   expect(releaseMember(full, { place: 'box', at: 0 }, 'eevee 2')).toBe(
-    "Your Bag can't hold another Fire Stone. /pokemon take eevee 2 first.",
+    "Your Bag can't hold another Fire Stone (999 already). Use one first.",
   )
 })

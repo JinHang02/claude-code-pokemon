@@ -179,6 +179,8 @@ const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
 let evolveFrom: Pixels | null = null
+// The member the evolution animation plays on: it follows it when the party changes under it.
+let evolving = ''
 let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
@@ -1103,6 +1105,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
     const newName = displayName(next.species, form)
     const mon: Mon = { key: keyOf(evolved), name: newName, isShiny, ...parseAnsi(art) }
     await update($, party, list => list.map((m, i) => (i === slot ? mon : m)))
+    evolving = member.id
     status = evolve(status, slot)
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
@@ -1823,6 +1826,12 @@ export const register: Register = on => {
         ),
       }
       fitted = { budget, keys, looks, lefts }
+      // An evolution plays on on its own Pokémon wherever the change put it, and stops if it left the party.
+      if (status.mood?.kind === 'evolve') {
+        const at = keys.indexOf(evolving)
+        status = { ...status, mood: at >= 0 ? { ...status.mood, actor: at } : null }
+        if (at < 0) evolveFrom = null
+      }
       if (wild) wild = { ...wild, left: fitWild(wild.mon) }
     }
     const rows = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)

@@ -44,7 +44,9 @@ function matching(pool: Spot[], named: string[], wantsShiny: boolean): Spot[] | 
 const isSpots = (found: Spot[] | Lookup | null): found is Spot[] => Array.isArray(found) && found.length > 0
 
 // The members `query` names in `places`, party first then the PC box, each in its stored order. `shiny` anywhere asks
-// for a shiny one; a last word that is a number, when the words before it name someone, picks the nth of the list.
+// for a shiny one. A last word that is a number picks the nth of the list the words before it name, when they name
+// several and it is in range; otherwise the whole words are tried as a name (`porygon 2`: Porygon2, `zygarde 10`),
+// then the number as a pick again. So every list's own hint, typed back, picks its line.
 // `command` is what comes before the name (`'release '`), for a suggestion and the numbered list.
 export function findMembers(
   s: Save,
@@ -59,13 +61,15 @@ export function findMembers(
   const pool = (['party', 'box'] as const)
     .filter(place => places.includes(place))
     .flatMap(place => (place === 'party' ? s.party : (s.box ?? [])).map((member, at) => ({ place, at, member })))
-  const whole = matching(pool, named, wantsShiny)
-  if (isSpots(whole)) return whole.length === 1 && whole[0] ? { spot: whole[0] } : { choices: whole }
   const last = named[named.length - 1] ?? ''
   const isNumbered = named.length > 1 && /^\d+$/.test(last)
   // `-1` slugs to `1`: a signed number is below 1, out of range like `0`.
   const nth = /^-/.test(query.trim().split(/\s+/).pop() ?? '') ? 0 : Number(last)
   const before = isNumbered ? matching(pool, named.slice(0, -1), wantsShiny) : null
+  const picked = isSpots(before) && before.length > 1 && nth > 0 ? before[nth - 1] : undefined
+  if (picked) return { spot: picked }
+  const whole = matching(pool, named, wantsShiny)
+  if (isSpots(whole)) return whole.length === 1 && whole[0] ? { spot: whole[0] } : { choices: whole }
   if (isSpots(before)) {
     const spot = nth > 0 ? before[nth - 1] : undefined
     const name = words.slice(0, words.lastIndexOf(last)).join(' ')

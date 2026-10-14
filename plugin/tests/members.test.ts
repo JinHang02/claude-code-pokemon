@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { findMembers, formatChoices } from '../hooks/members'
+import { findMembers, formatChoices, isList } from '../hooks/members'
 import type { Spot } from '../hooks/members'
 import { emptySave, level } from '../hooks/save'
 import type { Member, Save } from '../hooks/save'
@@ -102,9 +102,12 @@ test('a number that is part of a name stays in the name; a suggestion keeps a nu
   expect(ids(findMembers(one, 'porygon 2', ['party'], 'remove ', levelOf))).toBe(two.id)
   const both = { ...emptySave(), party: [member('porygon'), two] }
   expect(ids(findMembers(both, 'porygon 2', ['party'], 'remove ', levelOf))).toBe(two.id)
-  // Two Porygon: the number picks the second.
+  // Two Porygon: the number picks the second, as their list says, even with a Porygon2 there.
   const pair = { ...emptySave(), party: [member('porygon'), member('porygon', { id: 'second' })] }
   expect(ids(findMembers(pair, 'porygon 2', ['party'], 'remove ', levelOf))).toBe('second')
+  const three = { ...pair, party: [...pair.party, two] }
+  expect(ids(findMembers(three, 'porygon 2', ['party'], 'remove ', levelOf))).toBe('second')
+  expect(ids(findMembers(three, 'porygon 3', ['party'], 'remove ', levelOf))).toMatch(/^Which Porygon\? /)
   // A near miss with a number no list of it reaches drops the number.
   expect(ids(findMembers(one, 'porygn 2', ['party'], 'remove ', levelOf))).toBe(
     'Did you mean Porygon2? Run /pokemon remove porygon2',
@@ -131,4 +134,74 @@ test('a list of several forms names the species, and each line its form', () => 
   expect('choices' in found && formatChoices(found.choices, 'unown', 'remove ', levelOf)).toBe(
     'Which Unown? 1. Unown (B) Lv 1 (party) · 2. Unown (A) Lv 1 (party) — add the number: /pokemon remove unown 2',
   )
+})
+
+test('every line of a numbered list, its hint typed back, picks that line', () => {
+  const m = member
+  const saves: Save[] = [
+    { ...emptySave(), party: [m('porygon'), m('porygon'), m('porygon2')], box: [m('porygon2'), m('porygon')] },
+    { ...emptySave(), party: [m('porygon2'), m('porygon2')], box: [m('porygon-z'), m('porygon-z'), m('porygon')] },
+    {
+      ...emptySave(),
+      party: [m('zygarde'), m('zygarde', { form: '10' }), m('zygarde')],
+      box: [m('zygarde', { form: '10' }), m('zygarde'), m('zygarde', { form: '10' })],
+    },
+    { ...emptySave(), party: [m('unown', { form: 'b' }), m('unown', { form: 'a' }), m('unown', { form: 'a' })] },
+    {
+      ...emptySave(),
+      party: [m('eevee'), m('eevee', { isShiny: true })],
+      box: [m('eevee', { isShiny: true }), m('mr-mime'), m('mr-mime')],
+    },
+    { ...emptySave(), party: [m('vulpix', { form: 'alola' }), m('vulpix', { form: 'alola' }), m('nidoran-f')] },
+  ]
+  const queries = [
+    'porygon',
+    'porygon2',
+    'porygon 2',
+    'porygon z',
+    'porygonz',
+    'zygarde',
+    'zygarde 10',
+    'unown',
+    'unown a',
+    'eevee',
+    'shiny eevee',
+    'mr mime',
+    'mrmime',
+    'vulpix',
+    'alolan vulpix',
+    'porygon 9',
+    'zygarde 10 9',
+  ]
+  let lists = 0
+  for (const s of saves)
+    for (const places of [['party'], ['box'], both] as ('party' | 'box')[][])
+      for (const query of queries) {
+        const found = findMembers(s, query, places, 'release ', levelOf)
+        // A number past the end lists the words before it: those are what the hint numbers.
+        const listed =
+          'choices' in found
+            ? found
+            : 'error' in found && isList(found.error)
+              ? findMembers(s, query.replace(/ \d+$/, ''), places, 'release ', levelOf)
+              : null
+        if (!listed || !('choices' in listed)) continue
+        const text =
+          'choices' in found
+            ? formatChoices(found.choices, query, 'release ', levelOf)
+            : 'error' in found
+              ? found.error
+              : ''
+        const hint = /add the number: \/pokemon release (.*) \d+$/.exec(text)?.[1]
+        expect(hint).toBeDefined()
+        listed.choices.forEach((choice, i) => {
+          lists++
+          expect([query, i + 1, ids(findMembers(s, `${hint} ${i + 1}`, places, 'release ', levelOf))]).toEqual([
+            query,
+            i + 1,
+            choice.member.id,
+          ])
+        })
+      }
+  expect(lists).toBeGreaterThan(40)
 })

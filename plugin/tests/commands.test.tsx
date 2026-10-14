@@ -2466,7 +2466,7 @@ test('a Bag full of its item keeps a holder from being released', async ($, on) 
   })
   const before = w.saveNow()
   expect(await cmd($, 'pokemon', 'release eevee')).toBe(
-    "Your Bag can't hold another Fire Stone. /pokemon take eevee first.",
+    "Your Bag can't hold another Fire Stone (999 already). Use one first.",
   )
   expect(kept(w.saveNow())).toEqual(kept(before))
 })
@@ -2513,4 +2513,100 @@ test('releasing the lead: the next one leads, and the band redraws without it', 
     const colors = w.band.cells ? colorsIn(w.band.cells) : new Set<number>()
     return (!colors.has(EEVEE) && colors.has(PIKACHU)) || null
   })
+})
+
+const PIKACHU = 0x040506
+const CHARMANDER = 0x010203
+const CHARMELEON = 0x070809
+const EEVEE = 0x0a0b0c
+// Party [Pikachu, Charmander about to evolve, Eevee], each a solid colour, the band 512 columns wide. Charmander
+// evolves, `act` runs at the start of its animation, and the frames drawn over the rest of it are returned.
+async function actWhileEvolving($: Engine, on: On, act: string, said: string) {
+  answerTools(on)
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: {
+      pikachu: solid('4;5;6', 6),
+      charmander: solid('1;2;3', 6),
+      charmeleon: solid('7;8;9', 6),
+      eevee: solid('10;11;12', 6),
+    },
+  }
+  const plain = { next: [], gender: 'male' as const }
+  const w = await begin(
+    $,
+    on,
+    {
+      ...emptySave(),
+      party: [
+        member('pikachu', { id: 'p', ...plain }),
+        member('charmander', { id: 'c', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),
+        member('eevee', { id: 'e', ...plain }),
+      ],
+    },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  await $.ui.mount({
+    plugin: 'pokemon',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 512 } as never,
+  })
+  // All three in sight and apart, so none is hidden behind another.
+  await seen(w, () => {
+    const runs = [PIKACHU, CHARMANDER, EEVEE].map(c => (w.band.cells ? runsOf(w.band.cells, 512, c) : []))
+    if (!runs.every(r => r.length === 1)) return null
+    const spans = runs.map(r => r[0] as [number, number]).sort((a, b) => a[0] - b[0])
+    return spans.every((s, i) => i === 0 || (spans[i - 1]?.[1] ?? 0) + 6 < s[0]) || null
+  })
+  // The clock stands still from here to the evolution, and the animation holds everyone still.
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party[1]?.species === 'charmeleon')
+  expect(await cmd($, 'pokemon', act)).toBe(said)
+  const frames: Set<number>[] = []
+  // The animation is 4.5 s: past its end.
+  for (let i = 0; i < 30; i++) {
+    await w.clock.advance(200)
+    if (w.band.cells) frames.push(colorsIn(w.band.cells))
+  }
+  return { w, frames }
+}
+
+test('releasing one before an evolving Pokémon mid-animation: the animation stays on it, the others as they are', async ($, on) => {
+  const { w, frames } = await actWhileEvolving($, on, 'release pikachu', 'Bye bye, Pikachu! It went back to the wild.')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['c', 'e'])
+  // Every frame once Pikachu is gone: Eevee as itself; the evolving one still animating, ending as Charmeleon.
+  const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
+  expect(after.length).toBeGreaterThan(10)
+  expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
+  expect(after.some(c => c.has(CHARMANDER))).toBe(true)
+  expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
+})
+
+test('depositing one before an evolving Pokémon mid-animation: the animation stays on it', async ($, on) => {
+  const { w, frames } = await actWhileEvolving($, on, 'deposit pikachu', 'Pikachu (Lv 2) went into the PC box.')
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['p'])
+  const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
+  expect(after.length).toBeGreaterThan(10)
+  expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
+  expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
+})
+
+test('releasing the Pokémon that is evolving stops its animation; it never comes back', async ($, on) => {
+  const { w, frames } = await actWhileEvolving(
+    $,
+    on,
+    'release charmeleon',
+    'Bye bye, Charmeleon! It went back to the wild.',
+  )
+  const after = frames.slice(frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER)))
+  expect(after.length).toBeGreaterThan(10)
+  expect(after.filter(c => c.has(CHARMANDER) || c.has(CHARMELEON) || !c.has(EEVEE) || !c.has(PIKACHU))).toHaveLength(0)
+  await w.clock.advance(5000)
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e'])
 })
