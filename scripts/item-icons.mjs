@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Writes plugin/hooks/item-icons.ts: a picture of every item in plugin/hooks/items.ts, at most 14×14 pixels, from
-// PokeAPI's item sprites, else the sprite named in OTHER, else a plain Bag (which a test then refuses). Run when
-// items.ts changes:
+// PokeAPI's item sprites, else the sprite named in OTHER, else a plain Bag (which a test then refuses); one in
+// REDRAWN is drawn here instead. Run when items.ts changes:
 //   node scripts/item-icons.mjs
 import { readFile, writeFile } from 'node:fs/promises'
 import { inflateSync } from 'node:zlib'
@@ -200,12 +200,40 @@ const BAG_ART = [
   '.bbbbbbbb.',
 ]
 const BAG_COLORS = { b: 0x9a6b3f, d: 0x5a3a1f, y: 0xf0c040 }
-const BAG = {
-  width: BAG_ART[0].length,
-  height: BAG_ART.length,
-  pixels: BAG_ART.join('')
+// Pixels from rows of letters, each a colour in `colors` or clear.
+const drawn = (art, colors) => ({
+  width: art[0].length,
+  height: art.length,
+  pixels: art
+    .join('')
     .split('')
-    .map(c => BAG_COLORS[c] ?? CLEAR),
+    .map(c => colors[c] ?? CLEAR),
+})
+const BAG = drawn(BAG_ART, BAG_COLORS)
+
+// Sprites redrawn by hand, as they shrink to a blob. PokeRogue's Linking Cord, a coil of near-black cable, comes out
+// almost all outline: here it keeps its shape (the coil with a hole, a plug at each end) and its own grey #807880,
+// with lighter greys added for the strands and the plugs' metal so it reads on the Mart's paper and on a dark terminal.
+const REDRAWN = {
+  'linking-cord': drawn(
+    [
+      '.ooo..........',
+      'ottto......oo.',
+      'opppo.....otto',
+      'opppo....oppto',
+      '.oco....opppo.',
+      '.ocoooooocpo..',
+      '.ochhhhhco....',
+      '.ohoooooco....',
+      'ohoohhhooco...',
+      'ohoh...coco...',
+      'ohooccccoco...',
+      '.ocoooooco....',
+      '.oocccccoo....',
+      '...ooooo......',
+    ],
+    { o: 0x202020, c: 0x807880, h: 0xb8b0b8, p: 0x989098, t: 0xe8e8e8 },
+  ),
 }
 
 const ids = [
@@ -215,6 +243,10 @@ const icons = []
 const bagged = []
 for (const id of ids) {
   const url = OTHER[id] ?? `${POKEAPI}/${id}.png`
+  if (REDRAWN[id]) {
+    icons.push({ id, url: `${url}, redrawn by hand in scripts/item-icons.mjs, its greys lightened`, ...REDRAWN[id] })
+    continue
+  }
   const png = await get(url)
   const img = png && trim(decodePng(png))
   if (!img) bagged.push(id)

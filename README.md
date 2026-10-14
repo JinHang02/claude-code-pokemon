@@ -228,7 +228,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 - **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives the band the keyboard only on a click.
 - **Esc doesn't close it:** Claude Code keeps Escape for the prompt. Use `x` or `✕`.
 - **The mouse wheel doesn't move the list:** Claude Code doesn't pass it to the band. `↑` `↓` or `▲` `▼` do.
-- **Item pictures need a band at least 8 rows tall,** otherwise each item gets a coloured ◆. A few are rough at this size: the Linking Cord's coil is hard to make out.
+- **Item pictures need a band at least 8 rows tall,** otherwise each item gets a coloured ◆.
 - **The Mart stays shut while a wild Pokémon is out:** catch it or let it go first.
 
 ## Commands

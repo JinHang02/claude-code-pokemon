@@ -81,6 +81,7 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - After `/clear` the party comes back above the prompt by itself. It used to stay hidden until the party changed.
 - While you aim at a wild Pokémon, the ₽ button's corner shows the landscape, and a click there throws a ball. It
   used to go blank.
+- The Linking Cord's picture in the Mart is a grey coil with a plug at each end. It used to be a dark blob.
 
 ### Known limitations
 
