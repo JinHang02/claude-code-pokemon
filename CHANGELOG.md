@@ -79,6 +79,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   They reached their stage above Lv 30 and then hit the old Lv 30 rule straight away.
 - Baby Pokémon (Pichu, Cleffa, Togepi...) no longer wait until Lv 30.
 - After `/clear` the party comes back above the prompt by itself. It used to stay hidden until the party changed.
+- While you aim at a wild Pokémon, the ₽ button's corner shows the landscape, and a click there throws a ball. It
+  used to go blank.
 
 ### Known limitations
 

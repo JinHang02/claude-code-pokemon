@@ -455,6 +455,26 @@ test('while aiming, every step a wild Pokémon takes is drawn: clicks are judged
   expect(jump).toBeLessThanOrEqual(1)
 })
 
+test("while aiming, the click layer is the whole band: the ₽ button's corner shows the landscape, and a click there throws", async ($, on) => {
+  const { w, aim } = await visited($, on, 'caterpie')
+  const lines = await aimLines(aim)
+  expect(lines).not.toBeNull()
+  for (const runs of lines ?? []) {
+    const row = runs.flatMap(([text, fg, bg]) => [...text].map(() => fg || bg))
+    expect(row).toHaveLength(80)
+    // The corner is painted, not left blank: no cell there without a colour.
+    expect(row.slice(67).filter(color => !color)).toEqual([])
+  }
+  // A click in the corner is a throw like any other: a miss, the ball flying out there.
+  await aim.pointer({ type: 'down', x: 75, y: 0, button: 'left' })
+  let flew = false
+  for (let i = 0; i < 40; i++) {
+    await w.clock.advance(50)
+    if (colorsIn(w.band.cells).has(BALL_RED)) flew = true
+  }
+  expect(flew).toBe(true)
+})
+
 test('a wild Pokémon can be aimed at only once its catch rate is known, so a sure catch stays sure', async ($, on) => {
   const net = throwNet()
   const w = await begin(

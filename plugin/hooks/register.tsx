@@ -74,7 +74,6 @@ import {
   newScene,
   phaseAt,
   react,
-  slice,
   startWild,
   step,
   TICK_MS,
@@ -1810,16 +1809,10 @@ export const register: Register = on => {
     const img = frame(status, fitted.lefts, columns, rows, lookNow(), total)
     const { cells } = toCells(img)
     lastCells = cells
+    // The click layer is the whole picture, the button's corner included: anything narrower leaves that corner blank,
+    // and a click there is a throw like any other.
     if (isAiming)
-      return (
-        <Client
-          key="aim"
-          module="./aim.tsx"
-          width={columns}
-          height={rows}
-          props={{ lines: textRows(slice(img, 0, columns)) }}
-        />
-      )
+      return <Client key="aim" module="./aim.tsx" width={total} height={rows} props={{ lines: textRows(img) }} />
     // The whole band is one picture, the landscape running on under the button; nobody walks there.
     const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />
     // No button while a wild Pokémon is out, aimable or not: the Mart would hold up the catch.
