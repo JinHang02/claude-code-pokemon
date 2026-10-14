@@ -45,6 +45,7 @@ import {
   putInBag,
   recordCaught,
   recordSeen,
+  releaseMember,
   spriteBudget,
   storeCaught,
   takeFromBag,
@@ -644,29 +645,25 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
   return text || null
 }
 
-async function removeMember($: EngineInterface, query: string): Promise<string> {
+// `/pokemon release <name> [n]` (or `remove`): that one, from the party or the PC box, goes back to the wild, with no
+// confirmation; what it held goes back to the Bag. Looked up in the save as it is now, so a member another session
+// released is simply not found.
+async function releaseOne($: EngineInterface, query: string, command: string): Promise<string> {
+  if (!query.trim()) return 'Which one? /pokemon release <name>'
   let text = ''
+  let isPartyChanged = false
   await mutate($, s => {
-    if (!s.party.length) {
-      text = 'Your party is empty. /pokemon <name> picks a lead.'
+    const spot = pickIn(s, query, ['party', 'box'], `${command} `)
+    const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query)
+    if (typeof done === 'string') {
+      text = done
       return s
     }
-    // No name: any member but the lead, so a bare `remove` never takes the Pokémon you chose.
-    const spot = query.trim()
-      ? pickIn(s, query, ['party'], 'remove ')
-      : 1 + Math.floor(Math.random() * (s.party.length - 1))
-    const at = typeof spot === 'object' ? spot.at : spot
-    const gone = typeof at === 'number' ? s.party[at] : undefined
-    if (typeof at === 'string') text = at
-    else if (s.party.length === 1)
-      text = 'That would leave your party empty. Pick a new lead with /pokemon <name> instead.'
-    else if (gone) {
-      text = `${displayName(gone.species, gone.form)} went back to the wild.`
-      return { ...s, party: s.party.filter((_, i) => i !== at) }
-    }
-    return s
+    text = done.text
+    isPartyChanged = typeof spot !== 'string' && spot.place === 'party'
+    return done.save
   })
-  await refreshParty($)
+  if (isPartyChanged) await refreshParty($)
   return text
 }
 
@@ -1532,7 +1529,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return depositMember($, tail)
     case 'remove':
     case 'release':
-      return removeMember($, tail)
+      return releaseOne($, tail, head.toLowerCase())
     case 'size':
       return setSize($, tail.toLowerCase())
     case 'everstone':
@@ -1648,7 +1645,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release <name> [n] from your party or PC box · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({

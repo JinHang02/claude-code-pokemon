@@ -371,6 +371,30 @@ export function putInBag(save: Save, id: string): Save | null {
   return have >= MAX_BAG ? null : { ...save, bag: { ...save.bag, [id]: have + 1 } }
 }
 
+// The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named, for
+// a take first). An Everstone is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps
+// the member; its time together goes at the next beat.
+export function releaseMember(
+  save: Save,
+  spot: { place: 'party' | 'box'; at: number },
+  query: string,
+): { save: Save; text: string } | string {
+  const isParty = spot.place === 'party'
+  const m = isParty ? save.party[spot.at] : save.box?.[spot.at]
+  if (!m) return `No ${query.trim()} in your party or PC box.`
+  if (isParty && save.party.length === 1) return 'Pick a new lead first.'
+  const item = m.heldItem === 'everstone' ? undefined : m.heldItem
+  const held = item ? putInBag(save, item) : save
+  if (!held) return `Your Bag can't hold another ${itemName(item ?? '')}. /pokemon take ${query.trim()} first.`
+  const box = (save.box ?? []).filter((_, i) => isParty || i !== spot.at)
+  const { box: _, ...rest } = held
+  const back = item ? ` Its ${itemName(item)} went back to the Bag.` : ''
+  return {
+    save: { ...rest, party: save.party.filter((_, i) => !isParty || i !== spot.at), ...(box.length ? { box } : {}) },
+    text: `Bye bye, ${displayName(m.species, m.form)}! It went back to the wild.${back}`,
+  }
+}
+
 // `qty` of `item` bought with what the wallet holds (`cash`: the ledgers' unfolded ₽), or why not.
 export function buy(save: Save, cash: number, item: Item, qty: number): { save: Save; text: string; isError: boolean } {
   if (!Number.isInteger(qty) || qty < 1) return { save, text: "That isn't a quantity you can buy.", isError: true }
