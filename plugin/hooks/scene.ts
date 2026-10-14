@@ -641,9 +641,8 @@ export type { Landscape, Phase } from './backdrop'
 // `overlays`: painted last, over everything (a Poké Ball and its sparkles).
 export type Look = { phase: Phase; landscape?: Landscape; wild?: Pixels; evolveFrom?: Pixels; overlays?: Placed[] }
 
-// The landscape alone, `total` columns wide at tick `t`: the scene and the ₽ button's column beside it are cut from
-// this one picture, so the sky and hills run on across the seam. The sun and moon stay in the scene's left `scene`
-// columns, so they never hide under the wallet nor go when the button does.
+// The landscape alone, `total` columns wide at tick `t`, the ₽ button's corner included. The sun and moon stay in
+// the scene's left `scene` columns, so they never hide under the wallet nor go when the button does.
 export function scenery(total: number, rows: number, look: Look, t: number, scene = total): Pixels {
   const out: Pixels = { pixels: Array<number>(total * rows * 2).fill(CLEAR), width: total, height: rows * 2 }
   backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene)
@@ -661,7 +660,7 @@ export function slice(img: Pixels, from: number, count: number): Pixels {
 
 // The band's picture: the meadow, clones trailing the lead, a wild visitor, the party in their poses with
 // feet in the grass (lead in front), then dust, sparks, confetti and Zs. `lefts`: the party facing left.
-// `total`: how wide the whole band's landscape is, of which this picture is the left `width` columns.
+// `total`: how wide the whole picture is: the party keeps to the left `width` columns, the landscape alone beyond.
 export function frame(
   s: Status,
   lefts: Pixels[],
@@ -670,7 +669,8 @@ export function frame(
   look: Look = { phase: 'day' },
   total = width,
 ): Pixels {
-  const out = slice(scenery(total, rows, look, s.t, width), 0, width)
+  const land = scenery(total, rows, look, s.t, width)
+  const out = slice(land, 0, width)
   const ground = out.height - 2
   body = new Uint8Array(width * out.height)
   bodyWidth = width
@@ -767,5 +767,16 @@ export function frame(
     }
   }
   for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
-  return out
+  return width === total ? out : beside(out, slice(land, width, total - width))
+}
+
+// Two pictures of one height side by side.
+export function beside(left: Pixels, right: Pixels): Pixels {
+  const pixels: number[] = []
+  for (let y = 0; y < left.height; y++)
+    pixels.push(
+      ...left.pixels.slice(y * left.width, (y + 1) * left.width),
+      ...right.pixels.slice(y * right.width, (y + 1) * right.width),
+    )
+  return { pixels, width: left.width + right.width, height: left.height }
 }

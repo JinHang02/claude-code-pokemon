@@ -4,7 +4,7 @@ import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START } from '..
 import type { Act, MartProps, MartState } from '../hooks/mart'
 import { ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
-import { shopRows, walletLabel } from '../hooks/shop'
+import { shopRows, shopSize, walletLabel } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
 
 const props = (extra: Partial<MartProps> = {}): MartProps => ({
@@ -189,24 +189,12 @@ test('the button fits its 13 columns: the full wallet up to ₽99,999, a short o
     expect(columns(walletLabel(n))).toBeLessThanOrEqual(13)
 })
 
-test('the button draws its landscape with the wallet at the top right and +₽ under it, each on a dark pill', () => {
-  const sky: [string, string, string] = [' '.repeat(13), '', '#5b9bd0']
-  const grass: [string, string, string] = ['▀'.repeat(13), '#4fa845', '#2f7a2d']
-  const lines = [[sky], [sky], [grass]]
-  const rows = shopRows({ balance: 3020, plus: 20, lines })
-  // 🛒 takes two columns: every row is 13 columns wide, the label flush right.
-  const width = (runs: [string, string, string][]) =>
-    runs.reduce((n, [t]) => n + [...t].length + (t.includes('🛒') ? 1 : 0), 0)
-  for (const runs of rows) expect(width(runs)).toBe(13)
-  expect(rows[0]).toEqual([
-    [' ', '', '#5b9bd0'],
-    [' 🛒 ₽ 3,020 ', '#ffd75e', '#1d2029'],
-  ])
-  expect(rows[1]).toEqual([
-    ['       ', '', '#5b9bd0'],
-    [' +₽20 ', '#ffd75e', '#1d2029'],
-  ])
-  expect(rows[2]).toEqual([grass])
-  // Nothing earned just now: the sky under the wallet shows through.
-  expect(shopRows({ balance: 3020, plus: 0, lines })[1]).toEqual([sky])
+test('the button is just its pill: the wallet, and +₽ right-aligned under it while it shows', () => {
+  expect(shopRows({ balance: 3020, plus: 0 })).toEqual([' 🛒 ₽ 3,020 '])
+  expect(shopSize({ balance: 3020, plus: 0 })).toEqual({ columns: 12, rows: 1 })
+  // 🛒 takes two columns: both rows are the wallet's 12 wide.
+  expect(shopRows({ balance: 3020, plus: 20 })).toEqual([' 🛒 ₽ 3,020 ', '       +₽20 '])
+  expect(shopSize({ balance: 3020, plus: 20 })).toEqual({ columns: 12, rows: 2 })
+  // Never past the 13 columns kept clear for it.
+  expect(shopSize({ balance: 99_999, plus: 99_999 }).columns).toBe(13)
 })

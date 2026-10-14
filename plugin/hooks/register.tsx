@@ -73,7 +73,6 @@ import {
   newScene,
   phaseAt,
   react,
-  scenery,
   slice,
   startWild,
   step,
@@ -87,7 +86,8 @@ import { landscapeAt, LANDSCAPES } from './backdrop'
 import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
-import type { Pixels, TextRun } from './sprite'
+import type { Pixels } from './sprite'
+import { shopSize } from './shop'
 import type { ShopProps } from './shop'
 
 const BASE = 'https://gitlab.com/phoneybadger/pokemon-colorscripts/-/raw/main'
@@ -143,7 +143,7 @@ const arts = new Map<string, string>()
 // Downloads are kept here between sessions; null where there is no home directory.
 let cacheDir: string | null = null
 
-// `columns`: the scene's width; `total`: the band's, the button beside the scene included.
+// `columns`: where the party may go; `total`: the band's picture, the button's corner beyond `columns` included.
 let band: { requestId: string; columns: number; rows: number; total: number } | null = null
 let fitted: { budget: number; keys: string[]; lefts: Pixels[] } | null = null
 let status: Status = initialStatus()
@@ -158,12 +158,8 @@ let wild: { mon: Mon; left: Pixels; pick: Pick } | null = null
 let wildRate: number | null = DEFAULT_RATE
 // A Poké Ball in flight or playing out, at most one.
 let pitch: Throw | null = null
-// The band's corner button takes this many columns beside the scene.
+// The ₽ button's corner: the band's right this many columns, landscape only, the button's label laid over its top.
 const BUTTON_COLUMNS = 13
-// The button's landscape keeps to whole seconds, so it changes (a redraw of the band) at most once a second.
-const BUTTON_EVERY = ticks(1000)
-// The button's landscape as last drawn, to redraw it only when the sky behind it changed.
-let buttonDrawn = ''
 // The PokéMart: open in the band, the last thing it said, and what is selected in it.
 let mart = { isOpen: false, message: '', isError: false, view: START }
 // While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a click layer over pixel art
@@ -1283,19 +1279,7 @@ function martProps(): MartProps {
   }
 }
 
-// The landscape behind the button: the band's own, carried on past the scene's right edge, at the start of this second.
-function buttonLines(): TextRun[][] {
-  if (!band) return []
-  const t = status.t - (status.t % BUTTON_EVERY)
-  const look = { phase: phaseNow(), landscape: landscapeNow() }
-  return textRows(slice(scenery(band.total, band.rows, look, t, band.columns), band.columns, band.total - band.columns))
-}
-
-function buttonProps(): ShopProps {
-  const lines = buttonLines()
-  buttonDrawn = JSON.stringify(lines)
-  return { balance: balanceOf(save, cash), plus, lines }
-}
+const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
 
 // A click or key in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
 // next props while it stays open.
@@ -1385,10 +1369,6 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   // The scene keeps moving underneath; nothing is drawn over the Mart.
   if (mart.isOpen) return
-  // The button's landscape moves on once a second, drawn again when a cloud, star or glint behind it changed.
-  const isButtonShown = band.total > band.columns && !isButtonHidden && !isAiming && !isHidden
-  if (isButtonShown && status.t % BUTTON_EVERY === 0 && JSON.stringify(buttonLines()) !== buttonDrawn)
-    $.ui.invalidate('ui.render')
   if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
@@ -1404,7 +1384,7 @@ async function tick($: EngineInterface) {
     requestId: band.requestId,
     key: 'scene',
     cells,
-    columns: band.columns,
+    columns: band.total,
     rows: band.rows,
   })
   isHidden = Boolean(res.deny)
@@ -1724,7 +1704,7 @@ export const register: Register = on => {
       return next(e)
     }
     const { Box, Client, Raster } = $.ui.resolve(e)
-    // As wide as a Raster can be, less the button beside the scene (none on a band too narrow for both).
+    // As wide as a Raster can be, the party kept out of the button's corner (none on a band too narrow for both).
     const total = Math.min(512, e.props.bodyColumns)
     const button = total > 2 * BUTTON_COLUMNS ? BUTTON_COLUMNS : 0
     const columns = total - button
@@ -1768,14 +1748,27 @@ export const register: Register = on => {
     const { cells } = toCells(img)
     lastCells = cells
     if (isAiming)
-      return <Client key="aim" module="./aim.tsx" width={columns} height={rows} props={{ lines: textRows(img) }} />
-    const scene = <Raster key="scene" columns={columns} rows={rows} cells={cells} />
+      return (
+        <Client
+          key="aim"
+          module="./aim.tsx"
+          width={columns}
+          height={rows}
+          props={{ lines: textRows(slice(img, 0, columns)) }}
+        />
+      )
+    // The whole band is one picture, the landscape running on under the button; nobody walks there.
+    const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />
     // No button while a wild Pokémon is out, aimable or not: the Mart would hold up the catch.
     if (!button || isButtonHidden) return scene
+    const p = buttonProps()
+    const size = shopSize(p)
     return (
-      <Box flexDirection="row">
+      <Box>
         {scene}
-        <Client key="shop" module="./shop.tsx" width={button} height={rows} props={buttonProps()} />
+        <Box position="absolute" top={0} right={0}>
+          <Client key="shop" module="./shop.tsx" width={size.columns} height={size.rows} props={p} />
+        </Box>
       </Box>
     )
   })

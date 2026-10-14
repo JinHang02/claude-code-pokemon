@@ -3,10 +3,6 @@ import { expect, test } from 'claude-code/testing'
 
 import { FRIENDSHIP_MS } from '../hooks/evolution'
 import { martRows } from '../hooks/mart'
-import { scenery, slice } from '../hooks/scene'
-import { shopRows } from '../hooks/shop'
-import type { ShopProps } from '../hooks/shop'
-import { textRows } from '../hooks/sprite'
 import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
 import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
@@ -180,7 +176,7 @@ test('the band draws the party, and size small makes it shorter', async ($, on) 
       ).drawn(),
     )
   const normal = await mount()
-  expect(normal).toContain('"columns":67')
+  expect(normal).toContain('"columns":80')
   const rows = (drawn: string) => Number(/"rows":(\d+)/.exec(drawn)?.[1])
   expect(await cmd($, 'pokemon', 'size small')).toBe('Pokémon size: small.')
   expect(w.saveNow().size).toBe('small')
@@ -882,7 +878,7 @@ test('another surface drawing at the same time leaves the terminal band running;
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 600 },
   } as never)
-  expect(JSON.stringify(await wide.drawn())).toContain('"columns":499')
+  expect(JSON.stringify(await wide.drawn())).toContain('"columns":512')
   // Too narrow for the scene and the button: the scene alone.
   const narrow = await $.ui.mount({
     plugin: 'pokemon',
@@ -1991,7 +1987,27 @@ test('the party turned off in another session closes the Mart: it stays closed w
   expect(await clientProps(band, 'shop')).not.toBeNull()
 })
 
-test('earning shows +₽ under the button for a moment', async ($, on) => {
+// The first node of the band as drawn afresh that `is` picks, or null.
+async function nodeIn(band: Band, is: (n: Node) => boolean): Promise<Node | null> {
+  await band.redraw()
+  const find = (node: unknown): Node | null => {
+    if (typeof node !== 'object' || node === null) return null
+    if (is(node as Node)) return node as Node
+    for (const child of Object.values(node)) {
+      const found = find(child)
+      if (found) return found
+    }
+    return null
+  }
+  return find(await band.drawn())
+}
+type Node = { type?: string; props?: Record<string, unknown> }
+const isShop = (n: Node) => n.type === 'Client' && n.props?.key === 'shop'
+// A drawn Box laid over the band, holding the ₽ button.
+const holdsShop = (n: Node) =>
+  n.type === 'Box' && n.props?.position === 'absolute' && JSON.stringify(n).includes('"key":"shop"')
+
+test('earning shows +₽ under the button for a moment, the button a row taller for it', async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
@@ -2000,60 +2016,48 @@ test('earning shows +₽ under the button for a moment', async ($, on) => {
   // The ₽ lands in the background: a command waits for it.
   await cmd($, 'pokemon', 'party')
   expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
+  expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 2 })
   await w.clock.advance(1500)
   expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
+  expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
 })
 
-// The band mounted 80 columns wide: the scene in 67, the ₽ button in 13.
-const shopOf = (band: Band) => clientProps<ShopProps>(band, 'shop')
-// The landscape a full-width band of `rows` shows in its right 13 columns at some whole second up to `seconds` in.
-const landscapeAt = (lines: unknown, rows: number, phase: 'day' | 'night', seconds: number) =>
-  Array.from({ length: seconds + 1 }, (_, s) => s * 20).some(
-    t =>
-      JSON.stringify(textRows(slice(scenery(80, rows, { phase, landscape: 'meadow' }, t, 67), 67, 13))) ===
-      JSON.stringify(lines),
-  )
-
-test("the ₽ button shows the band's own landscape behind the wallet, by day and by night", async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+test("the band is one picture, the ₽ button just its label laid over the picture's top-right corner", async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
   const band = (await mountBand($)) as Band
-  for (const phase of ['day', 'night'] as const) {
-    await cmd($, 'pokemon-play', `${phase} meadow`)
-    await w.clock.advance(1000)
-    const p = await shopOf(band)
-    if (!p) throw new Error('no button')
-    expect(p.lines.length).toBeGreaterThan(2)
-    expect(landscapeAt(p.lines, p.lines.length, phase, 60)).toBe(true)
-    // The wallet on its pill at the top row's right end, the landscape to its left.
-    const top = shopRows(p)[0] ?? []
-    expect(top[top.length - 1]).toEqual([' 🛒 ₽ 3,000 ', '#ffd75e', '#1d2029'])
-    expect(top.length).toBeGreaterThan(1)
-  }
-  // Night and day differ behind the button.
-  const night = await shopOf(band)
-  await cmd($, 'pokemon-play', 'day meadow')
-  expect((await shopOf(band))?.lines).not.toEqual(night?.lines)
+  // The scene's Raster takes the whole 80 columns, the landscape running on under the button.
+  const scene = await nodeIn(band, n => n.type === 'Raster')
+  expect(scene?.props).toMatchObject({ key: 'scene', columns: 80 })
+  const over = await nodeIn(band, holdsShop)
+  expect(over?.props).toMatchObject({ position: 'absolute', top: 0, right: 0 })
+  // As big as the wallet's pill and no bigger: ` 🛒 ₽ 3,000 ` is 12 columns.
+  expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
 })
 
-test("the ₽ button's landscape changes at most once a second, and the band is redrawn only when it did", async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+test("nobody walks under the ₽ button: every frame's right 13 columns are the landscape alone", async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL)
   await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  // Glints come and go on the lake every 0.4 s.
-  await cmd($, 'pokemon-play', 'night lake')
-  let last = JSON.stringify((await shopOf(band))?.lines)
-  let changes = 0
-  for (let i = 0; i < 280; i++) {
-    const before = w.band.invalidated
+  await mountBand($)
+  let frames = 0
+  let last = ''
+  let isSeen = false
+  for (let i = 0; i < 400; i++) {
     await w.clock.advance(50)
-    const now = JSON.stringify((await shopOf(band))?.lines)
-    if (w.band.invalidated === before) expect(now).toBe(last)
-    else (expect(now).not.toBe(last), changes++)
-    last = now
+    if (!w.band.cells || w.band.cells === last) continue
+    last = w.band.cells
+    const words = new Uint32Array(Uint8Array.from(atob(w.band.cells), c => c.charCodeAt(0)).buffer)
+    const cells = words.length / 3
+    expect(cells % 80).toBe(0)
+    for (let c = 0; c < cells; c++) {
+      const has = words[c * 3 + 1] === 0x090909 || words[c * 3 + 2] === 0x090909
+      if (has && c % 80 >= 67) throw new Error(`the party drawn at column ${c % 80}`)
+      isSeen ||= has
+    }
+    frames++
   }
-  expect(changes).toBeGreaterThan(3)
-  expect(changes).toBeLessThanOrEqual(14)
+  expect(frames).toBeGreaterThan(50)
+  expect(isSeen).toBe(true)
 })
 
 test('buyItem refuses what the Mart never sells and any quantity but 1 to 999, before it touches anything', async () => {

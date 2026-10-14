@@ -564,13 +564,15 @@ const LIGHTS = [
 ] as const
 const column = (img: Img, x: number) => Array.from({ length: img.height }, (_, y) => at(img, x, y))
 
-test("one landscape runs under the scene and the button's column, the button's cut from the same picture", () => {
+test("one picture runs under the scene and the button's columns: the landscape, unbroken", () => {
   const empty: Status = { ...base, actors: [], t: 40 }
   for (const phase of ['day', 'night'] as const) {
     const look = { phase, landscape: 'hills' as const }
-    // The scene is the landscape's left columns; the button's column, its right ones.
+    // The band's picture is the whole landscape, the button's columns included.
     const land = scenery(TOTAL, ROWS, look, 40, SCENE)
-    expect(frame(empty, [], SCENE, ROWS, look, TOTAL).pixels).toEqual(slice(land, 0, SCENE).pixels)
+    const band = frame(empty, [], SCENE, ROWS, look, TOTAL)
+    expect(band.width).toBe(TOTAL)
+    expect(band.pixels).toEqual(land.pixels)
     // The hills carry on across the seam: the button's first column isn't the sky alone.
     expect(new Set(column(slice(land, SCENE, 13), 0)).size).toBeGreaterThan(2)
   }
@@ -584,7 +586,7 @@ test('the sun and moon sit wholly in the scene, never under the ₽ button, so t
     // With the button the scene is 13 columns short of the band (and stays so while it hides); without, all of it.
     for (const scene of [total - 13, total])
       for (const [phase, light] of LIGHTS) {
-        const shown = count(frame(empty, [], scene, ROWS, { phase }, total), light)
+        const shown = count(slice(frame(empty, [], scene, ROWS, { phase }, total), 0, scene), light)
         const all = count(scenery(total, ROWS, { phase }, 0, scene), light)
         if (!shown || all !== shown) wrong.push(`${phase} ${scene}/${total}: ${shown} of ${all}`)
       }
@@ -594,10 +596,11 @@ test('the sun and moon sit wholly in the scene, never under the ₽ button, so t
   expect(count(slice(night, SCENE - 10, 10), MOON)).toBe(count(night, MOON))
 })
 
-test("a Pokémon at the scene's far right stays in the scene, out of the button's column", () => {
+test("a Pokémon at the scene's far right stays in the scene: the button's columns are the landscape alone", () => {
   const right: Status = { ...still, actors: [{ ...newScene(SCENE - SPRITE.width), roam: idle }] }
-  const scene = frame(right, [SPRITE], SCENE, ROWS, { phase: 'day' }, TOTAL)
-  expect(scene.width).toBe(SCENE)
-  expect(column(scene, SCENE - 1)).toContain(0xabcdef)
-  expect(count(slice(scenery(TOTAL, ROWS, { phase: 'day' }, right.t), SCENE, 13), 0xabcdef)).toBe(0)
+  const band = frame(right, [SPRITE], SCENE, ROWS, { phase: 'day' }, TOTAL)
+  expect(band.width).toBe(TOTAL)
+  expect(column(band, SCENE - 1)).toContain(0xabcdef)
+  const land = scenery(TOTAL, ROWS, { phase: 'day' }, right.t, SCENE)
+  expect(slice(band, SCENE, 13).pixels).toEqual(slice(land, SCENE, 13).pixels)
 })
