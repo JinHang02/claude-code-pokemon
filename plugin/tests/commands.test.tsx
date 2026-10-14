@@ -48,8 +48,9 @@ test('party: add up to three, twins too, remove any but the last', async ($, on)
   expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
   const [lead, , second] = w.saveNow().party
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'eevee'])
-  // The first twin in party order goes.
-  expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Eevee went back to the wild.')
+  // Twins: which one, then the one the number picks.
+  expect(await cmd($, 'pokemon', 'remove eevee')).toContain('Which Eevee?')
+  expect(await cmd($, 'pokemon', 'remove eevee 1')).toBe('Eevee went back to the wild.')
   expect(w.saveNow().party.map(m => m.id)).toEqual([lead?.id, second?.id])
   expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr Mime (Galar) joined your party!')
   expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Eevee went back to the wild.')
@@ -1140,13 +1141,16 @@ test('a plain name never takes a regional form out of the PC box', async ($, on)
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['gal'])
 })
 
-test('a name in both the party and the box picks the party one; a full party leaves the box alone', async ($, on) => {
+test('a name in both the party and the box asks which, party first; a full party leaves the box alone', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu'), member('eevee'), member('charmander')],
     box: [member('eevee', { id: 'boxed' }), member('raichu', { id: 'boxed-raichu' })],
   })
-  expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 1).')
+  expect(await cmd($, 'pokemon', 'eevee')).toMatch(
+    /^Which Eevee\? 1\. Eevee.* Lv 1 \(party\) · 2\. Eevee.* Lv 1 \(PC box\) — add the number: \/pokemon eevee 2$/,
+  )
+  expect(await cmd($, 'pokemon', 'eevee 1')).toBe('Eevee leads the party again (Lv 1).')
   expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['boxed', 'boxed-raichu'])
 })
@@ -1157,9 +1161,63 @@ test('/pokemon add <name> with that Pokémon in the party adds a twin', async ($
   const party = w.saveNow().party
   expect(party.map(m => m.species)).toEqual(['eevee', 'eevee'])
   expect(party[1]?.id).not.toBe('e1')
-  // Until the numbered pick, a name with twins takes the first in party order.
-  expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 1).')
+  expect(await cmd($, 'pokemon', 'eevee')).toContain('Which Eevee? 1. Eevee')
   expect(w.saveNow().party.map(m => m.id)).toEqual(party.map(m => m.id))
+})
+
+test('a name that fits two members asks which and changes nothing; the number picks one', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' }), member('eevee', { id: 'e3' })],
+    bag: { 'water-stone': 1, 'rare-candy': 1 },
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  const before = JSON.stringify(w.saveNow())
+  const asked = await cmd($, 'pokemon', 'give water stone eevee')
+  expect(asked).toMatch(/^Which Eevee\? 1\. Eevee.* Lv 1 \(party\) · 2\. .* · 3\. .*\(party\) — add the number: /)
+  expect(asked).toMatch(/\/pokemon give water-stone eevee 3$/)
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+  expect(w.toasts).toEqual([])
+  expect(await cmd($, 'pokemon', 'give water stone eevee 2')).toBe('Eevee evolved into Vaporeon!')
+  expect(w.saveNow().party.map(m => `${m.id}:${m.species}`)).toEqual(['e1:eevee', 'e2:vaporeon', 'e3:eevee'])
+  expect(await cmd($, 'pokemon', 'give rare candy eevee')).toContain('Which Eevee?')
+  expect(await cmd($, 'pokemon', 'give rare candy eevee 2')).toBe('Eevee grew to Lv 2!')
+  expect(w.saveNow().party.map(m => level(m.xp))).toEqual([1, 1, 2])
+  expect(w.saveNow().bag).toBeUndefined()
+})
+
+test('everstone, take, deposit, a lead and add each act on the one the number picks', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  const ids = () => [w.saveNow().party.map(m => m.id), (w.saveNow().box ?? []).map(m => m.id)]
+  const held = () => w.saveNow().party.map(m => m.heldItem ?? '')
+  expect(await cmd($, 'pokemon', 'everstone eevee')).toContain('Which Eevee?')
+  expect(held()).toEqual(['', '', ''])
+  expect(await cmd($, 'pokemon', 'everstone eevee 2')).toBe("Eevee holds an everstone: it won't evolve.")
+  expect(held()).toEqual(['', '', 'everstone'])
+  expect(await cmd($, 'pokemon', 'take eevee')).toMatch(/· 2\. Eevee.* Lv 1 holding Everstone \(party\) — /)
+  expect(await cmd($, 'pokemon', 'everstone eevee 1')).toBe("Eevee holds an everstone: it won't evolve.")
+  expect(await cmd($, 'pokemon', 'take eevee 2')).toBe('Eevee dropped its everstone and can evolve again.')
+  expect(held()).toEqual(['', 'everstone', ''])
+  expect(await cmd($, 'pokemon', 'deposit eevee')).toContain('Which Eevee?')
+  expect(await cmd($, 'pokemon', 'deposit eevee 2')).toBe('Eevee (Lv 1) went into the PC box.')
+  expect(ids()).toEqual([['p', 'e1'], ['e2']])
+  // Party first, then the PC box.
+  expect(await cmd($, 'pokemon', 'eevee')).toMatch(
+    /1\. Eevee.* holding Everstone \(party\) · 2\. Eevee.* Lv 1 \(PC box\)/,
+  )
+  expect(await cmd($, 'pokemon', 'eevee 2')).toBe(
+    'Eevee (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
+  )
+  expect(ids()).toEqual([['e2', 'e1'], ['p']])
+  expect(await cmd($, 'pokemon', 'eevee 2')).toBe('Eevee leads the party again (Lv 1).')
+  expect(ids()).toEqual([['e1', 'e2'], ['p']])
+  expect(await cmd($, 'pokemon', 'deposit eevee 1')).toBe('Eevee (Lv 1) went into the PC box.')
+  expect(await cmd($, 'pokemon', 'add eevee')).toBe('Eevee came out of the PC box and joined your party!')
+  expect(ids()).toEqual([['e2', 'e1'], ['p']])
 })
 
 // The columns where `color` shows in a frame `columns` cells wide, all rows taken together, as [first, last] runs:
