@@ -2672,62 +2672,89 @@ async function actWhileEvolving($: Engine, on: On, act: string, said: string) {
     net,
   )
   await cmd($, 'pokemon', 'party')
-  await $.ui.mount({
+  const band = (await $.ui.mount({
     plugin: 'pokemon',
     surface: 'terminal',
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 512 } as never,
-  })
-  // All three in sight and apart, so none is hidden behind another.
-  await seen(w, () => {
-    const runs = [PIKACHU, CHARMANDER, EEVEE].map(c => (w.band.cells ? runsOf(w.band.cells, 512, c) : []))
-    if (!runs.every(r => r.length === 1)) return null
+  })) as Band
+  // The scene as it stands, drawn afresh. The frames the ticks send arrive later, in real time: which moment of the
+  // animation one of them shows depends on how loaded the machine is.
+  const now = async () =>
+    String((await nodeIn(band, n => n.type === 'Raster' && n.props?.key === 'scene'))?.props?.cells)
+  // All three in sight and apart, so none is hidden behind another. Two that start side by side may take a
+  // while to wander apart.
+  for (let i = 0; ; i++) {
+    const cells = await now()
+    const runs = [PIKACHU, CHARMANDER, EEVEE].map(c => runsOf(cells, 512, c))
     const spans = runs.map(r => r[0] as [number, number]).sort((a, b) => a[0] - b[0])
-    return spans.every((s, i) => i === 0 || (spans[i - 1]?.[1] ?? 0) + 6 < s[0]) || null
-  })
+    if (runs.every(r => r.length === 1) && spans.every((s, i) => i === 0 || (spans[i - 1]?.[1] ?? 0) + 6 < s[0])) break
+    if (i === 480) throw new Error('never apart')
+    await w.clock.advance(250)
+  }
   // The clock stands still from here to the evolution, and the animation holds everyone still.
   await $.tool.call(bash('git commit -m x') as never)
   await until($, () => w.saveNow().party[1]?.species === 'charmeleon')
   expect(await cmd($, 'pokemon', act)).toBe(said)
   const frames: Set<number>[] = []
-  // The animation is 4.5 s: past its end.
-  for (let i = 0; i < 30; i++) {
+  // The animation is 4.5 s: just past its end, too soon for anyone to walk all the way in front of another
+  // (12 columns at 0.6 a tick).
+  for (let i = 0; i < 24; i++) {
     await w.clock.advance(200)
-    if (w.band.cells) frames.push(colorsIn(w.band.cells))
+    frames.push(colorsIn(await now()))
   }
   return { w, frames }
 }
 
-test('releasing one before an evolving Pokémon mid-animation: the animation stays on it, the others as they are', async ($, on) => {
-  const { w, frames } = await actWhileEvolving($, on, 'release pikachu', 'Bye bye, Pikachu! It went back to the wild.')
-  expect(w.saveNow().party.map(m => m.id)).toEqual(['c', 'e'])
-  // Every frame once Pikachu is gone: Eevee as itself; the evolving one still animating, ending as Charmeleon.
-  const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
-  expect(after.length).toBeGreaterThan(10)
-  expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
-  expect(after.some(c => c.has(CHARMANDER))).toBe(true)
-  expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
-})
+test(
+  'releasing one before an evolving Pokémon mid-animation: the animation stays on it, the others as they are',
+  { timeoutMs: 30_000 },
+  async ($, on) => {
+    const { w, frames } = await actWhileEvolving(
+      $,
+      on,
+      'release pikachu',
+      'Bye bye, Pikachu! It went back to the wild.',
+    )
+    expect(w.saveNow().party.map(m => m.id)).toEqual(['c', 'e'])
+    // Every frame once Pikachu is gone: Eevee as itself; the evolving one still animating, ending as Charmeleon.
+    const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
+    expect(after.length).toBeGreaterThan(10)
+    expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
+    expect(after.some(c => c.has(CHARMANDER))).toBe(true)
+    expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
+  },
+)
 
-test('depositing one before an evolving Pokémon mid-animation: the animation stays on it', async ($, on) => {
-  const { w, frames } = await actWhileEvolving($, on, 'deposit pikachu', 'Pikachu (Lv 2) went into the PC box.')
-  expect(w.saveNow().box?.map(m => m.id)).toEqual(['p'])
-  const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
-  expect(after.length).toBeGreaterThan(10)
-  expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
-  expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
-})
+test(
+  'depositing one before an evolving Pokémon mid-animation: the animation stays on it',
+  { timeoutMs: 30_000 },
+  async ($, on) => {
+    const { w, frames } = await actWhileEvolving($, on, 'deposit pikachu', 'Pikachu (Lv 2) went into the PC box.')
+    expect(w.saveNow().box?.map(m => m.id)).toEqual(['p'])
+    const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
+    expect(after.length).toBeGreaterThan(10)
+    expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
+    expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
+  },
+)
 
-test('releasing the Pokémon that is evolving stops its animation; it never comes back', async ($, on) => {
-  const { w, frames } = await actWhileEvolving(
-    $,
-    on,
-    'release charmeleon',
-    'Bye bye, Charmeleon! It went back to the wild.',
-  )
-  const after = frames.slice(frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER)))
-  expect(after.length).toBeGreaterThan(10)
-  expect(after.filter(c => c.has(CHARMANDER) || c.has(CHARMELEON) || !c.has(EEVEE) || !c.has(PIKACHU))).toHaveLength(0)
-  await w.clock.advance(5000)
-  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e'])
-})
+test(
+  'releasing the Pokémon that is evolving stops its animation; it never comes back',
+  { timeoutMs: 30_000 },
+  async ($, on) => {
+    const { w, frames } = await actWhileEvolving(
+      $,
+      on,
+      'release charmeleon',
+      'Bye bye, Charmeleon! It went back to the wild.',
+    )
+    const after = frames.slice(frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER)))
+    expect(after.length).toBeGreaterThan(10)
+    expect(after.filter(c => c.has(CHARMANDER) || c.has(CHARMELEON) || !c.has(EEVEE) || !c.has(PIKACHU))).toHaveLength(
+      0,
+    )
+    await w.clock.advance(5000)
+    expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e'])
+  },
+)
