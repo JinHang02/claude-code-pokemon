@@ -126,7 +126,10 @@ export function lookup(list: Species[], words: string[]): Lookup {
 // The item a give most likely meant when none is spelled exactly (`thunderstone`, `upgrade`, `fire ston`): a run of
 // words at the front or the back a near miss of an item's id or name, the closest one, and the words left over for
 // the Pokémon. Null when nothing is close.
-export function guessItem(words: string[]): { item: Item; rest: string[] } | null {
+export function guessItem(
+  words: string[],
+  isWanted: (item: Item) => boolean = () => true,
+): { item: Item; rest: string[] } | null {
   let best: { item: Item; rest: string[]; d: number } | null = null
   for (let n = words.length; n > 0; n--) {
     const splits: [string[], string[]][] = [
@@ -135,7 +138,7 @@ export function guessItem(words: string[]): { item: Item; rest: string[] } | nul
     ]
     for (const [run, rest] of splits) {
       const wanted = run.join('-')
-      for (const item of ITEMS)
+      for (const item of ITEMS.filter(isWanted))
         for (const name of new Set([item.id, slug(item.name)])) {
           const d = distance(wanted, name, typos(wanted))
           if (d <= typos(wanted) && (!best || d < best.d)) best = { item, rest, d }

@@ -2097,6 +2097,23 @@ test('/pokemon buy suggests a near miss and asks what when nothing is close', as
   expect(await cmd($, 'pokemon', 'buy banana')).toBe(
     'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.',
   )
+  expect(await cmd($, 'pokemon', 'buy 2 thunderstone')).toBe(
+    'Did you mean Thunder Stone? Run /pokemon buy thunder-stone 2',
+  )
+  // Only what the Mart sells is suggested: the Everstone is free, not for sale.
+  expect(await cmd($, 'pokemon', 'buy evrstone')).toBe(
+    'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.',
+  )
+  expect(w.saveNow().bag).toBeUndefined()
+  expect(w.saveNow().spent).toBeUndefined()
+})
+
+test('/pokemon buy with two counts, or a count past 999, buys nothing', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 20_000 })
+  expect(await cmd($, 'pokemon', 'buy 3 fire stone 2')).toBe(
+    'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.',
+  )
+  expect(await cmd($, 'pokemon', 'buy 1000 rare candy')).toBe("That isn't a quantity you can buy.")
   expect(w.saveNow().bag).toBeUndefined()
   expect(w.saveNow().spent).toBeUndefined()
 })

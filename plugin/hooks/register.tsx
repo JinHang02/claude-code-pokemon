@@ -865,7 +865,7 @@ async function buyCommand($: EngineInterface, args: string): Promise<string> {
     .filter(Boolean)
   const found = splitGive(words)
   if (!found || found.rest.length) {
-    const guess = !found || !found.rest.length ? guessItem(words) : null
+    const guess = found ? null : guessItem(words, isForSale)
     return guess && !guess.rest.length
       ? `Did you mean ${guess.item.name}? Run /pokemon buy ${guess.item.id}${countAt < 0 ? '' : ` ${tokens[countAt]}`}`
       : 'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.'
