@@ -1288,7 +1288,7 @@ function buttonLines(): TextRun[][] {
   if (!band) return []
   const t = status.t - (status.t % BUTTON_EVERY)
   const look = { phase: phaseNow(), landscape: landscapeNow() }
-  return textRows(slice(scenery(band.total, band.rows, look, t), band.columns, band.total - band.columns))
+  return textRows(slice(scenery(band.total, band.rows, look, t, band.columns), band.columns, band.total - band.columns))
 }
 
 function buttonProps(): ShopProps {

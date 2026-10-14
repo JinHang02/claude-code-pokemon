@@ -104,7 +104,8 @@ const sunAt = (phase: Phase, width: number, ground: number): [number, number] =>
       ? [Math.round(width * 0.14), Math.round(ground * 0.55)]
       : [Math.round(width * 0.86), Math.round(ground * 0.55)]
 
-function sky(still: Still, width: number, ground: number, p: Palette, phase: Phase) {
+// `scene`: the columns the sun and moon stay within (the scene's, left of the ₽ button), of `width`.
+function sky(still: Still, width: number, ground: number, p: Palette, phase: Phase, scene: number) {
   // Down through the tuft row, so the gaps between tufts show sky.
   for (let y = 0; y <= ground; y++) {
     const c = mix(p.sky[0], p.sky[1], ground <= 1 ? 1 : Math.min(1, y / (ground - 1)))
@@ -112,10 +113,10 @@ function sky(still: Still, width: number, ground: number, p: Palette, phase: Pha
   }
   if (phase === 'night') {
     for (let i = 0; i < MOON_GLYPH.length; i++)
-      if (MOON_GLYPH[i]) set(still, width, width - 8 + (i % 5), 1 + Math.floor(i / 5), p.sun, LAND)
+      if (MOON_GLYPH[i]) set(still, width, scene - 8 + (i % 5), 1 + Math.floor(i / 5), p.sun, LAND)
     return
   }
-  const [sx, sy] = sunAt(phase, width, ground)
+  const [sx, sy] = sunAt(phase, scene, ground)
   for (let dy = -3; dy <= 3; dy++)
     for (let dx = -3; dx <= 3; dx++) {
       const d = dx * dx + dy * dy
@@ -171,7 +172,7 @@ function mountains(still: Still, width: number, ground: number, p: Palette) {
   }
 }
 
-function lake(still: Still, width: number, ground: number, p: Palette, phase: Phase) {
+function lake(still: Still, width: number, ground: number, p: Palette, phase: Phase, scene: number) {
   const top = ground - Math.max(3, Math.round(ground * 0.3))
   for (let x = 0; x < width; x++) {
     const shore = top - (1 + 1.5 * (1 + Math.sin(x / 7 + 0.8)))
@@ -179,7 +180,7 @@ function lake(still: Still, width: number, ground: number, p: Palette, phase: Ph
     fill(still, width, x, top, ground - 1, p.water[0], WATER)
   }
   if (phase !== 'night') {
-    const [sx] = sunAt(phase, width, ground)
+    const [sx] = sunAt(phase, scene, ground)
     for (let y = top + 1; y < ground; y += 2)
       set(still, width, sx + ((y % 4) - 1), y, mix(p.water[0], p.sun, 0.6), WATER)
   }
@@ -217,14 +218,14 @@ function grass(still: Still, width: number, height: number, p: Palette, landscap
 }
 
 // The parts of a landscape that never move, built once per size, time of day and landscape.
-function still(width: number, height: number, phase: Phase, landscape: Landscape): Still {
+function still(width: number, height: number, phase: Phase, landscape: Landscape, scene: number): Still {
   const out: Still = { pixels: Array<number>(width * height).fill(CLEAR), kind: new Uint8Array(width * height) }
   const p = PALETTES[phase]
   const ground = height - 2
-  sky(out, width, ground, p, phase)
+  sky(out, width, ground, p, phase, scene)
   if (landscape === 'hills') hills(out, width, ground, p)
   if (landscape === 'mountains') mountains(out, width, ground, p)
-  if (landscape === 'lake') lake(out, width, ground, p, phase)
+  if (landscape === 'lake') lake(out, width, ground, p, phase, scene)
   if (landscape === 'forest') forest(out, width, ground, p)
   grass(out, width, height, p, landscape, phase)
   return out
@@ -233,11 +234,18 @@ function still(width: number, height: number, phase: Phase, landscape: Landscape
 let cached: { key: string; layer: Still } | null = null
 
 // Paints the landscape into `out` (sized to the band): the still layer, then drifting clouds, twinkling
-// stars, shimmering water and fireflies at tick `t`.
-export function backdrop(out: Pixels, phase: Phase, landscape: Landscape, t: number, ticksPerSecond = 20) {
+// stars, shimmering water and fireflies at tick `t`. The sun and moon stay within the left `scene` columns.
+export function backdrop(
+  out: Pixels,
+  phase: Phase,
+  landscape: Landscape,
+  t: number,
+  ticksPerSecond = 20,
+  scene = out.width,
+) {
   const { width, height } = out
-  const key = `${width}x${height}|${phase}|${landscape}`
-  if (cached?.key !== key) cached = { key, layer: still(width, height, phase, landscape) }
+  const key = `${width}x${height}|${scene}|${phase}|${landscape}`
+  if (cached?.key !== key) cached = { key, layer: still(width, height, phase, landscape, scene) }
   const { pixels, kind } = cached.layer
   for (let i = 0; i < pixels.length; i++) out.pixels[i] = pixels[i] ?? CLEAR
   const p = PALETTES[phase]

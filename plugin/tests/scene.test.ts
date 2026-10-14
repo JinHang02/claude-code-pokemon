@@ -551,29 +551,47 @@ test('the last frame says whose each pixel is: a party member in front of the wi
   expect(paintedBy(-1, H - 3)).toBeNull()
 })
 
-// A band 60 columns wide: the scene in its left 47, the ₽ button's column in its right 13 (the day sun on the seam).
+// A band 60 columns wide: the scene in its left 47, the ₽ button's column in its right 13.
 const TOTAL = 60
 const SCENE = TOTAL - 13
-const SUN = 0xfff1a8
 const MOON = 0xf3f0d2
+// The sun's core at each time of day, and the moon's.
+const LIGHTS = [
+  ['dawn', 0xffd08a],
+  ['day', 0xfff1a8],
+  ['dusk', 0xff9a3c],
+  ['night', MOON],
+] as const
 const column = (img: Img, x: number) => Array.from({ length: img.height }, (_, y) => at(img, x, y))
 
-test("one landscape runs under the scene and the button's column: the sun and moon carry on across the seam", () => {
+test("one landscape runs under the scene and the button's column, the button's cut from the same picture", () => {
   const empty: Status = { ...base, actors: [], t: 40 }
   for (const phase of ['day', 'night'] as const) {
     const look = { phase, landscape: 'hills' as const }
-    const land = scenery(TOTAL, ROWS, look, 40)
-    // The scene is the landscape's left columns; the button's column, the full-width band's right ones.
+    // The scene is the landscape's left columns; the button's column, its right ones.
+    const land = scenery(TOTAL, ROWS, look, 40, SCENE)
     expect(frame(empty, [], SCENE, ROWS, look, TOTAL).pixels).toEqual(slice(land, 0, SCENE).pixels)
-    expect(slice(frame(empty, [], TOTAL, ROWS, look), SCENE, 13).pixels).toEqual(slice(land, SCENE, 13).pixels)
+    // The hills carry on across the seam: the button's first column isn't the sky alone.
+    expect(new Set(column(slice(land, SCENE, 13), 0)).size).toBeGreaterThan(2)
   }
-  // Day: the sun sits on the seam, part in the scene and part in the button's column.
-  const day = scenery(TOTAL, ROWS, { phase: 'day' }, 0)
-  expect(column(frame(empty, [], SCENE, ROWS, { phase: 'day' }, TOTAL), SCENE - 1)).toContain(SUN)
-  expect(column(slice(day, SCENE, 13), 0)).toContain(SUN)
-  // Night: the moon hangs over the button, where it hangs over a band without one.
-  expect(count(slice(scenery(TOTAL, ROWS, { phase: 'night' }, 0), SCENE, 13), MOON)).toBeGreaterThan(0)
-  expect(count(frame(empty, [], SCENE, ROWS, { phase: 'night' }, TOTAL), MOON)).toBe(0)
+})
+
+test('the sun and moon sit wholly in the scene, never under the ₽ button, so they stay when it hides', () => {
+  const empty: Status = { ...base, actors: [], t: 0 }
+  // Each band where the light is missing from the scene, or shows in the button's column too.
+  const wrong: string[] = []
+  for (const total of [80, 200])
+    // With the button the scene is 13 columns short of the band (and stays so while it hides); without, all of it.
+    for (const scene of [total - 13, total])
+      for (const [phase, light] of LIGHTS) {
+        const shown = count(frame(empty, [], scene, ROWS, { phase }, total), light)
+        const all = count(scenery(total, ROWS, { phase }, 0, scene), light)
+        if (!shown || all !== shown) wrong.push(`${phase} ${scene}/${total}: ${shown} of ${all}`)
+      }
+  expect(wrong).toEqual([])
+  // The moon hangs over the scene's right end, as it does on a band with no button.
+  const night = frame(empty, [], SCENE, ROWS, { phase: 'night' }, TOTAL)
+  expect(count(slice(night, SCENE - 10, 10), MOON)).toBe(count(night, MOON))
 })
 
 test("a Pokémon at the scene's far right stays in the scene, out of the button's column", () => {

@@ -642,10 +642,11 @@ export type { Landscape, Phase } from './backdrop'
 export type Look = { phase: Phase; landscape?: Landscape; wild?: Pixels; evolveFrom?: Pixels; overlays?: Placed[] }
 
 // The landscape alone, `total` columns wide at tick `t`: the scene and the ₽ button's column beside it are cut from
-// this one picture, so the sky, sun and hills run on across the seam.
-export function scenery(total: number, rows: number, look: Look, t: number): Pixels {
+// this one picture, so the sky and hills run on across the seam. The sun and moon stay in the scene's left `scene`
+// columns, so they never hide under the wallet nor go when the button does.
+export function scenery(total: number, rows: number, look: Look, t: number, scene = total): Pixels {
   const out: Pixels = { pixels: Array<number>(total * rows * 2).fill(CLEAR), width: total, height: rows * 2 }
-  backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS)
+  backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene)
   return out
 }
 
@@ -669,7 +670,7 @@ export function frame(
   look: Look = { phase: 'day' },
   total = width,
 ): Pixels {
-  const out = slice(scenery(total, rows, look, s.t), 0, width)
+  const out = slice(scenery(total, rows, look, s.t, width), 0, width)
   const ground = out.height - 2
   body = new Uint8Array(width * out.height)
   bodyWidth = width

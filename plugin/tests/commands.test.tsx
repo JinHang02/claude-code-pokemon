@@ -2010,7 +2010,7 @@ const shopOf = (band: Band) => clientProps<ShopProps>(band, 'shop')
 const landscapeAt = (lines: unknown, rows: number, phase: 'day' | 'night', seconds: number) =>
   Array.from({ length: seconds + 1 }, (_, s) => s * 20).some(
     t =>
-      JSON.stringify(textRows(slice(scenery(80, rows, { phase, landscape: 'meadow' }, t), 67, 13))) ===
+      JSON.stringify(textRows(slice(scenery(80, rows, { phase, landscape: 'meadow' }, t, 67), 67, 13))) ===
       JSON.stringify(lines),
   )
 
