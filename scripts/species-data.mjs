@@ -35,7 +35,13 @@ const NOT_WILD_FORM = [
   /^(hisui-)?noble$/,
   /^(shadow|ice)-rider$/,
 ]
-const NOT_WILD_PAIR = new Set(['necrozma:dawn', 'necrozma:dusk', 'kyurem:black', 'kyurem:white'])
+const NOT_WILD_PAIR = new Set(['necrozma:dawn', 'necrozma:dusk', 'kyurem:black', 'kyurem:white', 'lugia:shadow']) // Shadow Lugia (XD) is Psychic/Dark, which PokeAPI lacks
+// Forms PokeAPI has no entry for whose types match the regular form's.
+// Alcremie's sweets, Minior's gen7 colours, Spinda and Marshadow's gen7 share the regular types.
+const KNOWN_SAME_TYPES = pair =>
+  /^alcremie:/.test(pair) ||
+  /^minior:.*-gen7$/.test(pair) ||
+  ['marshadow:gen7', 'spinda:blank', 'spinda:filled'].includes(pair)
 // Arceus and Silvally alternates are type forms, never wild.
 const ALL_FORMS_NOT_WILD = new Set(['arceus', 'silvally'])
 
@@ -95,6 +101,8 @@ async function chainOf(name) {
 }
 
 const table = {}
+// Forms found in neither /pokemon nor /pokemon-form, so given the regular types.
+const fallbacks = []
 await pool(list, 8, async p => {
   const s = await speciesOf(p.name)
   const { depth, rootIsBaby } = await chainOf(p.name)
@@ -115,16 +123,18 @@ await pool(list, 8, async p => {
   for (const f of p.forms.filter(f => f !== 'regular')) {
     let formTypes = types
     let battleOnly = false
-    const variety = await get(`${API}/pokemon/${p.name}-${f}`)
+    // PokeAPI sometimes names a form's Pokémon with a suffix (darmanitan-galar-standard).
+    const suffixed = s.varieties.find(v => v.pokemon.name.startsWith(`${p.name}-${f}-`))
+    const variety = (await get(`${API}/pokemon/${p.name}-${f}`)) ?? (suffixed ? await get(suffixed.pokemon.url) : null)
+    let form = variety?.forms?.[0] ? await get(variety.forms[0].url) : null
     if (variety) {
       formTypes = typeNames(variety)
     } else {
-      const form = await get(`${API}/pokemon-form/${p.name}-${f}`)
-      if (form) {
-        formTypes = typeNames(form)
-        battleOnly = form.is_battle_only || form.is_mega
-      }
+      form = await get(`${API}/pokemon-form/${p.name}-${f}`)
+      if (form) formTypes = typeNames(form)
+      else fallbacks.push(`${p.name}:${f}`)
     }
+    battleOnly = Boolean(form?.is_battle_only || form?.is_mega)
     const isWild =
       !battleOnly &&
       !NOT_WILD_FORM.some(re => re.test(f)) &&
@@ -134,6 +144,14 @@ await pool(list, 8, async p => {
   }
   table[p.name] = { rate: s.capture_rate, tier, isBaby: s.is_baby, stage, types, forms }
 })
+
+console.log(`${fallbacks.length} forms fell back to the regular types: ${fallbacks.sort().join(' ')}`)
+// Only wild forms need right types; a form that is never wild may keep the regular ones.
+const unexpected = fallbacks.filter(x => table[x.split(':')[0]].forms[x.split(':')[1]].isWild && !KNOWN_SAME_TYPES(x))
+if (unexpected.length)
+  throw new Error(
+    `forms with no PokeAPI types, add them to KNOWN_SAME_TYPES if the regular types are right: ${unexpected}`,
+  )
 
 const ordered = Object.fromEntries(list.map(p => [p.name, table[p.name]]))
 const out = [

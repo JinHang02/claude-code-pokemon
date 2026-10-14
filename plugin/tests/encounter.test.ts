@@ -22,6 +22,9 @@ test('no Mega, Gigantamax, Primal or costume form is wild', () => {
   expect(wild('lycanroc', 'dusk')).toBe(true)
   expect(wild('vulpix', 'alola')).toBe(true)
   expect(SPECIES.vulpix?.forms.alola?.types).toEqual(['ice'])
+  expect(SPECIES.darmanitan?.forms.galar).toEqual({ types: ['ice'], isWild: true })
+  expect(wild('castform', 'rainy')).toBe(false)
+  expect(wild('meloetta', 'pirouette')).toBe(false)
 })
 
 test('tiers, babies and stages', () => {
