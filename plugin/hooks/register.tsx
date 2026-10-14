@@ -1297,7 +1297,7 @@ function buttonProps(): ShopProps {
   return { balance: balanceOf(save, cash), plus, lines }
 }
 
-// A click, key or wheel tick in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
+// A click or key in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
 // next props while it stays open.
 async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps } | null> {
   const was = mart.view
@@ -1341,7 +1341,8 @@ function openMartCommand($: EngineInterface): string {
   const refusal = martRefusal()
   if (refusal) return refusal
   openMart($)
-  return 'The PokéMart is open above the prompt: click an item, then ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.'
+  // Claude Code gives the band the keys only on a click: `$.ui.focus` is refused for a site the person hasn't focused.
+  return 'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.'
 }
 
 // The band's look besides the party: time and place, the visitor as a throw shows it, and the ball.
@@ -1710,14 +1711,6 @@ export const register: Register = on => {
       if (answer) return answer
     }
     return next(e)
-  })
-
-  // The wheel over the band moves the open Mart's selection instead of the band.
-  on('ui.scroll', async ($, e, next) => {
-    if (e.component !== 'AbovePrompt' || !mart.isOpen || !e.by) return next(e)
-    await martAct($, { wheel: Math.round(e.by) || Math.sign(e.by) })
-    $.ui.invalidate('ui.render')
-    return {}
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

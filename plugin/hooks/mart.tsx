@@ -29,18 +29,7 @@ export type MartProps = {
   icon?: TextRun[][]
 }
 export type Act =
-  | 'up'
-  | 'down'
-  | 'left'
-  | 'right'
-  | 'less'
-  | 'more'
-  | 'max'
-  | 'buy'
-  | 'close'
-  | { tab: number }
-  | { pick: number }
-  | { wheel: number }
+  'up' | 'down' | 'left' | 'right' | 'less' | 'more' | 'max' | 'buy' | 'close' | { tab: number } | { pick: number }
 export type MartPost = { buy: { id: string; qty: number } } | { close: true }
 // A control: row `y`, columns `x0` to `x1` (exclusive).
 export type Hit = { y: number; x0: number; x1: number; act: Act }
@@ -85,12 +74,7 @@ export function isAct(a: unknown): a is Act {
   if (typeof a === 'string') return NAMES.includes(a)
   if (typeof a !== 'object' || a === null) return false
   const [key, n] = Object.entries(a)[0] ?? []
-  return (
-    Object.keys(a).length === 1 &&
-    ['tab', 'pick', 'wheel'].includes(key ?? '') &&
-    Number.isInteger(n) &&
-    (key === 'wheel' || (n as number) >= 0)
-  )
+  return Object.keys(a).length === 1 && ['tab', 'pick'].includes(key ?? '') && Number.isInteger(n) && (n as number) >= 0
 }
 
 const inTab = (p: MartProps, s: MartState) => p.items.filter(i => i.tab === p.tabs[s.tab])
@@ -120,12 +104,7 @@ export function act(p: MartProps, s: MartState, a: Act): { state: MartState; pos
     return { state: { ...s, sel: at, top, qty: at === s.sel ? s.qty : 1 } }
   }
   const tab = (t: number) => ({ state: { tab: (t + p.tabs.length) % p.tabs.length, sel: 0, top: 0, qty: 1 } })
-  if (typeof a === 'object') {
-    if ('tab' in a) return tab(a.tab)
-    if ('pick' in a) return select(a.pick)
-    // A wheel tick is a row; a page at most a screenful.
-    return select(s.sel + Math.max(-listRows(p), Math.min(listRows(p), a.wheel)))
-  }
+  if (typeof a === 'object') return 'tab' in a ? tab(a.tab) : select(a.pick)
   if (a === 'up' || a === 'down') return select(s.sel + (a === 'up' ? -1 : 1))
   if (a === 'left' || a === 'right') return tab(s.tab + (a === 'left' ? -1 : 1))
   if (a === 'less') return { state: { ...s, qty: Math.max(1, s.qty - 1) } }

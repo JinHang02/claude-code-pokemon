@@ -92,7 +92,7 @@ test('the selected tab is drawn in blue; the bag count and the message show', ()
   expect(owned[2]).toContain('in bag: 2')
 })
 
-test('scrolling: the list follows the selection, the edges say what is past them, the wheel moves it too', () => {
+test('scrolling: the list follows the selection, the edges say what is past them', () => {
   const p = props()
   expect(listRows(p)).toBe(4)
   const s = after(p, 'down', 'down', 'down', 'down')
@@ -100,12 +100,9 @@ test('scrolling: the list follows the selection, the edges say what is past them
   expect(lines(p, s)[6]).toMatch(/^▲ 1 above +▼ 5 more │/)
   expect(after(p, 'up')).toEqual(START)
   expect(after(p, ...Array<Act>(20).fill('down')).sel).toBe(9)
-  // ▲ and ▼ scroll as ↑ and ↓ do; a wheel tick is one row, a page at most a screenful, never past the ends.
-  expect(hitAt(p, s, 'up')?.y).toBe(6)
-  expect(hitAt(p, s, 'down')?.y).toBe(6)
-  expect(after(p, { wheel: 1 }, { wheel: 1 })).toEqual(after(p, 'down', 'down'))
-  expect(after(p, { wheel: 50 }).sel).toBe(4)
-  expect(after(p, { wheel: -3 })).toEqual(START)
+  // ▲ and ▼ scroll as ↑ and ↓ do.
+  expect(hitAt(p, s, 'up')).toMatchObject({ y: 6, act: 'up' })
+  expect(hitAt(p, s, 'down')).toMatchObject({ y: 6, act: 'down' })
 })
 
 test('quantity: 1 at least, the room in the Bag at most; Max is what the wallet buys; a new pick starts at 1', () => {
@@ -166,8 +163,8 @@ test('acting: Buy and ✕ say what to do; every control is a hit at its place; o
     return: 'buy',
     x: 'close',
   })
-  for (const good of ['buy', 'close', { tab: 1 }, { pick: 0 }, { wheel: -2 }]) expect(isAct(good)).toBe(true)
-  for (const bad of ['teleport', { pick: -1 }, { pick: 1.5 }, { tab: '2' }, { wheel: 0.5 }, { buy: 'x' }, null, 7])
+  for (const good of ['buy', 'close', { tab: 1 }, { pick: 0 }]) expect(isAct(good)).toBe(true)
+  for (const bad of ['teleport', { pick: -1 }, { pick: 1.5 }, { tab: '2' }, { wheel: 1 }, { buy: 'x' }, null, 7])
     expect(isAct(bad)).toBe(false)
 })
 

@@ -1831,7 +1831,9 @@ test('a refused buy keeps its quantity; a bought one goes back to ×1; any move 
   expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 1 })
 })
 
-test('the mouse wheel over the open Mart moves its selection; with the Mart closed the band scrolls as before', async ($, on) => {
+// Claude Code raises the wheel over the band only for a band taller than its window, which the Mart never is: it
+// leaves any scroll to the band, as with the Mart closed.
+test('the Mart leaves a scroll of the band alone: it passes on and the selection stays', async ($, on) => {
   // What the engine does with a scroll the plugin passes on.
   const passed: number[] = []
   on('ui.scroll', async (_$, e) => {
@@ -1842,14 +1844,11 @@ test('the mouse wheel over the open Mart moves its selection; with the Mart clos
   await cmd($, 'pokemon', 'party')
   const band = (await mountBand($)) as Band
   await wheel($ as never, 1)
-  expect(passed).toEqual([1])
   await cmd($, 'pokemon', 'mart')
   await wheel($ as never, 1)
-  await wheel($ as never, 1)
-  expect(passed).toEqual([1])
-  expect((await martOf(band))?.state).toMatchObject({ sel: 2 })
-  await wheel($ as never, -40)
-  expect((await martOf(band))?.state).toMatchObject({ sel: 0, top: 0 })
+  await wheel($ as never, -1)
+  expect(passed).toEqual([1, 1, -1])
+  expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
 })
 
 test('the Mart lists what would evolve your party', async ($, on) => {
@@ -1913,7 +1912,10 @@ test('/pokemon mart opens it in the band and says so without one; /pokemon off c
     "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here.",
   )
   const band = (await mountBand($)) as Band
-  expect(await cmd($, 'pokemon', 'mart')).toMatch(/^The PokéMart is open above the prompt/)
+  // Claude Code gives a band the keys only on a click: the reply says to click it.
+  expect(await cmd($, 'pokemon', 'mart')).toBe(
+    'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.',
+  )
   expect(await martOf(band)).not.toBeNull()
   await cmd($, 'pokemon', 'off')
   await cmd($, 'pokemon', 'on')

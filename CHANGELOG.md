@@ -19,8 +19,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - The Mart won't open while a wild Pokémon is out ("catch it or let it go first"), and the ₽ button hides until it
   has gone.
 - In the Mart: click into it, then `↑` `↓` to choose, `←` `→` for tabs, `-` `+` or `◀` `▶` for how many, `Max`
-  for as many as you can afford, `Enter` or `Buy` to buy, `x` or `✕` to close. The mouse wheel over the band scrolls
-  the list. `/pokemon mart` opens it too.
+  for as many as you can afford, `Enter` or `Buy` to buy, `x` or `✕` to close. `/pokemon mart` opens it too. A buy
+  you can't afford says how much more you need and keeps the quantity you chose; `Max` says so when you can't afford
+  even one.
 - Prices: Stones ₽3,000; Rare Candy ₽4,800; Soothe Bell ₽4,000; Lucky Egg ₽10,000; everything else ₽5,000. The Bag
   holds up to 999 of each.
 
@@ -80,6 +81,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - **Close other Claude Code windows before upgrading:** a window still running 1.2.0 can write the save without the
   new Bag, ₽ and held items.
 - **Esc doesn't close the Mart:** Claude Code keeps Escape to give the keyboard back to the prompt. Use `x` or `✕`.
+- **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives a plugin's band the keyboard
+  only on a click.
+- **The mouse wheel doesn't move the Mart's list:** Claude Code passes the wheel to the band only when it's taller
+  than its space, which the Mart never is. Use `↑` `↓`, `▲` `▼` or a click.
 - **17 evolutions keep a level**, because the games tie them to something the plugin has no way to do (a move,
   steps, a battle). They happen at Lv 30, or 10 levels after the Pokémon reached its stage when that's later:
   Mime Jr., Yanma, Piloswine (Lv 43), Aipom, Poipole, Steenee, Lickitung, Clobbopus, Tangela, Bonsly, Stantler,

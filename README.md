@@ -167,7 +167,7 @@ and all.
 
 ## Shop at the PokéMart
 
-Your work earns Pokédollars too, ten for every XP point: **₽20** for a reply, **₽50** for a passing test run, **₽100** for a commit. You start with ₽3,000. Click **🛒 ₽** in the band's top-right corner (or run `/pokemon mart`) to open the PokéMart: evolution stones, trade items, the Linking Cord, Rare Candy, a Lucky Egg and a Soothe Bell, each with its description from the games. It won't open while a wild Pokémon is out: catch it or let it go first. Click into it, then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many, `Enter` buys and `x` closes (Esc can't: Claude Code keeps it for the prompt). The mouse wheel over the band scrolls the list, and item pictures show when the band is at least 8 rows tall.
+Your work earns Pokédollars too, ten for every XP point: **₽20** for a reply, **₽50** for a passing test run, **₽100** for a commit. You start with ₽3,000. Click **🛒 ₽** in the band's top-right corner (or run `/pokemon mart`) to open the PokéMart: evolution stones, trade items, the Linking Cord, Rare Candy, a Lucky Egg and a Soothe Bell, each with its description from the games. It won't open while a wild Pokémon is out: catch it or let it go first. Click into it (after `/pokemon mart` too: Claude Code gives the band the keys only on a click), then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many, `Enter` buys and `x` closes (Esc can't: Claude Code keeps it for the prompt). The mouse wheel doesn't move the list (Claude Code doesn't pass it to the band); `▲` `▼` do. Item pictures show when the band is at least 8 rows tall.
 
 ```text
 /pokemon give thunder-stone pikachu   Pikachu evolved into Raichu!
