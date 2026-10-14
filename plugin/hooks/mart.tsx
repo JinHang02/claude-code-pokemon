@@ -110,8 +110,8 @@ const room = (p: MartProps, s: MartState) => {
   return Math.max(1, MAX_BAG - (item ? (p.bag[item.id] ?? 0) : 0))
 }
 
-// The state after `a`, and what the hooks module is to do: buy, or close.
-export function act(p: MartProps, s: MartState, a: Act): { state: MartState; post?: MartPost } {
+// The state after `a`, what the hooks module is to do (buy, or close), and why it did nothing when it says so.
+export function act(p: MartProps, s: MartState, a: Act): { state: MartState; post?: MartPost; refusal?: string } {
   const count = inTab(p, s).length
   const select = (sel: number) => {
     const at = Math.max(0, Math.min(count - 1, sel))
@@ -130,10 +130,18 @@ export function act(p: MartProps, s: MartState, a: Act): { state: MartState; pos
   if (a === 'left' || a === 'right') return tab(s.tab + (a === 'left' ? -1 : 1))
   if (a === 'less') return { state: { ...s, qty: Math.max(1, s.qty - 1) } }
   if (a === 'more') return { state: { ...s, qty: Math.min(room(p, s), s.qty + 1) } }
-  if (a === 'max') return { state: { ...s, qty: most(p, s) } }
-  if (a === 'close') return { state: s, post: { close: true } }
   const item = picked(p, s)
-  return item ? { state: { ...s, qty: 1 }, post: { buy: { id: item.id, qty: s.qty } } } : { state: s }
+  if (a === 'max') {
+    if (item && p.balance < item.price)
+      return {
+        state: { ...s, qty: 1 },
+        refusal: `Not enough ₽ for one ${item.name}: ${fmt(item.price - p.balance)} more to go.`,
+      }
+    return { state: { ...s, qty: most(p, s) } }
+  }
+  if (a === 'close') return { state: s, post: { close: true } }
+  // The quantity stays: the hooks module sets it back to 1 once the buy has gone through.
+  return item ? { state: s, post: { buy: { id: item.id, qty: s.qty } } } : { state: s }
 }
 
 // Words of `text` in lines at most `w` wide.

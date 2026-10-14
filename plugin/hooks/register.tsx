@@ -1300,8 +1300,12 @@ function buttonProps(): ShopProps {
 // A click, key or wheel tick in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
 // next props while it stays open.
 async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps } | null> {
-  const done = act(martProps(), mart.view, a)
-  mart = { ...mart, view: done.state }
+  const was = mart.view
+  const done = act(martProps(), was, a)
+  // Another item, tab or quantity: the last message was about the one before.
+  const isMoved = done.state.tab !== was.tab || done.state.sel !== was.sel || done.state.qty !== was.qty
+  mart = { ...mart, view: done.state, ...(isMoved ? { message: '', isError: false } : {}) }
+  if (done.refusal) mart = { ...mart, message: done.refusal, isError: true }
   if (done.post && 'close' in done.post) {
     closeMart($)
     return null
@@ -1309,7 +1313,8 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
   if (done.post && 'buy' in done.post) {
     try {
       const { text, isError } = await buyItem($, done.post.buy.id, done.post.buy.qty)
-      mart = { ...mart, message: text, isError }
+      // Bought: back to one. Refused: the quantity stays, to change and try again.
+      mart = { ...mart, message: text, isError, view: isError ? mart.view : { ...mart.view, qty: 1 } }
     } catch (err) {
       // The store refused: said in the Mart's own line, and reported.
       mart = {

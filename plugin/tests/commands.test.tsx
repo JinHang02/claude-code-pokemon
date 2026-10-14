@@ -1789,6 +1789,48 @@ test('the ₽ button opens the PokéMart; Buy takes ₽ and fills the Bag; not e
   expect(await clientProps(band, 'shop')).toMatchObject({ balance: 0, plus: 0 })
 })
 
+test('a refused buy keeps its quantity; a bought one goes back to ×1; any move clears the message; Max says when one is too dear', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 3000 })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
+  await band.redraw()
+  const shown = async () => {
+    const p = await martOf(band)
+    return { message: p?.message, isError: p?.isError, qty: p?.state.qty, sel: p?.state.sel, tab: p?.state.tab }
+  }
+  // ₽6,000: three Fire Stones are too many, and the three stay chosen.
+  await band.key({ key: '+', in: 'mart' })
+  await band.key({ key: '+', in: 'mart' })
+  await band.key({ key: 'return', in: 'mart' })
+  expect(await shown()).toEqual({ message: 'Not enough ₽: 3,000 more to go.', isError: true, qty: 3, sel: 0, tab: 0 })
+  expect(w.saveNow().bag).toBeUndefined()
+  // One less: the refusal was about three, so it goes.
+  await band.key({ key: '-', in: 'mart' })
+  expect(await shown()).toEqual({ message: '', isError: false, qty: 2, sel: 0, tab: 0 })
+  await band.key({ key: 'return', in: 'mart' })
+  expect(w.saveNow().bag).toEqual({ 'fire-stone': 2 })
+  expect(await shown()).toEqual({ message: 'Bought 2 × Fire Stone!', isError: false, qty: 1, sel: 0, tab: 0 })
+  // ₽0 left: Max can't buy even one, says so, and stays at ×1.
+  await band.key({ key: 'down', in: 'mart' })
+  expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 0 })
+  await clickMart(band, 'max')
+  expect(await shown()).toEqual({
+    message: 'Not enough ₽ for one Water Stone: 3,000 more to go.',
+    isError: true,
+    qty: 1,
+    sel: 1,
+    tab: 0,
+  })
+  // A new tab clears it; so does a new item after a refused buy.
+  await band.key({ key: 'right', in: 'mart' })
+  expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 0, tab: 1 })
+  await band.key({ key: 'return', in: 'mart' })
+  expect((await shown()).isError).toBe(true)
+  await clickMart(band, { pick: 1 })
+  expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 1 })
+})
+
 test('the mouse wheel over the open Mart moves its selection; with the Mart closed the band scrolls as before', async ($, on) => {
   // What the engine does with a scroll the plugin passes on.
   const passed: number[] = []

@@ -122,10 +122,23 @@ test('quantity: 1 at least, the room in the Bag at most; Max is what the wallet 
   expect(after(p, 'left').tab).toBe(3)
 })
 
+test('Max with not even one affordable says how much more is needed, and stays at ×1', () => {
+  const poor = props({ balance: 1200 })
+  expect(act(poor, after(poor, 'more', 'more'), 'max')).toEqual({
+    state: START,
+    refusal: 'Not enough ₽ for one Fire Stone: 1,800 more to go.',
+  })
+  expect(act(poor, after(poor, 'right'), 'max').refusal).toBe('Not enough ₽ for one Metal Coat: 3,800 more to go.')
+  // One is affordable: no refusal.
+  expect(act(props({ balance: 3000 }), START, 'max')).toEqual({ state: START })
+  expect(act(props(), START, 'max')).toEqual({ state: { ...START, qty: 4 } })
+})
+
 test('acting: Buy and ✕ say what to do; every control is a hit at its place; only real acts are acts', () => {
   const p = props()
   const s = after(p, 'more')
-  expect(act(p, s, 'buy')).toEqual({ state: { ...s, qty: 1 }, post: { buy: { id: 'fire-stone', qty: 2 } } })
+  // The quantity stays until the hooks module says the buy went through.
+  expect(act(p, s, 'buy')).toEqual({ state: s, post: { buy: { id: 'fire-stone', qty: 2 } } })
   expect(act(p, s, 'close').post).toEqual({ close: true })
   expect(act(p, s, { pick: 3 }).state).toEqual({ tab: 0, sel: 3, top: 0, qty: 1 })
   expect(act(p, s, { pick: 99 }).state.sel).toBe(9)
