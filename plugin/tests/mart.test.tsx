@@ -103,6 +103,46 @@ test('the description wraps to at most 3 lines, and a party line shows when an i
   expect(lines(props()).join('\n')).not.toContain('Your party')
 })
 
+test('a description that runs past its lines ends the last one with …, inside the column', () => {
+  // As in the band at 100 columns less Claude Code's [-]: "It is the blue of a pool of clear" with no mark.
+  const water = { ...START, sel: 1 }
+  const at96 = Math.floor(96 * 0.44)
+  const cut = lines(props({ columns: 96, rows: 11, icon: textRows(ICONS['water-stone']!), state: water }))
+  for (const line of cut) expect([...line].length).toBe(96)
+  expect(cut.slice(3, 6).map(l => l.slice(at96 + 16).trim())).toEqual([
+    'A peculiar stone that can make',
+    'certain species of Pokémon evolve.',
+    'It is the blue of a pool of clear…',
+  ])
+  // One that fits has no mark.
+  const whole = lines(props({ columns: 100, rows: 11, icon: textRows(ICONS['water-stone']!), state: water }))
+  expect(whole[5]?.slice(Math.floor(100 * 0.44) + 16).trim()).toBe('is the blue of a pool of clear water.')
+  // A last line already as wide as the column gives up its last letter for the mark.
+  const full = 80 - left - 3
+  const words = ['a', 'b', 'c', 'd'].map(c => c.repeat(full))
+  const long = props({ items: props().items.map((i, n) => (n === 0 ? { ...i, text: words.join(' ') } : i)) })
+  expect(lines(long)[5]?.slice(left + 1)).toBe(`  ${'c'.repeat(full - 1)}…`)
+  // Every item at every width: the whole description, or its start and a … that stays in the band.
+  for (const columns of [60, 72, 80, 96, 100]) {
+    const at = Math.floor(columns * 0.44)
+    TABS.forEach((tab, t) =>
+      props()
+        .items.filter(i => i.tab === tab)
+        .forEach((item, sel) => {
+          const drawn = lines(props({ columns, state: { ...START, tab: t, sel } }))
+          for (const line of drawn) expect([...line].length).toBe(columns)
+          const said = drawn
+            .slice(3, 6)
+            .map(l => l.slice(at + 1).trim())
+            .filter(Boolean)
+            .join(' ')
+          if (said.endsWith('…')) expect(item.text.startsWith(said.slice(0, -1))).toBe(true)
+          else expect(said).toBe(item.text)
+        }),
+    )
+  }
+})
+
 test('the selected tab is drawn in blue; the bag count and the message show', () => {
   const s = after(props(), 'right')
   const runs = martRows(props(), s).lines[1] ?? []

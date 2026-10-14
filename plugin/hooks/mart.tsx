@@ -138,6 +138,13 @@ function wrap(text: string, w: number): string[] {
   return out
 }
 
+// `text` in at most `n` lines `w` wide, the last ending in … when the rest doesn't fit.
+function describe(text: string, w: number, n: number): string[] {
+  const all = wrap(text, w)
+  if (all.length <= n) return all.map(l => fit(l, w))
+  return all.slice(0, n).map((l, i) => fit(i === n - 1 ? `${l}…` : l, w))
+}
+
 // The Mart as coloured text, a row per band row, each exactly `columns` wide, and where its controls are.
 export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun[][]; hits: Hit[] } {
   const hits: Hit[] = []
@@ -215,9 +222,7 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
               [' ◆ ', item.color, PAPER],
               [fit(`${item.name} · in bag: ${have}`, textWidth - 1), INK, PAPER],
             ],
-        ...wrap(item.text, textWidth)
-          .slice(0, textRows)
-          .map((l): TextRun[] => [[`  ${fit(l, textWidth)}`, INK, PAPER]]),
+        ...describe(item.text, textWidth, textRows).map((l): TextRun[] => [[`  ${l}`, INK, PAPER]]),
         ...(party ? [[[`  ${party}`, BLUE, PAPER]] as TextRun[]] : []),
       ]
     : []
