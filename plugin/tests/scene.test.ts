@@ -21,6 +21,8 @@ import {
   phaseAt,
   pose,
   react,
+  scenery,
+  slice,
   SLEEP_TICKS,
   startWild,
   step,
@@ -547,4 +549,37 @@ test('the last frame says whose each pixel is: a party member in front of the wi
   expect(paintedBy(11, H - 3)).toBe('wild')
   expect(paintedBy(11, 0)).toBeNull()
   expect(paintedBy(-1, H - 3)).toBeNull()
+})
+
+// A band 60 columns wide: the scene in its left 47, the ₽ button's column in its right 13 (the day sun on the seam).
+const TOTAL = 60
+const SCENE = TOTAL - 13
+const SUN = 0xfff1a8
+const MOON = 0xf3f0d2
+const column = (img: Img, x: number) => Array.from({ length: img.height }, (_, y) => at(img, x, y))
+
+test("one landscape runs under the scene and the button's column: the sun and moon carry on across the seam", () => {
+  const empty: Status = { ...base, actors: [], t: 40 }
+  for (const phase of ['day', 'night'] as const) {
+    const look = { phase, landscape: 'hills' as const }
+    const land = scenery(TOTAL, ROWS, look, 40)
+    // The scene is the landscape's left columns; the button's column, the full-width band's right ones.
+    expect(frame(empty, [], SCENE, ROWS, look, TOTAL).pixels).toEqual(slice(land, 0, SCENE).pixels)
+    expect(slice(frame(empty, [], TOTAL, ROWS, look), SCENE, 13).pixels).toEqual(slice(land, SCENE, 13).pixels)
+  }
+  // Day: the sun sits on the seam, part in the scene and part in the button's column.
+  const day = scenery(TOTAL, ROWS, { phase: 'day' }, 0)
+  expect(column(frame(empty, [], SCENE, ROWS, { phase: 'day' }, TOTAL), SCENE - 1)).toContain(SUN)
+  expect(column(slice(day, SCENE, 13), 0)).toContain(SUN)
+  // Night: the moon hangs over the button, where it hangs over a band without one.
+  expect(count(slice(scenery(TOTAL, ROWS, { phase: 'night' }, 0), SCENE, 13), MOON)).toBeGreaterThan(0)
+  expect(count(frame(empty, [], SCENE, ROWS, { phase: 'night' }, TOTAL), MOON)).toBe(0)
+})
+
+test("a Pokémon at the scene's far right stays in the scene, out of the button's column", () => {
+  const right: Status = { ...still, actors: [{ ...newScene(SCENE - SPRITE.width), roam: idle }] }
+  const scene = frame(right, [SPRITE], SCENE, ROWS, { phase: 'day' }, TOTAL)
+  expect(scene.width).toBe(SCENE)
+  expect(column(scene, SCENE - 1)).toContain(0xabcdef)
+  expect(count(slice(scenery(TOTAL, ROWS, { phase: 'day' }, right.t), SCENE, 13), 0xabcdef)).toBe(0)
 })

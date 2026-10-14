@@ -4,7 +4,7 @@ import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START } from '..
 import type { Act, MartProps, MartState } from '../hooks/mart'
 import { ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
-import { walletLabel } from '../hooks/shop'
+import { shopRows, walletLabel } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
 
 const props = (extra: Partial<MartProps> = {}): MartProps => ({
@@ -177,4 +177,26 @@ test('the button fits its 13 columns: the full wallet up to ₽99,999, a short o
   expect(walletLabel(1_234_567)).toBe(' 🛒 ₽ 1.2M ')
   for (const n of [0, 99_999, 100_000, 999_999, 1_000_000, 999_999_999, 123_456_789_012])
     expect(columns(walletLabel(n))).toBeLessThanOrEqual(13)
+})
+
+test('the button draws its landscape with the wallet at the top right and +₽ under it, each on a dark pill', () => {
+  const sky: [string, string, string] = [' '.repeat(13), '', '#5b9bd0']
+  const grass: [string, string, string] = ['▀'.repeat(13), '#4fa845', '#2f7a2d']
+  const lines = [[sky], [sky], [grass]]
+  const rows = shopRows({ balance: 3020, plus: 20, lines })
+  // 🛒 takes two columns: every row is 13 columns wide, the label flush right.
+  const width = (runs: [string, string, string][]) =>
+    runs.reduce((n, [t]) => n + [...t].length + (t.includes('🛒') ? 1 : 0), 0)
+  for (const runs of rows) expect(width(runs)).toBe(13)
+  expect(rows[0]).toEqual([
+    [' ', '', '#5b9bd0'],
+    [' 🛒 ₽ 3,020 ', '#ffd75e', '#1d2029'],
+  ])
+  expect(rows[1]).toEqual([
+    ['       ', '', '#5b9bd0'],
+    [' +₽20 ', '#ffd75e', '#1d2029'],
+  ])
+  expect(rows[2]).toEqual([grass])
+  // Nothing earned just now: the sky under the wallet shows through.
+  expect(shopRows({ balance: 3020, plus: 0, lines })[1]).toEqual([sky])
 })

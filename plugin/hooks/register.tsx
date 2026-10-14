@@ -73,6 +73,8 @@ import {
   newScene,
   phaseAt,
   react,
+  scenery,
+  slice,
   startWild,
   step,
   TICK_MS,
@@ -85,7 +87,7 @@ import { landscapeAt, LANDSCAPES } from './backdrop'
 import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
-import type { Pixels } from './sprite'
+import type { Pixels, TextRun } from './sprite'
 import type { ShopProps } from './shop'
 
 const BASE = 'https://gitlab.com/phoneybadger/pokemon-colorscripts/-/raw/main'
@@ -158,6 +160,10 @@ let wildRate: number | null = DEFAULT_RATE
 let pitch: Throw | null = null
 // The band's corner button takes this many columns beside the scene.
 const BUTTON_COLUMNS = 13
+// The button's landscape keeps to whole seconds, so it changes (a redraw of the band) at most once a second.
+const BUTTON_EVERY = ticks(1000)
+// The button's landscape as last drawn, to redraw it only when the sky behind it changed.
+let buttonDrawn = ''
 // The PokéMart: open in the band, the last thing it said, and what is selected in it.
 let mart = { isOpen: false, message: '', isError: false, view: START }
 // While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a click layer over pixel art
@@ -1277,7 +1283,19 @@ function martProps(): MartProps {
   }
 }
 
-const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
+// The landscape behind the button: the band's own, carried on past the scene's right edge, at the start of this second.
+function buttonLines(): TextRun[][] {
+  if (!band) return []
+  const t = status.t - (status.t % BUTTON_EVERY)
+  const look = { phase: phaseNow(), landscape: landscapeNow() }
+  return textRows(slice(scenery(band.total, band.rows, look, t), band.columns, band.total - band.columns))
+}
+
+function buttonProps(): ShopProps {
+  const lines = buttonLines()
+  buttonDrawn = JSON.stringify(lines)
+  return { balance: balanceOf(save, cash), plus, lines }
+}
 
 // A click, key or wheel tick in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
 // next props while it stays open.
@@ -1361,11 +1379,15 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   // The scene keeps moving underneath; nothing is drawn over the Mart.
   if (mart.isOpen) return
+  // The button's landscape moves on once a second, drawn again when a cloud, star or glint behind it changed.
+  const isButtonShown = band.total > band.columns && !isButtonHidden && !isAiming && !isHidden
+  if (isButtonShown && status.t % BUTTON_EVERY === 0 && JSON.stringify(buttonLines()) !== buttonDrawn)
+    $.ui.invalidate('ui.render')
   if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return
-  const { cells } = toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow()))
+  const { cells } = toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total))
   if (cells === lastCells && !isHidden) return
   if (isAiming) {
     // The redraw makes this frame again and records it as drawn.
@@ -1744,7 +1766,7 @@ export const register: Register = on => {
       lastCells = ''
       return <Client key="mart" module="./mart.tsx" width={total} height={rows} props={martProps()} />
     }
-    const img = frame(status, fitted.lefts, columns, rows, lookNow())
+    const img = frame(status, fitted.lefts, columns, rows, lookNow(), total)
     const { cells } = toCells(img)
     lastCells = cells
     if (isAiming)

@@ -641,12 +641,36 @@ export type { Landscape, Phase } from './backdrop'
 // `overlays`: painted last, over everything (a Poké Ball and its sparkles).
 export type Look = { phase: Phase; landscape?: Landscape; wild?: Pixels; evolveFrom?: Pixels; overlays?: Placed[] }
 
+// The landscape alone, `total` columns wide at tick `t`: the scene and the ₽ button's column beside it are cut from
+// this one picture, so the sky, sun and hills run on across the seam.
+export function scenery(total: number, rows: number, look: Look, t: number): Pixels {
+  const out: Pixels = { pixels: Array<number>(total * rows * 2).fill(CLEAR), width: total, height: rows * 2 }
+  backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS)
+  return out
+}
+
+// Columns `from` to `from + count` of a picture.
+export function slice(img: Pixels, from: number, count: number): Pixels {
+  if (from === 0 && count === img.width) return img
+  const pixels: number[] = []
+  for (let y = 0; y < img.height; y++)
+    pixels.push(...img.pixels.slice(y * img.width + from, y * img.width + from + count))
+  return { pixels, width: count, height: img.height }
+}
+
 // The band's picture: the meadow, clones trailing the lead, a wild visitor, the party in their poses with
 // feet in the grass (lead in front), then dust, sparks, confetti and Zs. `lefts`: the party facing left.
-export function frame(s: Status, lefts: Pixels[], width: number, rows: number, look: Look = { phase: 'day' }): Pixels {
-  const out: Pixels = { pixels: Array<number>(width * rows * 2).fill(CLEAR), width, height: rows * 2 }
+// `total`: how wide the whole band's landscape is, of which this picture is the left `width` columns.
+export function frame(
+  s: Status,
+  lefts: Pixels[],
+  width: number,
+  rows: number,
+  look: Look = { phase: 'day' },
+  total = width,
+): Pixels {
+  const out = slice(scenery(total, rows, look, s.t), 0, width)
   const ground = out.height - 2
-  backdrop(out, look.phase, look.landscape ?? 'meadow', s.t, 1000 / TICK_MS)
   body = new Uint8Array(width * out.height)
   bodyWidth = width
   if (s.wild && s.wild.rustle > 0) rustle(out, s.wild.facing === 1 ? 0 : width - RUSTLE_COLUMNS, s.t)
