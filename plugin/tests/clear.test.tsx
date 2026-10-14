@@ -105,7 +105,7 @@ test('an open Mart is still open after /clear; it closes, and the ₽ button sho
   expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
 })
 
-// Simulates 3 minutes of the frame and heartbeat timers.
+// Simulates 3 minutes of the frame and heartbeat timers (120 s, then 60 s).
 test(
   'XP, ₽, the Bag, held items, time together, the Pokédex and evolutions all count once across a /clear',
   { timeoutMs: 30_000 },
