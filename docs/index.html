@@ -384,6 +384,36 @@
       .levels p + p {
         margin-top: 1rem;
       }
+      .ways {
+        margin: 1rem 0 0;
+        padding-left: 1.2rem;
+        max-width: 64ch;
+      }
+      .ways li + li {
+        margin-top: 0.3rem;
+      }
+      .ways + p {
+        margin-top: 1rem;
+      }
+
+      /* PokéMart: terminal clips with text in them, shown no larger than they were drawn. */
+      .clip {
+        margin: 2.5rem auto 0;
+        max-width: 820px;
+      }
+      .clip img {
+        width: 100%;
+        border-radius: 10px;
+        image-rendering: auto;
+      }
+      .shelves {
+        margin-top: 2.5rem;
+        align-items: start;
+      }
+      .shelves h3 + p,
+      .shelves h3 + .xp {
+        margin-top: 0.9rem;
+      }
 
       /* Landscapes */
       .phases {
@@ -537,6 +567,7 @@
       <nav aria-label="Sections">
         <a href="#reactions">What they do</a>
         <a href="#levels">Levels</a>
+        <a href="#mart">PokéMart</a>
         <a href="#landscapes">Landscapes</a>
         <a href="#commands">Commands</a>
         <a href="https://github.com/JinHang02/claude-code-pokemon">GitHub</a>
@@ -694,9 +725,18 @@
               loading="lazy"
             />
             <p style="margin-top: 1.25rem">
-              They evolve the way they do in the games: Charmander at Lv 16, Pikachu with a Thunder Stone, Pichu with
-              friendship from time together, Rockruff into Midnight Lycanroc at night. Regional forms evolve the way
-              their region does, and gender matters where it does in the games.
+              <i>What? Charmander is evolving!</i> They evolve the way they do in the games:
+            </p>
+            <ul class="ways">
+              <li>at a level: Charmander at Lv 16</li>
+              <li>with a stone: Pikachu with a Thunder Stone, Eevee with a Water Stone</li>
+              <li>by trade: Onix with a Metal Coat, Haunter with a Linking Cord</li>
+              <li>with friendship, after 10 hours together: Pichu, Togepi, Riolu</li>
+              <li>by the clock: Rockruff into Midnight Lycanroc at night</li>
+            </ul>
+            <p>
+              Stones and trade items come from the <a href="#mart">PokéMart</a>. Regional forms evolve the way their
+              region does, and gender matters where it does in the games.
             </p>
             <p>905 Pokémon, 424 alternate forms, and a 1 in 32 chance of a shiny on every catch.</p>
           </div>
@@ -705,12 +745,74 @@
 
       <section id="mart">
         <div class="wrap">
-          <h2>Shop at the PokéMart</h2>
+          <h2>Welcome to the PokéMart!</h2>
           <p class="intro">
-            Your work earns Pokédollars as well as XP: ₽20 a reply, ₽50 a passing test run, ₽100 a commit. Click
-            <code>🛒 ₽</code> in the band's corner to buy evolution stones, trade items, Rare Candy and more, each with
-            its description from the games, then <code>/pokemon give</code> them to your party.
+            Your work pays in Pokédollars as well as XP. Click <code>🛒 ₽</code> in the band's corner and the Mart opens
+            right there in the band: pick a tab, pick an item, set how many, buy. Thank you, come again!
           </p>
+          <figure class="clip">
+            <img
+              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/mart.gif"
+              width="820"
+              height="246"
+              alt="Clicking 🛒 ₽ 24,560 opens the PokéMart in the band: a Fire Stone with its picture and description, the Hold items and Special tabs, then Water Stone ×3 for ₽9,000, Bought 3 × Water Stone!, ₽ 15,560, and x closes it back to the meadow"
+              loading="lazy"
+            />
+            <figcaption class="dialog">
+              <b>Bought 3 × Water Stone!</b>Four tabs, each item with its picture and its description from the games,
+              and a "Your party: Eevee → Vaporeon" line when it would evolve one of yours.
+            </figcaption>
+          </figure>
+          <div class="levels shelves">
+            <div>
+              <h3>Earn ₽ as you ship</h3>
+              <table class="xp">
+                <tbody>
+                  <tr>
+                    <td>Claude finishes a reply</td>
+                    <td>₽20</td>
+                  </tr>
+                  <tr>
+                    <td>A test run passes</td>
+                    <td>₽50</td>
+                  </tr>
+                  <tr>
+                    <td>A commit goes through</td>
+                    <td>₽100</td>
+                  </tr>
+                  <tr>
+                    <td>You start with, as in Red and Blue</td>
+                    <td>₽3,000</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3>On the shelves</h3>
+              <p>
+                Ten evolution stones for ₽3,000. The trade items (Metal Coat, Dragon Scale, Up-Grade and the rest), the
+                Linking Cord and Galar's apples and pots for ₽5,000. Rare Candy, a Lucky Egg for half as much XP again,
+                and a Soothe Bell that makes time together count one and a half times.
+              </p>
+              <p>
+                No clicks in your terminal? <code>/pokemon buy fire stone 3</code> shops by typing. Clicking needs
+                Claude Code's fullscreen mode, and the Mart takes its keys once you click into it.
+              </p>
+            </div>
+          </div>
+          <figure class="clip">
+            <img
+              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/give.gif"
+              width="820"
+              height="342"
+              alt="Typing /pokemon give water stone eevee: a toast says What? Eevee evolved into Vaporeon!, Eevee flashes between white silhouettes in the band and comes out a Vaporeon"
+              loading="lazy"
+            />
+            <figcaption class="dialog">
+              <b>What? Eevee evolved into Vaporeon!</b><code>/pokemon give</code> a stone or trade item and it works at
+              once. A hold item is held, one per Pokémon, and <code>/pokemon bag</code> shows who holds what.
+            </figcaption>
+          </figure>
         </div>
       </section>
 
@@ -742,7 +844,7 @@
             </li>
             <li><code>/pokemon add [name]</code><span>Grow your party to three; no name catches a random one</span></li>
             <li><code>/pokemon remove [name]</code><span>Release one; with no name, never your lead</span></li>
-            <li><code>/pokemon party</code><span>Levels, XP to go, and who evolves when</span></li>
+            <li><code>/pokemon party</code><span>Levels, how each one evolves, held items and time together</span></li>
             <li><code>/pokemon box</code><span>Your PC box: Pokémon you caught while the party was full</span></li>
             <li>
               <code>/pokemon deposit &lt;name&gt;</code><span>Move a party member into the box, level and all</span>
@@ -758,6 +860,7 @@
               <code>/pokemon give &lt;item&gt; &lt;name&gt;</code
               ><span>Evolve it with a stone, hold an item, or level up with a Rare Candy</span>
             </li>
+            <li><code>/pokemon take &lt;name&gt;</code><span>Put its held item back in your Bag</span></li>
             <li><code>/pokedex</code><span>Everything you've seen, per generation, plus your shinies</span></li>
             <li>
               <code>/pokemon-play &lt;animation&gt;</code

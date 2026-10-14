@@ -16,7 +16,7 @@ and evolve as you ship.
 [![122 tests](https://img.shields.io/badge/tests-122_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
-[Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
+[Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
 
 </div>
 
@@ -86,19 +86,39 @@ Every Pokémon in your party earns experience from the work you and Claude get d
 | A test run passes (`pytest`, `npm test`, `go test`, `cargo test`...) |  **+5** |
 | A commit goes through                                                | **+10** |
 
+A Pokémon holding a Lucky Egg earns half as much again.
+
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve.gif" width="280" align="right" alt="Charmander evolving into Charmeleon in flashing white silhouettes">
 
-They evolve **the way they do in the games**: Charmander at Lv 16, Charmeleon at 36. Pikachu needs a Thunder Stone, Haunter a Linking Cord, Onix a Metal Coat: buy them at the PokéMart and `/pokemon give` them. Pichu, Togepi and other friendship evolutions come from time together: 10 hours in your party while Claude Code is open. Day and night matter where they do in the games (Rockruff becomes Midnight Lycanroc at night), and regional forms evolve the way their region does. A Pokémon that can branch always takes the same branch, decided by that Pokémon, as in the games. You get the classic flashing-silhouette animation and a little _"What? Charmander evolved into Charmeleon!"_.
+_What? Charmander is evolving!_ They evolve **the way they do in the games**:
 
-`/pokemon party` shows how each one evolves, and how long it's been with you.
+- **Level up:** Charmander at Lv 16, Charmeleon at Lv 36.
+- **Evolution stones:** Pikachu with a Thunder Stone, Eevee with a Water, Thunder or Fire Stone, and the rest.
+- **Trades:** a trade with a held item needs that item (Onix a Metal Coat, Seadra a Dragon Scale), and a plain trade needs a Linking Cord (Haunter, Kadabra, Machoke).
+- **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open. A Soothe Bell makes the time count one and a half times.
+- **Time of day:** Riolu only by day, Rockruff into Midnight Lycanroc at night, Eevee into Espeon by day or Umbreon by night.
+
+Regional forms evolve the way their region does, and a Pokémon that can branch always takes the same branch, decided by that Pokémon, as in the games. Then the classic flashing silhouettes and a little _"What? Charmander evolved into Charmeleon!"_.
+
+<br clear="right">
+
+Stones and trade items come from the [PokéMart](#welcome-to-the-pokémart). Hand one over and it works at once:
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/give.gif" width="820" alt="Typing /pokemon give water stone eevee: a toast says What? Eevee evolved into Vaporeon!, Eevee flashes between white silhouettes in the band and comes out a Vaporeon">
+</p>
+
+`/pokemon party` says how each one evolves, what it holds and how long it's been with you:
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/party-1.3.png" width="820" alt="/pokemon party: Vaporeon is a final form; Pikachu evolves with a Thunder Stone and holds a Lucky Egg; Riolu evolves with friendship by day, ♥ 67%, 3h 14m to go, and holds a Soothe Bell; each with its time together">
+</p>
 
 Love your Charmander just the way it is? Give it an everstone and it won't evolve by itself. A stone or trade item you `/pokemon give` it still works:
 
 ```text
 /pokemon everstone charmander
 ```
-
-<br clear="right">
 
 ---
 
@@ -165,17 +185,51 @@ and all.
 
 ---
 
-## Shop at the PokéMart
+## Welcome to the PokéMart!
 
-Your work earns Pokédollars too, ten for every XP point: **₽20** for a reply, **₽50** for a passing test run, **₽100** for a commit. You start with ₽3,000. Click **🛒 ₽** in the band's top-right corner (or run `/pokemon mart`) to open the PokéMart: evolution stones, trade items, the Linking Cord, Rare Candy, a Lucky Egg and a Soothe Bell, each with its description from the games. It won't open while a wild Pokémon is out: catch it or let it go first. Click into it (after `/pokemon mart` too: Claude Code gives the band the keys only on a click), then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many, `Enter` buys and `x` closes (Esc can't: Claude Code keeps it for the prompt). The mouse wheel doesn't move the list (Claude Code doesn't pass it to the band); `▲` `▼` do. Item pictures show when the band is at least 8 rows tall. Clicking needs Claude Code's fullscreen mode (`/config`, or `"tui": "fullscreen"` in settings); without it, `/pokemon mart` shows it and `/pokemon buy <item> [count]` shops by typing (`/pokemon buy fire stone 3`; plain `/pokemon buy` lists everything with prices).
+Your work pays in Pokédollars as well as XP, ten for every XP point. It's one wallet for the whole party, and everyone starts with ₽3,000, as in Pokémon Red and Blue.
+
+| What happens            |        ₽ |
+| :---------------------- | -------: |
+| Claude finishes a reply |  **₽20** |
+| A test run passes       |  **₽50** |
+| A commit goes through   | **₽100** |
+
+Click **🛒 ₽** in the band's top-right corner and the PokéMart opens right there in the band. Pick a tab, pick an item, set how many, **Buy**. _Thank you, come again!_
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/mart.gif" width="820" alt="Clicking 🛒 ₽ 24,560 opens the PokéMart in the band: a Fire Stone with its picture and description, the Hold items and Special tabs, then Water Stone ×3 for ₽9,000, Bought 3 × Water Stone!, ₽ 15,560, and x closes it back to the meadow">
+</p>
+
+Every item has its picture and its description from the games, and a _"Your party: Eevee → Vaporeon"_ line when it would evolve one of yours. On the shelves:
+
+| Tab        | What's on it                                                                                                                                                                                                                     | Price                     |
+| :--------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------ |
+| Stones     | Fire, Water, Thunder, Leaf, Ice, Moon, Sun, Shiny, Dusk and Dawn Stones                                                                                                                                                          | ₽3,000                    |
+| Hold items | Metal Coat, King's Rock, Dragon Scale, Up-Grade, Dubious Disc, Protector, Electirizer, Magmarizer, Reaper Cloth, Deep Sea Tooth and Scale, Prism Scale, Sachet, Whipped Dream, Razor Claw and Fang, Oval Stone, Strawberry Sweet | ₽5,000                    |
+| Special    | The Linking Cord, Tart and Sweet Apples, Cracked and Chipped Pots, Black Augurite, Peat Block, the two Scrolls, Galarica Cuff and Wreath                                                                                         | ₽5,000                    |
+| Other      | Rare Candy (one level), Lucky Egg (half as much XP again), Soothe Bell (time together counts 1.5 times)                                                                                                                          | ₽4,800 / ₽10,000 / ₽4,000 |
+
+Then hand them out. A stone or trade item evolves on the spot and is used up, a Rare Candy is one level, and a hold item is held: one per Pokémon, as in the games, so giving another puts the old one back in your Bag. An item that would do nothing is refused, and nothing is used up.
 
 ```text
-/pokemon give thunder-stone pikachu   Pikachu evolved into Raichu!
-/pokemon give lucky-egg eevee         Eevee is now holding a Lucky Egg.
-/pokemon bag                          what you have, and who holds what
+/pokemon give water stone eevee     Eevee evolved into Vaporeon!
+/pokemon give lucky egg pikachu     Pikachu is now holding a Lucky Egg.
+/pokemon take pikachu               the Lucky Egg goes back in the Bag
+/pokemon bag                        what you have, your ₽, and who holds what
+/pokemon buy fire stone 3           shop by typing; plain /pokemon buy lists the shelves
 ```
 
-A Pokémon holds one item at a time, as in the games. A Lucky Egg earns its holder half as much XP again; a Soothe Bell makes time together count one and a half times.
+<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/bag.png" width="580" alt="/pokemon bag: Bag · ₽1,560; Stones: Water Stone ×1; Held: Pikachu: Lucky Egg · Riolu: Soothe Bell">
+
+In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many (`Max` buys as many as you can afford), `Enter` buys and `x` closes. A buy you can't afford says how much more you need. Good to know:
+
+- **Clicks need Claude Code's fullscreen mode** (`/config`, or `"tui": "fullscreen"` in settings), for the ₽ button and the Mart as for Poké Balls. Without it, `/pokemon mart` shows the Mart and `/pokemon buy` does the shopping.
+- **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives the band the keyboard only on a click.
+- **Esc doesn't close it:** Claude Code keeps Escape for the prompt. Use `x` or `✕`.
+- **The mouse wheel doesn't move the list:** Claude Code doesn't pass it to the band. `↑` `↓` or `▲` `▼` do.
+- **Item pictures need a band at least 8 rows tall,** otherwise each item gets a coloured ◆. A few are rough at this size: the Linking Cord's coil is hard to make out.
+- **The Mart stays shut while a wild Pokémon is out:** catch it or let it go first.
 
 ## Commands
 
@@ -184,7 +238,7 @@ A Pokémon holds one item at a time, as in the games. A Lucky Egg earns its hold
 | `/pokemon`                              | A random Pokémon becomes your lead                                                                                                                                                  |
 | `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. Close misses get a suggestion                                          |
 | `/pokemon add [name]` / `remove [name]` | Grow or trim your party (up to 3). No name: a random catch, or a random release that never picks your lead                                                                          |
-| `/pokemon party`                        | Levels, XP to go, and who evolves when                                                                                                                                              |
+| `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                             |
 | `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                          |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                     |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                         |
