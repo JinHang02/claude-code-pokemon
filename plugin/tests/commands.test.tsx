@@ -1124,6 +1124,18 @@ test('a shiny named in the PC box comes out of it: the lead goes into the box, n
   expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
 })
 
+test('shiny twins asked for when neither is shiny: which one, and nothing changes', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+  })
+  expect(await cmd($, 'pokemon', 'shiny eevee')).toBe(
+    'No shiny Eevee in your party or PC box. Which Eevee? 1. Eevee Lv 1 (party) · 2. Eevee Lv 1 (party) — add the number: /pokemon eevee 2',
+  )
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1', 'e2'])
+  expect(w.saveNow().dex).toEqual({})
+})
+
 test('a plain name never takes a regional form out of the PC box', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),

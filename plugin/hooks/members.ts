@@ -28,11 +28,14 @@ function namesOf(members: Member[]): Species[] {
 const wordsOf = (query: string) => slug(query).split('-').filter(Boolean)
 
 // The spots `named` picks exactly in `pool` (`vulpix` the plain one, `alolan vulpix` the other); with none of that
-// form, a party member of the species, but never another form out of the PC box. The lookup when it picks nothing.
+// form, a party member of the species, but never another form out of the PC box. Words spelling a name right but
+// spaced apart (`porygon 2`) pick it too. The lookup when it picks nothing.
 function matching(pool: Spot[], named: string[], wantsShiny: boolean): Spot[] | Lookup | null {
   const found = named.length && pool.length ? lookup(namesOf(pool.map(p => p.member)), named) : null
-  if (!found || !('pick' in found)) return found
-  const { species, form } = found.pick
+  const isSpaced = found && 'guess' in found && spell(found.guess).replace(/ /g, '') === named.join('')
+  const pick = found && ('pick' in found ? found.pick : isSpaced && 'guess' in found ? found.guess : null)
+  if (!pick) return found
+  const { species, form } = pick
   const exact = pool.filter(p => p.member.species === species && p.member.form === form)
   const spots = exact.length ? exact : pool.filter(p => p.place === 'party' && p.member.species === species)
   return spots.filter(p => !wantsShiny || p.member.isShiny)
@@ -60,15 +63,26 @@ export function findMembers(
   if (isSpots(whole)) return whole.length === 1 && whole[0] ? { spot: whole[0] } : { choices: whole }
   const last = named[named.length - 1] ?? ''
   const isNumbered = named.length > 1 && /^\d+$/.test(last)
+  // `-1` slugs to `1`: a signed number is below 1, out of range like `0`.
+  const nth = /^-/.test(query.trim().split(/\s+/).pop() ?? '') ? 0 : Number(last)
   const before = isNumbered ? matching(pool, named.slice(0, -1), wantsShiny) : null
   if (isSpots(before)) {
-    const spot = before[Number(last) - 1]
+    const spot = nth > 0 ? before[nth - 1] : undefined
     const name = words.slice(0, words.lastIndexOf(last)).join(' ')
     return spot ? { spot } : { error: formatChoices(before, name, command, levelOf) }
   }
-  const shiny = wantsShiny ? 'shiny ' : ''
-  if (before && 'guess' in before) return { error: `${didYouMean(before.guess, `${command}${shiny}`)} ${last}` }
-  if (whole && 'guess' in whole) return { error: didYouMean(whole.guess, `${command}${shiny}`) }
+  const guessOf = (found: Spot[] | Lookup | null) => (found && 'guess' in found ? found.guess : undefined)
+  const [early, full] = [guessOf(before), guessOf(whole)]
+  // The whole query guessing another name took the number for part of it (`porygn 2`: Porygon2).
+  const isPartOfName = Boolean(early && full && full.species !== early.species)
+  const guess = isPartOfName ? full : (early ?? full)
+  if (guess) {
+    const many = pool.filter(
+      ({ member: m }) => m.species === guess.species && m.form === guess.form && (!wantsShiny || m.isShiny),
+    ).length
+    const number = isNumbered && !isPartOfName && many > 1 && nth > 0 && nth <= many ? ` ${last}` : ''
+    return { error: `${didYouMean(guess, `${command}${wantsShiny ? 'shiny ' : ''}`)}${number}` }
+  }
   const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
   return { error: `No ${query.trim()} in your ${where}.${places.includes('party') ? ` ${formatParty(s)}` : ''}` }
 }
@@ -79,12 +93,13 @@ export const isList = (text: string) => text.startsWith('Which ')
 // "Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2".
 export function formatChoices(choices: Spot[], query: string, command: string, levelOf: (m: Member) => number): string {
   const first = choices[0]?.member
+  const isOneForm = choices.every(c => c.member.form === first?.form)
   const lines = choices.map(({ place, member: m }, i) => {
     const sign = m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
     const held = m.heldItem ? ` holding ${itemName(m.heldItem)}` : ''
     const where = place === 'party' ? 'party' : 'PC box'
     return `${i + 1}. ${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign} Lv ${levelOf(m)}${held} (${where})`
   })
-  const name = first ? displayName(first.species, first.form) : wordsOf(query).join(' ')
+  const name = first ? displayName(first.species, isOneForm ? first.form : 'regular') : wordsOf(query).join(' ')
   return `Which ${name}? ${lines.join(' · ')} — add the number: /pokemon ${command}${wordsOf(query).join(' ')} ${choices.length}`
 }

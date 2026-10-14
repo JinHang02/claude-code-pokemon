@@ -531,6 +531,16 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
   if (typeof caught === 'string') return caught
   let text = ''
   await mutate($, latest => {
+    // A shiny asked for, and only plain ones of it owned: which one, as for the name without `shiny`.
+    const plain = slug(query)
+      .split('-')
+      .filter(w => w && w !== 'shiny')
+      .join(' ')
+    const owned = find(latest, plain, ['party', 'box'], '')
+    if ('choices' in owned && owned.choices.some(c => same(c.member, caught))) {
+      text = `No shiny ${displayName(caught.species, caught.form)} in your party or PC box. ${formatChoices(owned.choices, plain, '', levelNow)}`
+      return latest
+    }
     const at = latest.party.findIndex(m => same(m, caught))
     const member = latest.party[at]
     if (member) {

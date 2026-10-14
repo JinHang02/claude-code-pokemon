@@ -95,3 +95,40 @@ test('the numbered list: gender, shiny, level, what it holds and where it is', (
     'Which Eevee? 1. Eevee ♀ Lv 24 holding Everstone (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon give water-stone eevee 2',
   )
 })
+
+test('a number that is part of a name stays in the name; a suggestion keeps a number it can pick', () => {
+  const two = member('porygon2')
+  const one = { ...emptySave(), party: [member('pikachu'), two] }
+  expect(ids(findMembers(one, 'porygon 2', ['party'], 'remove ', levelOf))).toBe(two.id)
+  const both = { ...emptySave(), party: [member('porygon'), two] }
+  expect(ids(findMembers(both, 'porygon 2', ['party'], 'remove ', levelOf))).toBe(two.id)
+  // Two Porygon: the number picks the second.
+  const pair = { ...emptySave(), party: [member('porygon'), member('porygon', { id: 'second' })] }
+  expect(ids(findMembers(pair, 'porygon 2', ['party'], 'remove ', levelOf))).toBe('second')
+  // A near miss with a number no list of it reaches drops the number.
+  expect(ids(findMembers(one, 'porygn 2', ['party'], 'remove ', levelOf))).toBe(
+    'Did you mean Porygon2? Run /pokemon remove porygon2',
+  )
+  const unowns = { ...emptySave(), box: [member('unown', { form: 'a' }), member('unown', { form: 'a' })] }
+  expect(ids(findMembers(unowns, 'unown 2', ['box'], 'add ', levelOf))).toBe(
+    'Did you mean Unown (A)? Run /pokemon add unown a 2',
+  )
+})
+
+test('a number below 1 picks no one: it answers with the list', () => {
+  const two = { ...emptySave(), party: [member('eevee'), member('eevee')] }
+  for (const query of ['eevee -1', 'eevee 0', 'eevee -2']) {
+    const found = findMembers(two, query, ['party'], 'remove ', levelOf)
+    expect('error' in found && found.error).toBe(
+      'Which Eevee? 1. Eevee Lv 1 (party) · 2. Eevee Lv 1 (party) — add the number: /pokemon remove eevee 2',
+    )
+  }
+})
+
+test('a list of several forms names the species, and each line its form', () => {
+  const unowns = { ...emptySave(), party: [member('unown', { form: 'b' }), member('unown', { form: 'a' })] }
+  const found = findMembers(unowns, 'unown', ['party'], 'remove ', levelOf)
+  expect('choices' in found && formatChoices(found.choices, 'unown', 'remove ', levelOf)).toBe(
+    'Which Unown? 1. Unown (B) Lv 1 (party) · 2. Unown (A) Lv 1 (party) — add the number: /pokemon remove unown 2',
+  )
+})
