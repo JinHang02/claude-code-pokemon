@@ -227,6 +227,9 @@ const fileOf = (m: { species: string; form: string }) => (m.form === 'regular' ?
 const keyOf = (m: Member) => m.id
 // What a member looks like on screen: the party is drawn again when any of these change.
 const lookOf = (m: Member) => `${m.id}|${m.species}|${m.form}|${m.isShiny}`
+// Whether a save about to be adopted shows another party than `was` (another session evolved, added or moved one).
+// Every place that adopts a save checks, or the band keeps drawing the old one.
+const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !== was.party.map(lookOf).join()
 
 // Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
 // when it claims UTC, the host's answer from session start is used.
@@ -350,13 +353,21 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 // Applies `change` to the latest save (another Claude Code session may have written since), then stores
 // and adopts the result, so sessions running side by side never undo each other.
 function mutate($: EngineInterface, change: (s: Save) => Save) {
-  return queued(async () => {
+  let isRedrawn = false
+  const run = queued(async () => {
     const raw = await $.store.get('save')
     await seedTogether($, raw)
-    save = change(loadSave(raw))
+    const latest = loadSave(raw)
+    const next = change(latest)
+    isRedrawn = isOtherParty(latest, save)
+    save = next
     await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
     countLedgers(await readLedgers($))
+  })
+  // In the background: a stalled download never holds up the command.
+  return run.then(() => {
+    if (isRedrawn) background($, refreshParty($))
   })
 }
 
@@ -367,7 +378,7 @@ async function sync($: EngineInterface) {
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
-    isNewParty = latest.party.map(lookOf).join() !== save.party.map(lookOf).join()
+    isNewParty = isOtherParty(latest, save)
     isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
     save = latest
     countLedgers(await readLedgers($))
@@ -1147,6 +1158,7 @@ async function earn($: EngineInterface, amount: number) {
   await ready
   let leveledUp = false
   let isPaid = false
+  let isRedrawn = false
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     // Off in another session since this one last synced: no XP either.
@@ -1161,6 +1173,7 @@ async function earn($: EngineInterface, amount: number) {
     const own = loadLedger(await $.store.get(ledgerKey))
     await $.store.set(ledgerKey, earnInto(own, latest.party, amount, Date.now()))
     isPaid = true
+    isRedrawn = isOtherParty(latest, save)
     save = latest
     countLedgers(await readLedgers($))
     leveledUp = view().party.some((m, i) => level(m.xp) > (before[i] ?? 0))
@@ -1175,6 +1188,7 @@ async function earn($: EngineInterface, amount: number) {
       $.ui.invalidate('ui.render')
     })
   }
+  if (isRedrawn) await refreshParty($)
   if (leveledUp) await learnEvolutions($)
 }
 

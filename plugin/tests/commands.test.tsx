@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { FRIENDSHIP_MS } from '../hooks/evolution'
 import { martRows } from '../hooks/mart'
@@ -1150,24 +1151,6 @@ test('a name in both the party and the box picks the party one; a full party lea
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['boxed', 'boxed-raichu'])
 })
 
-// The most separate blocks of `color` in any one row of a frame `columns` cells wide: two for twins standing apart.
-function blocksOf(cells: string, columns: number, color: number) {
-  const words = new Uint32Array(Uint8Array.from(atob(cells), c => c.charCodeAt(0)).buffer)
-  let most = 0
-  for (let y = 0; y < words.length / 3 / columns; y++) {
-    let blocks = 0
-    let was = false
-    for (let x = 0; x < columns; x++) {
-      const i = (y * columns + x) * 3
-      const is = words[i + 1] === color || words[i + 2] === color
-      if (is && !was) blocks++
-      was = is
-    }
-    most = Math.max(most, blocks)
-  }
-  return most
-}
-
 test('/pokemon add <name> with that Pokémon in the party adds a twin', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('eevee', { id: 'e1' })] })
   expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
@@ -1178,6 +1161,28 @@ test('/pokemon add <name> with that Pokémon in the party adds a twin', async ($
   expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 1).')
   expect(w.saveNow().party.map(m => m.id)).toEqual(party.map(m => m.id))
 })
+
+// The columns where `color` shows in a frame `columns` cells wide, all rows taken together, as [first, last] runs:
+// one run per walker standing apart.
+function runsOf(cells: string, columns: number, color: number) {
+  const words = new Uint32Array(Uint8Array.from(atob(cells), c => c.charCodeAt(0)).buffer)
+  const has = new Set<number>()
+  for (let i = 0; i < words.length / 3; i++)
+    if (words[i * 3 + 1] === color || words[i * 3 + 2] === color) has.add(i % columns)
+  const runs: [number, number][] = []
+  for (let x = 0; x < columns; x++) {
+    const last = runs[runs.length - 1]
+    if (has.has(x) && last && last[1] === x - 1) last[1] = x
+    else if (has.has(x)) runs.push([x, x])
+  }
+  return runs
+}
+// Two runs of `color` at least `gap` columns apart, in the frame last sent; null otherwise.
+function apart(cells: string, columns: number, color: number, gap: number) {
+  const runs = cells ? runsOf(cells, columns, color) : []
+  const [a, b] = runs
+  return runs.length === 2 && a && b && b[0] - a[1] > gap ? runs : null
+}
 
 test('twins walk as two: each keeps its own place when the party changes', async ($, on) => {
   const EEVEE = 0x010203
@@ -1199,14 +1204,15 @@ test('twins walk as two: each keeps its own place when the party changes', async
   await cmd($, 'pokemon', 'party')
   await mountBand($)
   await cmd($, 'pokemon-play', 'work')
-  await seen(w, () => (w.band.cells && blocksOf(w.band.cells, 80, EEVEE) === 2) || null)
+  // Far enough apart that the tick or two below (at most 0.6 columns each) can't bring them together.
+  await seen(w, () => apart(w.band.cells, 80, EEVEE, 6))
   expect(await cmd($, 'pokemon', 'add pikachu')).toContain('Pikachu joined your party!')
   await seen(w, () => (w.band.cells && colorsIn(w.band.cells).has(PIKACHU)) || null)
-  // Had they shared one key, both would now stand on the first one's spot.
-  expect(blocksOf(w.band.cells, 80, EEVEE)).toBe(2)
+  // Keyed by species, both would now stand on the first one's spot: one run.
+  expect(runsOf(w.band.cells, 80, EEVEE)).toHaveLength(2)
 })
 
-test('one twin evolving leaves the other walking as it was', async ($, on) => {
+test('one twin evolving keeps its place, and the other its own', async ($, on) => {
   answerTools(on)
   const CHARMANDER = 0x010203
   const CHARMELEON = 0x070809
@@ -1232,21 +1238,75 @@ test('one twin evolving leaves the other walking as it was', async ($, on) => {
     net,
   )
   await cmd($, 'pokemon', 'party')
-  await mountBand($)
+  // As wide as a band goes, so a new random place is almost never an old one.
+  await $.ui.mount({
+    plugin: 'pokemon',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 512 } as never,
+  })
+  const before = await seen(w, () => apart(w.band.cells, 512, CHARMANDER, 0))
+  // The clock stands still from here to the evolution, and the animation holds everyone still.
   await $.tool.call(bash('git commit -m x') as never)
-  for (let i = 0; i < 40 && !w.toasts.length; i++) await w.clock.advance(500)
-  expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!'])
+  await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
   expect(w.saveNow().party.map(m => [m.id, m.species])).toEqual([
     ['a', 'charmeleon'],
     ['b', 'charmander'],
   ])
-  // Past the animation: the new sprite shows, and the everstone twin still walks.
+  const frame = await seen(w, () => (w.band.cells && colorsIn(w.band.cells).has(CHARMELEON) && w.band.cells) || null)
+  // Keyed by species, the evolved one would get a new spot and its twin would take its old one.
+  const now = [...runsOf(frame, 512, CHARMELEON), ...runsOf(frame, 512, CHARMANDER)]
+  expect(now.sort((p, q) => p[0] - q[0])).toEqual(before)
+  // Past the animation: both walk on, the new sprite and the old.
   for (let i = 0; i < 12; i++) await w.clock.advance(500)
   const both = await seen(w, () => {
     const colors = w.band.cells ? colorsIn(w.band.cells) : new Set<number>()
     return (colors.has(CHARMELEON) && colors.has(CHARMANDER)) || null
   })
   expect(both).toBe(true)
+})
+
+// Another session evolves Charmander; this one adopts that save through `adopt` before its next sync looks.
+async function evolvedElsewhere($: Engine, on: On, adopt: () => Promise<unknown>) {
+  answerTools(on)
+  const CHARMELEON = 0x070809
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: { charmander: solid('1;2;3', 6), charmeleon: solid('7;8;9', 6) },
+  }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('charmander', { id: 'a', gender: 'male', next: [lv('charmeleon', 16)] })] },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  await mountBand($)
+  const [was] = w.saveNow().party
+  w.store.set('save', {
+    ...w.saveNow(),
+    party: [{ ...was!, species: 'charmeleon', evolutions: 1, next: [lv('charizard', 36)] }],
+  })
+  await adopt()
+  let isDrawn = false
+  for (let i = 0; i < 60 && !isDrawn; i++) {
+    await w.clock.advance(500)
+    isDrawn = Boolean(w.band.cells) && colorsIn(w.band.cells).has(CHARMELEON)
+  }
+  return isDrawn
+}
+
+test("another session's evolution is drawn even when XP lands here before the next sync", async ($, on) => {
+  expect(await evolvedElsewhere($, on, () => $.tool.call(bash('git commit -m x') as never))).toBe(true)
+})
+
+test("another session's evolution is drawn even when a command here writes the save first", async ($, on) => {
+  // `size` writes the save without a sync first.
+  expect(await evolvedElsewhere($, on, () => cmd($, 'pokemon', 'size small'))).toBe(true)
 })
 
 test('a boxed Pokémon comes out by name even when the party holds another form of its species', async ($, on) => {
