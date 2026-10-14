@@ -1,6 +1,6 @@
 // A party member as drawn: its sprite at full size.
 export type Mon = {
-  // species|form|shiny: a new key is a new Pokémon in that slot.
+  // The party member's id ('wild' for the visitor): twins walk apart, and an evolved one keeps its walker.
   key: string
   name: string
   isShiny: boolean

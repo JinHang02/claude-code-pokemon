@@ -146,7 +146,8 @@ let cacheDir: string | null = null
 
 // `columns`: where the party may go; `total`: the band's picture, the button's corner beyond `columns` included.
 let band: { requestId: string; columns: number; rows: number; total: number } | null = null
-let fitted: { budget: number; keys: string[]; lefts: Pixels[] } | null = null
+// `keys` carry each walker over a party change; `looks` also changes when one evolves (same key, new sprite).
+let fitted: { budget: number; keys: string[]; looks: string; lefts: Pixels[] } | null = null
 let status: Status = initialStatus()
 let streak = 0
 let tickNo = 0
@@ -222,7 +223,10 @@ const countAgents = () => {
 }
 const between = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1))
 const fileOf = (m: { species: string; form: string }) => (m.form === 'regular' ? m.species : `${m.species}-${m.form}`)
-const keyOf = (m: Member) => `${m.species}|${m.form}|${m.isShiny}`
+// A walker's key: its member's id, so twins walk apart and an evolved one keeps its place.
+const keyOf = (m: Member) => m.id
+// What a member looks like on screen: the party is drawn again when any of these change.
+const lookOf = (m: Member) => `${m.id}|${m.species}|${m.form}|${m.isShiny}`
 
 // Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
 // when it claims UTC, the host's answer from session start is used.
@@ -363,7 +367,7 @@ async function sync($: EngineInterface) {
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
-    isNewParty = latest.party.map(keyOf).join() !== save.party.map(keyOf).join()
+    isNewParty = latest.party.map(lookOf).join() !== save.party.map(lookOf).join()
     isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
     save = latest
     countLedgers(await readLedgers($))
@@ -531,8 +535,7 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   const name = displayName(caught.species, caught.form)
   let text = `${caught.isShiny ? '✨ ' : ''}${name} joined your party!`
   await mutate($, s => {
-    if (s.party.some(m => same(m, caught))) text = `${name} is already in your party.`
-    else if (s.party.length >= MAX_PARTY)
+    if (s.party.length >= MAX_PARTY)
       text = `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
     else return { ...recordSeen(s, caught.species, caught.isShiny, Date.now()), party: [...s.party, caught] }
     return s
@@ -595,6 +598,7 @@ async function leadFromBox($: EngineInterface, query: string): Promise<string | 
     const box = s.box ?? []
     const at = boxIndex(box, query)
     const m = box[at]
+    // One in the party too: that one leads (setLead), the first in party order.
     if (!m || s.party.some(p => same(p, m))) return s
     const old = s.party[0]
     const lv = (p: Member) => level(p.xp + (extra[p.id] ?? 0))
@@ -615,7 +619,7 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
     const box = s.box ?? []
     const at = boxIndex(box, query)
     const m = box[at]
-    if (!m || s.party.some(p => same(p, m)) || s.party.length >= MAX_PARTY) return s
+    if (!m || s.party.length >= MAX_PARTY) return s
     text = `${displayName(m.species, m.form)} came out of the PC box and joined your party!`
     return { ...s, party: [...s.party, m], box: box.filter((_, i) => i !== at) }
   })
@@ -1242,7 +1246,7 @@ function throwAt(click: Click) {
   if (isHit) status = holdWild(status, true)
 }
 
-// The Pokémon in the ball is kept: in the party while it has room (and no twin), else the PC box.
+// The Pokémon in the ball is kept: in the party while it has room, else the PC box.
 async function keepCatch($: EngineInterface) {
   if (!wild) return
   const { pick, mon } = wild
@@ -1293,13 +1297,21 @@ function closeMart($: EngineInterface) {
 function martProps(): MartProps {
   const party = view().party
   const items = forSale().map(i => {
-    const uses = party.flatMap(m =>
-      (m.next ?? [])
+    // How many members would become each species, by name: twins count as two.
+    const uses = new Map<string, { name: string; into: string; n: number }>()
+    for (const m of party) {
+      const into = (m.next ?? [])
         .filter(st => (st.way.kind === 'item' || st.way.kind === 'hold') && st.way.item === i.id)
-        .map(st => `${displayName(m.species, m.form)} → ${titleCase(st.species)}`),
-    )
+        .map(st => titleCase(st.species))
+      for (const species of new Set(into)) {
+        const name = displayName(m.species, m.form)
+        const key = `${name} → ${species}`
+        uses.set(key, { name, into: species, n: (uses.get(key)?.n ?? 0) + 1 })
+      }
+    }
+    const lines = [...uses.values()].map(u => `${u.name}${u.n > 1 ? ` ×${u.n}` : ''} → ${u.into}`)
     const { id, name, tab, price, color, text } = i
-    return { id, name, tab, price, color, text, ...(uses.length ? { party: [...new Set(uses)].join(', ') } : {}) }
+    return { id, name, tab, price, color, text, ...(lines.length ? { party: lines.join(', ') } : {}) }
   })
   const selected = items.filter(i => i.tab === TABS[mart.view.tab])[mart.view.sel]
   const icon = selected && ICONS[selected.id]
@@ -1773,7 +1785,8 @@ export const register: Register = on => {
     const columns = total - button
     const budget = spriteBudget(save.size, e.props.maxRows, Math.ceil(HEADROOM / 2))
     const keys = mons.map(m => m.key)
-    if (!fitted || fitted.budget !== budget || keys.join() !== fitted.keys.join()) {
+    const looks = mons.map(m => `${m.key}|${m.name}|${m.isShiny}`).join()
+    if (!fitted || fitted.budget !== budget || looks !== fitted.looks) {
       const lefts = mons.map(m => fit(m, budget))
       status = {
         ...status,
@@ -1781,7 +1794,7 @@ export const register: Register = on => {
           newScene(Math.floor(Math.random() * Math.max(1, columns - (lefts[i]?.width ?? 0)))),
         ),
       }
-      fitted = { budget, keys, lefts }
+      fitted = { budget, keys, looks, lefts }
       if (wild) wild = { ...wild, left: fitWild(wild.mon) }
     }
     const rows = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)

@@ -349,9 +349,9 @@ export function recordCaught(save: Save, species: string, now: number): Save {
   return { ...save, dex: { ...save.dex, [species]: { ...was, caught: (was.caught ?? 0) + 1 } } }
 }
 
-// A catch joins the party while it has room and holds no Pokémon of its species and form; else the PC box.
+// A catch joins the party while it has room, else the PC box. Twins are allowed since 1.4.0.
 export function storeCaught(save: Save, m: Member): { save: Save; isInParty: boolean } {
-  const isInParty = save.party.length < MAX_PARTY && !save.party.some(p => p.species === m.species && p.form === m.form)
+  const isInParty = save.party.length < MAX_PARTY
   return isInParty
     ? { save: { ...save, party: [...save.party, m] }, isInParty }
     : { save: { ...save, box: [...(save.box ?? []), m] }, isInParty }

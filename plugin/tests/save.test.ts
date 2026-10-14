@@ -222,15 +222,15 @@ test('a 1.0.0 save loads with no box and no caught counts; box entries that are 
   expect(loadSave({ ...old, party: [{ ...pikachu, isCaught: 'yes' }] }).party[0]).toEqual(pikachu)
 })
 
-test('a catch joins the party while it has room and no twin, else goes to the PC box; the Pokédex counts it', () => {
+test('a catch joins the party while it has room, twin or not, else goes to the PC box; the Pokédex counts it', () => {
   const eevee: Member = { ...pikachu, id: 'e1', species: 'eevee', isCaught: true }
   const roomy = storeCaught({ ...emptySave(), party: [pikachu] }, eevee)
   expect(roomy.isInParty).toBe(true)
   expect(roomy.save.party.map(m => m.id)).toEqual(['p1', 'e1'])
-  const twin = storeCaught({ ...emptySave(), party: [pikachu] }, { ...pikachu, id: 'p2', isCaught: true })
-  expect(twin.isInParty).toBe(false)
-  expect(twin.save.party.map(m => m.id)).toEqual(['p1'])
-  expect(twin.save.box?.map(m => m.id)).toEqual(['p2'])
+  const twin = storeCaught({ ...emptySave(), party: [pikachu, eevee] }, { ...eevee, id: 'e2' })
+  expect(twin.isInParty).toBe(true)
+  expect(twin.save.party.map(m => m.id)).toEqual(['p1', 'e1', 'e2'])
+  expect(twin.save.box).toBeUndefined()
   const three = [pikachu, { ...pikachu, id: 'x', species: 'mew' }, { ...pikachu, id: 'y', species: 'abra' }]
   expect(storeCaught({ ...emptySave(), party: three }, eevee).save.box?.map(m => m.id)).toEqual(['e1'])
   let save = recordSeen(emptySave(), 'eevee', false, 5)
