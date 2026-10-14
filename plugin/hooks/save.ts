@@ -349,9 +349,9 @@ export function recordCaught(save: Save, species: string, now: number): Save {
   return { ...save, dex: { ...save.dex, [species]: { ...was, caught: (was.caught ?? 0) + 1 } } }
 }
 
-// A catch joins the party while it has room and holds no Pokémon of its species and form; else the PC box.
+// A catch joins the party while it has room, else the PC box. Twins are allowed since 1.4.0.
 export function storeCaught(save: Save, m: Member): { save: Save; isInParty: boolean } {
-  const isInParty = save.party.length < MAX_PARTY && !save.party.some(p => p.species === m.species && p.form === m.form)
+  const isInParty = save.party.length < MAX_PARTY
   return isInParty
     ? { save: { ...save, party: [...save.party, m] }, isInParty }
     : { save: { ...save, box: [...(save.box ?? []), m] }, isInParty }
@@ -369,6 +369,29 @@ export function takeFromBag(save: Save, id: string): Save {
 export function putInBag(save: Save, id: string): Save | null {
   const have = save.bag?.[id] ?? 0
   return have >= MAX_BAG ? null : { ...save, bag: { ...save.bag, [id]: have + 1 } }
+}
+
+// The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named). An Everstone is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps
+// the member; its time together goes at the next beat.
+export function releaseMember(
+  save: Save,
+  spot: { place: 'party' | 'box'; at: number },
+  query: string,
+): { save: Save; text: string } | string {
+  const isParty = spot.place === 'party'
+  const m = isParty ? save.party[spot.at] : save.box?.[spot.at]
+  if (!m) return `No ${query.trim()} in your party or PC box.`
+  if (isParty && save.party.length === 1) return 'Pick a new lead first.'
+  const item = m.heldItem === 'everstone' ? undefined : m.heldItem
+  const held = item ? putInBag(save, item) : save
+  if (!held) return `Your Bag can't hold another ${itemName(item ?? '')} (${MAX_BAG} already). Use one first.`
+  const box = (save.box ?? []).filter((_, i) => isParty || i !== spot.at)
+  const { box: _, ...rest } = held
+  const back = item ? ` Its ${itemName(item)} went back to the Bag.` : ''
+  return {
+    save: { ...rest, party: save.party.filter((_, i) => !isParty || i !== spot.at), ...(box.length ? { box } : {}) },
+    text: `Bye bye, ${displayName(m.species, m.form)}! It went back to the wild.${back}`,
+  }
 }
 
 // `qty` of `item` bought with what the wallet holds (`cash`: the ledgers' unfolded ₽), or why not.

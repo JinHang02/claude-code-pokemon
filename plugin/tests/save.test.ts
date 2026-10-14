@@ -23,6 +23,7 @@ import {
   putInBag,
   recordCaught,
   recordSeen,
+  releaseMember,
   spriteBudget,
   STARTING_MONEY,
   storeCaught,
@@ -222,15 +223,15 @@ test('a 1.0.0 save loads with no box and no caught counts; box entries that are 
   expect(loadSave({ ...old, party: [{ ...pikachu, isCaught: 'yes' }] }).party[0]).toEqual(pikachu)
 })
 
-test('a catch joins the party while it has room and no twin, else goes to the PC box; the Pokédex counts it', () => {
+test('a catch joins the party while it has room, twin or not, else goes to the PC box; the Pokédex counts it', () => {
   const eevee: Member = { ...pikachu, id: 'e1', species: 'eevee', isCaught: true }
   const roomy = storeCaught({ ...emptySave(), party: [pikachu] }, eevee)
   expect(roomy.isInParty).toBe(true)
   expect(roomy.save.party.map(m => m.id)).toEqual(['p1', 'e1'])
-  const twin = storeCaught({ ...emptySave(), party: [pikachu] }, { ...pikachu, id: 'p2', isCaught: true })
-  expect(twin.isInParty).toBe(false)
-  expect(twin.save.party.map(m => m.id)).toEqual(['p1'])
-  expect(twin.save.box?.map(m => m.id)).toEqual(['p2'])
+  const twin = storeCaught({ ...emptySave(), party: [pikachu, eevee] }, { ...eevee, id: 'e2' })
+  expect(twin.isInParty).toBe(true)
+  expect(twin.save.party.map(m => m.id)).toEqual(['p1', 'e1', 'e2'])
+  expect(twin.save.box).toBeUndefined()
   const three = [pikachu, { ...pikachu, id: 'x', species: 'mew' }, { ...pikachu, id: 'y', species: 'abra' }]
   expect(storeCaught({ ...emptySave(), party: three }, eevee).save.box?.map(m => m.id)).toEqual(['e1'])
   let save = recordSeen(emptySave(), 'eevee', false, 5)
@@ -438,5 +439,33 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
   })
   expect(formatBag(boxed, 0)).toBe(
     ['Bag · ₽3,000', '  Held        Eevee: Lucky Egg · Eevee (box): Soothe Bell'].join('\n'),
+  )
+})
+
+test('a release: from the party or the PC box, its held item back to the Bag, the Pokédex kept', () => {
+  const eevee: Member = { ...pikachu, id: 'e1', species: 'eevee', heldItem: 'fire-stone' }
+  const dex = { pikachu: { seen: 1, shiny: 0, first: 1 }, eevee: { seen: 2, shiny: 0, first: 2, caught: 1 } }
+  const s = loadSave({ party: [pikachu], box: [eevee], dex })
+  const boxed = releaseMember(s, { place: 'box', at: 0 }, 'eevee')
+  expect(boxed).toEqual({
+    save: { ...s, box: undefined, bag: { 'fire-stone': 1 } },
+    text: 'Bye bye, Eevee! It went back to the wild. Its Fire Stone went back to the Bag.',
+  })
+  // The lead: the next one leads. Nothing held: no Bag line.
+  const two = loadSave({ party: [{ ...eevee, heldItem: undefined }, pikachu] })
+  const led = releaseMember(two, { place: 'party', at: 0 }, 'eevee')
+  expect(typeof led === 'object' && led.save.party).toEqual([pikachu])
+  expect(typeof led === 'object' && led.text).toBe('Bye bye, Eevee! It went back to the wild.')
+  // An Everstone is free and never in the Bag: dropped, as a take drops it.
+  const held = loadSave({ party: [pikachu, { ...eevee, heldItem: 'everstone' }], bag: { 'fire-stone': 999 } })
+  expect(releaseMember(held, { place: 'party', at: 1 }, 'eevee')).toEqual({
+    save: { ...held, party: [pikachu] },
+    text: 'Bye bye, Eevee! It went back to the wild.',
+  })
+  // The only party member stays, whatever the box holds; a Bag already full of its item keeps it.
+  expect(releaseMember(s, { place: 'party', at: 0 }, 'pikachu')).toBe('Pick a new lead first.')
+  const full = loadSave({ party: [pikachu], box: [eevee], bag: { 'fire-stone': 999 } })
+  expect(releaseMember(full, { place: 'box', at: 0 }, 'eevee 2')).toBe(
+    "Your Bag can't hold another Fire Stone (999 already). Use one first.",
   )
 })

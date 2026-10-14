@@ -12,6 +12,8 @@ import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withA
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
 import type { Act, MartProps } from './mart'
+import { didYouMean, findMembers, formatChoices, isList } from './members'
+import type { Found, Place, Spot } from './members'
 import { guessItem, lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
@@ -44,6 +46,7 @@ import {
   putInBag,
   recordCaught,
   recordSeen,
+  releaseMember,
   spriteBudget,
   storeCaught,
   takeFromBag,
@@ -146,7 +149,8 @@ let cacheDir: string | null = null
 
 // `columns`: where the party may go; `total`: the band's picture, the button's corner beyond `columns` included.
 let band: { requestId: string; columns: number; rows: number; total: number } | null = null
-let fitted: { budget: number; keys: string[]; lefts: Pixels[] } | null = null
+// `keys` carry each walker over a party change; `looks` also changes when one evolves (same key, new sprite).
+let fitted: { budget: number; keys: string[]; looks: string; lefts: Pixels[] } | null = null
 let status: Status = initialStatus()
 let streak = 0
 let tickNo = 0
@@ -175,6 +179,8 @@ const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
 let evolveFrom: Pixels | null = null
+// The member the evolution animation plays on: it follows it when the party changes under it.
+let evolving = ''
 let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
@@ -222,7 +228,13 @@ const countAgents = () => {
 }
 const between = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1))
 const fileOf = (m: { species: string; form: string }) => (m.form === 'regular' ? m.species : `${m.species}-${m.form}`)
-const keyOf = (m: Member) => `${m.species}|${m.form}|${m.isShiny}`
+// A walker's key: its member's id, so twins walk apart and an evolved one keeps its place.
+const keyOf = (m: Member) => m.id
+// What a member looks like on screen: the party is drawn again when any of these change.
+const lookOf = (m: Member) => `${m.id}|${m.species}|${m.form}|${m.isShiny}`
+// Whether a save about to be adopted shows another party than `was` (another session evolved, added or moved one).
+// Every place that adopts a save checks, or the band keeps drawing the old one.
+const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !== was.party.map(lookOf).join()
 
 // Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
 // when it claims UTC, the host's answer from session start is used.
@@ -346,13 +358,21 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 // Applies `change` to the latest save (another Claude Code session may have written since), then stores
 // and adopts the result, so sessions running side by side never undo each other.
 function mutate($: EngineInterface, change: (s: Save) => Save) {
-  return queued(async () => {
+  let isRedrawn = false
+  const run = queued(async () => {
     const raw = await $.store.get('save')
     await seedTogether($, raw)
-    save = change(loadSave(raw))
+    const latest = loadSave(raw)
+    const next = change(latest)
+    isRedrawn = isOtherParty(latest, save)
+    save = next
     await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
     countLedgers(await readLedgers($))
+  })
+  // In the background: a stalled download never holds up the command.
+  return run.then(() => {
+    if (isRedrawn) background($, refreshParty($))
   })
 }
 
@@ -363,7 +383,7 @@ async function sync($: EngineInterface) {
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
-    isNewParty = latest.party.map(keyOf).join() !== save.party.map(keyOf).join()
+    isNewParty = isOtherParty(latest, save)
     isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
     save = latest
     countLedgers(await readLedgers($))
@@ -472,10 +492,6 @@ async function refreshParty($: EngineInterface) {
   }
 }
 
-// "Did you mean Charizard? Run /pokemon charizard" for a guess at what someone meant.
-const didYouMean = (guess: Pick, command: string) =>
-  `Did you mean ${displayName(guess.species, guess.form)}? Run /pokemon ${command}${spell(guess)}`
-
 // A new party member from a query (a random one when empty), spelled exactly; `shiny` anywhere forces a
 // shiny. A near miss resolves a suggestion naming `command` ('' or 'add ').
 async function catchOne($: EngineInterface, query: string, command = ''): Promise<Member | string> {
@@ -494,15 +510,40 @@ async function catchOne($: EngineInterface, query: string, command = ''): Promis
 
 const same = (a: Member, b: Member) => a.species === b.species && a.form === b.form
 
-// `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level;
-// a new one replaces the lead.
+const levelNow = (m: Member) => level(m.xp)
+// The members `query` names in `places` of `s`, with their levels as the party stands. A spot's `at` is its place in
+// `s` too.
+const find = (s: Save, query: string, places: Place[], command: string) =>
+  findMembers(viewOf(s), query, places, command, levelNow)
+// The one member found, or the answer instead: which one (numbered), a suggestion, or who is there.
+function spotOf(found: Found, query: string, command: string): Spot | string {
+  if ('spot' in found) return found.spot
+  return 'choices' in found ? formatChoices(found.choices, query, command, levelNow) : found.error
+}
+const pickIn = (s: Save, query: string, places: Place[], command: string) =>
+  spotOf(find(s, query, places, command), query, command)
+// A query that names none of `places`: a number past the end of the list still names some.
+const isNoneIn = (found: Found) => 'error' in found && !isList(found.error)
+
+// `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
+// box comes out; a new one replaces the lead.
 async function setLead($: EngineInterface, query: string): Promise<string> {
-  const fromBox = query.trim() ? await leadFromBox($, query) : null
-  if (fromBox) return fromBox
+  const owned = query.trim() ? await leadOwned($, query) : null
+  if (owned) return owned
   const caught = await catchOne($, query)
   if (typeof caught === 'string') return caught
   let text = ''
   await mutate($, latest => {
+    // A shiny asked for, and only plain ones of it owned: which one, as for the name without `shiny`.
+    const plain = slug(query)
+      .split('-')
+      .filter(w => w && w !== 'shiny')
+      .join(' ')
+    const owned = find(latest, plain, ['party', 'box'], '')
+    if ('choices' in owned && owned.choices.some(c => same(c.member, caught))) {
+      text = `No shiny ${displayName(caught.species, caught.form)} in your party or PC box. ${formatChoices(owned.choices, plain, '', levelNow)}`
+      return latest
+    }
     const at = latest.party.findIndex(m => same(m, caught))
     const member = latest.party[at]
     if (member) {
@@ -531,8 +572,7 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   const name = displayName(caught.species, caught.form)
   let text = `${caught.isShiny ? '✨ ' : ''}${name} joined your party!`
   await mutate($, s => {
-    if (s.party.some(m => same(m, caught))) text = `${name} is already in your party.`
-    else if (s.party.length >= MAX_PARTY)
+    if (s.party.length >= MAX_PARTY)
       text = `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
     else return { ...recordSeen(s, caught.species, caught.isShiny, Date.now()), party: [...s.party, caught] }
     return s
@@ -542,109 +582,90 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   return text
 }
 
-// The species and forms among `members`, for looking a name up among them.
-function namesOf(members: Member[]): Species[] {
-  const names: Species[] = []
-  for (const m of members) {
-    const known = names.find(n => n.name === m.species)
-    if (known) known.forms.push(m.form)
-    else names.push({ name: m.species, forms: [m.form] })
-  }
-  return names
-}
-
-// Where among `members` a query names exactly (`vulpix` is the plain one, `alolan vulpix` the other): the form
-// named, or else the first of that species; -1 when none.
-function indexIn(members: Member[], query: string): number {
-  const words = slug(query).split('-').filter(Boolean)
-  const found = words.length && members.length ? lookup(namesOf(members), words) : null
-  if (!found || !('pick' in found)) return -1
-  const { species, form } = found.pick
-  const at = members.findIndex(m => m.species === species && m.form === form)
-  return at >= 0 ? at : members.findIndex(m => m.species === species)
-}
-
-// Where in the PC box a query names exactly, species and form; `shiny` in it asks for a shiny one. Of several, the
-// first that is `preferred`, if any. -1 when none.
-function boxIndex(box: Member[], query: string, preferred?: (m: Member) => boolean): number {
-  const words = slug(query).split('-').filter(Boolean)
-  const wantsShiny = words.includes('shiny')
-  const named = words.filter(w => w !== 'shiny')
-  const found = named.length && box.length ? lookup(namesOf(box), named) : null
-  if (!found || !('pick' in found)) return -1
-  const { species, form } = found.pick
-  const isNamed = (m: Member) => m.species === species && m.form === form && (!wantsShiny || m.isShiny)
-  const first = preferred ? box.findIndex(m => isNamed(m) && preferred(m)) : -1
-  return first >= 0 ? first : box.findIndex(isNamed)
-}
-
-// The party member a query names exactly; otherwise a suggestion naming `command`, or what's in the party.
-function findMember(s: Save, query: string, command: string): number | string {
-  const at = indexIn(s.party, query)
-  if (at >= 0) return at
-  const words = slug(query).split('-').filter(Boolean)
-  const found = words.length ? lookup(namesOf(s.party), words) : { error: '' }
-  if ('guess' in found) return didYouMean(found.guess, command)
-  return `No ${query.trim()} in your party. ${formatParty(viewOf(s))}`
-}
-
-// `/pokemon <name>` for a Pokémon in the PC box and not the party: it leads, and the old lead goes into the box.
-async function leadFromBox($: EngineInterface, query: string): Promise<string | null> {
+// `/pokemon <name>` for a Pokémon in the party or the PC box: one in the party moves up with its level; one in the box
+// leads, and the old lead goes into the box. Of several, which one. Null when it names none of them.
+async function leadOwned($: EngineInterface, query: string): Promise<string | null> {
   let text = ''
+  let isMoved = false
   await mutate($, s => {
-    const box = s.box ?? []
-    const at = boxIndex(box, query)
-    const m = box[at]
-    if (!m || s.party.some(p => same(p, m))) return s
-    const old = s.party[0]
-    const lv = (p: Member) => level(p.xp + (extra[p.id] ?? 0))
-    text = `${displayName(m.species, m.form)} (Lv ${lv(m)}) came out of the PC box to lead your party.`
-    if (old) text += ` ${displayName(old.species, old.form)} (Lv ${lv(old)}) went into the PC box.`
-    return { ...s, party: [m, ...s.party.slice(1)], box: [...box.filter((_, i) => i !== at), ...(old ? [old] : [])] }
-  })
-  if (!text) return null
-  await refreshParty($)
-  background($, learnEvolutions($))
-  return text
-}
-
-// `/pokemon add <name>` for a Pokémon in the PC box: it comes out and joins the party.
-async function addFromBox($: EngineInterface, query: string): Promise<string | null> {
-  let text = ''
-  await mutate($, s => {
-    const box = s.box ?? []
-    const at = boxIndex(box, query)
-    const m = box[at]
-    if (!m || s.party.some(p => same(p, m)) || s.party.length >= MAX_PARTY) return s
-    text = `${displayName(m.species, m.form)} came out of the PC box and joined your party!`
-    return { ...s, party: [...s.party, m], box: box.filter((_, i) => i !== at) }
-  })
-  if (!text) return null
-  await refreshParty($)
-  background($, learnEvolutions($))
-  return text
-}
-
-async function removeMember($: EngineInterface, query: string): Promise<string> {
-  let text = ''
-  await mutate($, s => {
-    if (!s.party.length) {
-      text = 'Your party is empty. /pokemon <name> picks a lead.'
+    const found = find(s, query, ['party', 'box'], '')
+    if (isNoneIn(found)) return s
+    const spot = spotOf(found, query, '')
+    if (typeof spot === 'string') {
+      text = spot
       return s
     }
-    // No name: any member but the lead, so a bare `remove` never takes the Pokémon you chose.
-    const at = query.trim() ? findMember(s, query, 'remove ') : 1 + Math.floor(Math.random() * (s.party.length - 1))
-    const gone = typeof at === 'number' ? s.party[at] : undefined
-    if (typeof at === 'string') text = at
-    else if (s.party.length === 1)
-      text = 'That would leave your party empty. Pick a new lead with /pokemon <name> instead.'
-    else if (gone) {
-      text = `${displayName(gone.species, gone.form)} went back to the wild.`
-      return { ...s, party: s.party.filter((_, i) => i !== at) }
+    const lv = (p: Member) => level(p.xp + (extra[p.id] ?? 0))
+    const box = s.box ?? []
+    const m = spot.place === 'party' ? s.party[spot.at] : box[spot.at]
+    if (!m) return s
+    isMoved = true
+    if (spot.place === 'party') {
+      text = `${displayName(m.species, m.form)} leads the party again (Lv ${lv(m)}).`
+      return { ...s, party: [m, ...s.party.filter((_, i) => i !== spot.at)] }
     }
-    return s
+    const old = s.party[0]
+    text = `${displayName(m.species, m.form)} (Lv ${lv(m)}) came out of the PC box to lead your party.`
+    if (old) text += ` ${displayName(old.species, old.form)} (Lv ${lv(old)}) went into the PC box.`
+    return {
+      ...s,
+      party: [m, ...s.party.slice(1)],
+      box: [...box.filter((_, i) => i !== spot.at), ...(old ? [old] : [])],
+    }
   })
-  await refreshParty($)
+  if (isMoved) {
+    await refreshParty($)
+    background($, learnEvolutions($))
+  }
+  return text || null
+}
+
+// `/pokemon add <name>` for a Pokémon in the PC box: it comes out and joins the party. Of several there, which one.
+// Null when it names none of them.
+async function addFromBox($: EngineInterface, query: string): Promise<string | null> {
+  let text = ''
+  let isMoved = false
+  await mutate($, s => {
+    const found = find(s, query, ['box'], 'add ')
+    if (s.party.length >= MAX_PARTY || isNoneIn(found)) return s
+    const spot = spotOf(found, query, 'add ')
+    if (typeof spot === 'string') {
+      text = spot
+      return s
+    }
+    const box = s.box ?? []
+    const m = box[spot.at]
+    if (!m) return s
+    isMoved = true
+    text = `${displayName(m.species, m.form)} came out of the PC box and joined your party!`
+    return { ...s, party: [...s.party, m], box: box.filter((_, i) => i !== spot.at) }
+  })
+  if (isMoved) {
+    await refreshParty($)
+    background($, learnEvolutions($))
+  }
+  return text || null
+}
+
+// `/pokemon release <name> [n]` (or `remove`): that one, from the party or the PC box, goes back to the wild, with no
+// confirmation; what it held goes back to the Bag. Looked up in the save as it is now, so a member another session
+// released is simply not found.
+async function releaseOne($: EngineInterface, query: string, command: string): Promise<string> {
+  if (!query.trim()) return 'Which one? /pokemon release <name>'
+  let text = ''
+  let isPartyChanged = false
+  await mutate($, s => {
+    const spot = pickIn(s, query, ['party', 'box'], `${command} `)
+    const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query)
+    if (typeof done === 'string') {
+      text = done
+      return s
+    }
+    text = done.text
+    isPartyChanged = typeof spot !== 'string' && spot.place === 'party'
+    return done.save
+  })
+  if (isPartyChanged) await refreshParty($)
   return text
 }
 
@@ -653,9 +674,10 @@ async function depositMember($: EngineInterface, query: string): Promise<string>
   if (!query.trim()) return 'Which one? /pokemon deposit <name>'
   let text = ''
   await mutate($, s => {
-    const at = findMember(s, query, 'deposit ')
-    const m = typeof at === 'number' ? s.party[at] : undefined
-    if (typeof at === 'string') text = at
+    const spot = pickIn(s, query, ['party'], 'deposit ')
+    const at = typeof spot === 'string' ? -1 : spot.at
+    const m = s.party[at]
+    if (typeof spot === 'string') text = spot
     else if (s.party.length === 1)
       text = 'That would leave your party empty. Pick a new lead with /pokemon <name> instead.'
     else if (m) {
@@ -684,21 +706,22 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   await sync($)
   if (item.kind === 'candy') return feedCandy($, who, item)
   if (item.kind === 'hold') return holdItem($, who, item, `give ${item.id} `)
-  const at = findMember(save, who, `give ${item.id} `)
-  if (typeof at === 'string') return at
+  const spot = pickIn(save, who, ['party'], `give ${item.id} `)
+  if (typeof spot === 'string') return spot
   // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
-  return evolveMember($, at, false, item.id)
+  return evolveMember($, spot.at, false, item.id)
 }
 
 // The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
 async function holdItem($: EngineInterface, query: string, item: Item, command: string): Promise<string> {
   let text = ''
   await mutate($, s => {
-    const at = findMember(s, query, command)
-    if (typeof at === 'string') {
-      text = at
+    const spot = pickIn(s, query, ['party'], command)
+    if (typeof spot === 'string') {
+      text = spot
       return s
     }
+    const at = spot.at
     const m = s.party[at]
     if (!m) return s
     const name = displayName(m.species, m.form)
@@ -735,20 +758,27 @@ async function holdItem($: EngineInterface, query: string, item: Item, command: 
 }
 
 // `/pokemon take <name>`: its held item back to the Bag; an Everstone is just dropped. A name only in the PC box
-// reaches the one there (one holding an item, if any).
+// reaches the one there (of several, the only one holding an item, if just one is).
 async function takeItem($: EngineInterface, query: string): Promise<string> {
   if (!query.trim()) return 'Which one? /pokemon take <name>'
   let text = ''
   let isDropped = false
   await mutate($, s => {
-    const box = s.box ?? []
-    const inBox = indexIn(s.party, query) < 0 ? boxIndex(box, query, b => Boolean(b.heldItem)) : -1
-    const at = inBox >= 0 ? inBox : findMember(s, query, 'take ')
-    if (typeof at === 'string') {
-      text = at
+    let found = find(s, query, ['party'], 'take ')
+    if (isNoneIn(found)) {
+      const inBox = find(s, query, ['box'], 'take ')
+      const holders = 'choices' in inBox ? inBox.choices.filter(c => c.member.heldItem) : []
+      if (holders[0] && holders.length === 1) found = { spot: holders[0] }
+      else if (!isNoneIn(inBox)) found = inBox
+    }
+    const spot = spotOf(found, query, 'take ')
+    if (typeof spot === 'string') {
+      text = spot
       return s
     }
-    const m = inBox >= 0 ? box[inBox] : s.party[at]
+    const { at } = spot
+    const isInBox = spot.place === 'box'
+    const m = isInBox ? s.box?.[at] : s.party[at]
     if (!m) return s
     const name = displayName(m.species, m.form)
     const { heldItem, ...rest } = m
@@ -770,7 +800,7 @@ async function takeItem($: EngineInterface, query: string): Promise<string> {
       text = `${name}'s ${itemName(heldItem)} went back to your Bag.`
     }
     const without = (list: Member[]) => list.map((p, i) => (i === at ? rest : p))
-    return inBox >= 0 ? { ...after, box: without(after.box ?? []) } : { ...after, party: without(after.party) }
+    return isInBox ? { ...after, box: without(after.box ?? []) } : { ...after, party: without(after.party) }
   })
   // Already past its level: it evolves now.
   if (isDropped) background($, learnEvolutions($))
@@ -781,8 +811,8 @@ async function takeItem($: EngineInterface, query: string): Promise<string> {
 async function toggleEverstone($: EngineInterface, query: string): Promise<string> {
   if (!query.trim()) return 'Which one? /pokemon everstone <name>'
   await sync($)
-  const at = findMember(save, query, 'everstone ')
-  if (typeof at === 'number' && save.party[at]?.heldItem === 'everstone') return takeItem($, query)
+  const spot = pickIn(save, query, ['party'], 'everstone ')
+  if (typeof spot === 'object' && save.party[spot.at]?.heldItem === 'everstone') return takeItem($, query)
   const everstone = itemById('everstone')
   return everstone ? holdItem($, query, everstone, 'everstone ') : 'Your party is empty.'
 }
@@ -792,11 +822,12 @@ async function feedCandy($: EngineInterface, query: string, item: Item): Promise
   let text = ''
   let grew = false
   await mutate($, s => {
-    const at = findMember(s, query, `give ${item.id} `)
-    if (typeof at === 'string') {
-      text = at
+    const spot = pickIn(s, query, ['party'], `give ${item.id} `)
+    if (typeof spot === 'string') {
+      text = spot
       return s
     }
+    const at = spot.at
     const m = s.party[at]
     if (!m) return s
     const name = displayName(m.species, m.form)
@@ -1074,6 +1105,7 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
     const newName = displayName(next.species, form)
     const mon: Mon = { key: keyOf(evolved), name: newName, isShiny, ...parseAnsi(art) }
     await update($, party, list => list.map((m, i) => (i === slot ? mon : m)))
+    evolving = member.id
     status = evolve(status, slot)
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
@@ -1143,6 +1175,7 @@ async function earn($: EngineInterface, amount: number) {
   await ready
   let leveledUp = false
   let isPaid = false
+  let isRedrawn = false
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     // Off in another session since this one last synced: no XP either.
@@ -1157,6 +1190,7 @@ async function earn($: EngineInterface, amount: number) {
     const own = loadLedger(await $.store.get(ledgerKey))
     await $.store.set(ledgerKey, earnInto(own, latest.party, amount, Date.now()))
     isPaid = true
+    isRedrawn = isOtherParty(latest, save)
     save = latest
     countLedgers(await readLedgers($))
     leveledUp = view().party.some((m, i) => level(m.xp) > (before[i] ?? 0))
@@ -1171,6 +1205,7 @@ async function earn($: EngineInterface, amount: number) {
       $.ui.invalidate('ui.render')
     })
   }
+  if (isRedrawn) await refreshParty($)
   if (leveledUp) await learnEvolutions($)
 }
 
@@ -1244,7 +1279,7 @@ function throwAt(click: Click) {
   if (isHit) status = holdWild(status, true)
 }
 
-// The Pokémon in the ball is kept: in the party while it has room (and no twin), else the PC box.
+// The Pokémon in the ball is kept: in the party while it has room, else the PC box.
 async function keepCatch($: EngineInterface) {
   if (!wild) return
   const { pick, mon } = wild
@@ -1295,13 +1330,21 @@ function closeMart($: EngineInterface) {
 function martProps(): MartProps {
   const party = view().party
   const items = forSale().map(i => {
-    const uses = party.flatMap(m =>
-      (m.next ?? [])
+    // How many members would become each species, by name: twins count as two.
+    const uses = new Map<string, { name: string; into: string; n: number }>()
+    for (const m of party) {
+      const into = (m.next ?? [])
         .filter(st => (st.way.kind === 'item' || st.way.kind === 'hold') && st.way.item === i.id)
-        .map(st => `${displayName(m.species, m.form)} → ${titleCase(st.species)}`),
-    )
+        .map(st => titleCase(st.species))
+      for (const species of new Set(into)) {
+        const name = displayName(m.species, m.form)
+        const key = `${name} → ${species}`
+        uses.set(key, { name, into: species, n: (uses.get(key)?.n ?? 0) + 1 })
+      }
+    }
+    const lines = [...uses.values()].map(u => `${u.name}${u.n > 1 ? ` ×${u.n}` : ''} → ${u.into}`)
     const { id, name, tab, price, color, text } = i
-    return { id, name, tab, price, color, text, ...(uses.length ? { party: [...new Set(uses)].join(', ') } : {}) }
+    return { id, name, tab, price, color, text, ...(lines.length ? { party: lines.join(', ') } : {}) }
   })
   const selected = items.filter(i => i.tab === TABS[mart.view.tab])[mart.view.sel]
   const icon = selected && ICONS[selected.id]
@@ -1491,7 +1534,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return depositMember($, tail)
     case 'remove':
     case 'release':
-      return removeMember($, tail)
+      return releaseOne($, tail, head.toLowerCase())
     case 'size':
       return setSize($, tail.toLowerCase())
     case 'everstone':
@@ -1607,7 +1650,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release <name> [n] from your party or PC box · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
@@ -1775,7 +1818,8 @@ export const register: Register = on => {
     const columns = total - button
     const budget = spriteBudget(save.size, e.props.maxRows, Math.ceil(HEADROOM / 2))
     const keys = mons.map(m => m.key)
-    if (!fitted || fitted.budget !== budget || keys.join() !== fitted.keys.join()) {
+    const looks = mons.map(m => `${m.key}|${m.name}|${m.isShiny}`).join()
+    if (!fitted || fitted.budget !== budget || looks !== fitted.looks) {
       const lefts = mons.map(m => fit(m, budget))
       status = {
         ...status,
@@ -1783,7 +1827,13 @@ export const register: Register = on => {
           newScene(Math.floor(Math.random() * Math.max(1, columns - (lefts[i]?.width ?? 0)))),
         ),
       }
-      fitted = { budget, keys, lefts }
+      fitted = { budget, keys, looks, lefts }
+      // An evolution plays on on its own Pokémon wherever the change put it, and stops if it left the party.
+      if (status.mood?.kind === 'evolve') {
+        const at = keys.indexOf(evolving)
+        status = { ...status, mood: at >= 0 ? { ...status.mood, actor: at } : null }
+        if (at < 0) evolveFrom = null
+      }
       if (wild) wild = { ...wild, left: fitWild(wild.mon) }
     }
     const rows = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)

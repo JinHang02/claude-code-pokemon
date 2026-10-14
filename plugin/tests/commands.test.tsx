@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { FRIENDSHIP_MS } from '../hooks/evolution'
 import { martRows } from '../hooks/mart'
@@ -40,16 +41,21 @@ test('a saved party comes back next session, levels intact', async ($, on) => {
   expect(w.saveNow().party[0]?.species).toBe('eevee')
 })
 
-test('party: add up to three, no duplicates, remove any but the last', async ($, on) => {
+test('party: add up to three, twins too, remove any but the last', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
-  expect(await cmd($, 'pokemon', 'add eevee')).toBe('Eevee is already in your party.')
-  expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr Mime (Galar) joined your party!')
+  expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
   expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'mr-mime'])
-  expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Eevee went back to the wild.')
-  expect(await cmd($, 'pokemon', 'release mr mime')).toBe('Mr Mime (Galar) went back to the wild.')
-  expect(await cmd($, 'pokemon', 'remove pikachu')).toContain('would leave your party empty')
+  const [lead, , second] = w.saveNow().party
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'eevee'])
+  // Twins: which one, then the one the number picks.
+  expect(await cmd($, 'pokemon', 'remove eevee')).toContain('Which Eevee?')
+  expect(await cmd($, 'pokemon', 'remove eevee 1')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(w.saveNow().party.map(m => m.id)).toEqual([lead?.id, second?.id])
+  expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr Mime (Galar) joined your party!')
+  expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release mr mime')).toBe('Bye bye, Mr Mime (Galar)! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Pick a new lead first.')
   expect(await cmd($, 'pokemon', 'remove vaporeon')).toContain('No vaporeon in your party')
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
 })
@@ -295,16 +301,16 @@ test('/pokemon off puts them in their Poké Balls: nothing drawn, no xp; /pokemo
   expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are already out.')
 })
 
-test('a bare add catches a random Pokémon; a bare remove releases a random member, never the lead', async ($, on) => {
+test('a bare add catches a random Pokémon; a bare release or remove asks which one and releases no one', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
-  expect(await cmd($, 'pokemon', 'remove')).toContain('would leave your party empty')
-  expect(await cmd($, 'pokemon', 'add')).toMatch(/joined your party!$|is already in your party\.$/)
+  expect(await cmd($, 'pokemon', 'add')).toMatch(/joined your party!$/)
   await cmd($, 'pokemon', 'add eevee')
-  const before = w.saveNow().party.length
-  expect(before).toBeGreaterThanOrEqual(2)
-  expect(await cmd($, 'pokemon', 'remove')).toMatch(/went back to the wild\.$/)
-  expect(w.saveNow().party.length).toBe(before - 1)
-  expect(w.saveNow().party[0]?.species).toBe('pikachu')
+  const before = w.saveNow()
+  expect(before.party.length).toBe(3)
+  expect(await cmd($, 'pokemon', 'release')).toBe('Which one? /pokemon release <name>')
+  expect(await cmd($, 'pokemon', 'remove')).toBe('Which one? /pokemon release <name>')
+  expect(await cmd($, 'pokemon', 'release  ')).toBe('Which one? /pokemon release <name>')
+  expect(kept(w.saveNow())).toEqual(kept(before))
 })
 
 test('only an exact spelling catches a Pokémon; anything close gets a suggestion and changes nothing', async ($, on) => {
@@ -684,7 +690,7 @@ test('a name made only of symbols catches nothing, releases no one and holds no 
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { xp: 400 }), member('eevee')] })
   expect(await cmd($, 'pokemon', '✨')).toBe('No Pokémon called "✨".')
   expect(await cmd($, 'pokemon', 'add ピカチュウ')).toBe('No Pokémon called "ピカチュウ".')
-  expect(await cmd($, 'pokemon', 'remove ♀')).toContain('No ♀ in your party.')
+  expect(await cmd($, 'pokemon', 'remove ♀')).toContain('No ♀ in your party or PC box.')
   expect(await cmd($, 'pokemon', 'everstone')).toBe('Which one? /pokemon everstone <name>')
   expect(w.partyNow().map(m => [m.species, m.xp, m.heldItem === 'everstone'])).toEqual([
     ['pikachu', 400, false],
@@ -697,7 +703,7 @@ test('remove names the right one of two forms; leading again records no new sigh
     ...emptySave(),
     party: [member('vulpix', { form: 'alola', xp: 900 }), member('pikachu'), member('vulpix')],
   })
-  expect(await cmd($, 'pokemon', 'remove vulpix')).toBe('Vulpix went back to the wild.')
+  expect(await cmd($, 'pokemon', 'remove vulpix')).toBe('Bye bye, Vulpix! It went back to the wild.')
   expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['vulpix:alola', 'pikachu:regular'])
   expect(await cmd($, 'pokemon', 'shiny pikachu')).toBe('Pikachu leads the party again (Lv 1).')
   expect(w.saveNow().dex).toEqual({})
@@ -1138,6 +1144,18 @@ test('a shiny named in the PC box comes out of it: the lead goes into the box, n
   expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
 })
 
+test('shiny twins asked for when neither is shiny: which one, and nothing changes', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+  })
+  expect(await cmd($, 'pokemon', 'shiny eevee')).toBe(
+    'No shiny Eevee in your party or PC box. Which Eevee? 1. Eevee Lv 1 (party) · 2. Eevee Lv 1 (party) — add the number: /pokemon eevee 2',
+  )
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1', 'e2'])
+  expect(w.saveNow().dex).toEqual({})
+})
+
 test('a plain name never takes a regional form out of the PC box', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
@@ -1145,20 +1163,249 @@ test('a plain name never takes a regional form out of the PC box', async ($, on)
     box: [member('mr-mime', { form: 'galar', id: 'gal' })],
   })
   expect(await cmd($, 'pokemon', 'mr mime')).toBe('Mr Mime leads the party again (Lv 1).')
-  expect(await cmd($, 'pokemon', 'add mr mime')).toBe('Mr Mime is already in your party.')
-  expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['mr-mime:regular', 'pikachu:regular'])
+  // Not the boxed Galarian one: a new plain twin.
+  expect(await cmd($, 'pokemon', 'add mr mime')).toContain('Mr Mime joined your party!')
+  expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual([
+    'mr-mime:regular',
+    'pikachu:regular',
+    'mr-mime:regular',
+  ])
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['gal'])
 })
 
-test('a name in both the party and the box picks the party one; a full party leaves the box alone', async ($, on) => {
+test('a name in both the party and the box asks which, party first; a full party leaves the box alone', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu'), member('eevee'), member('charmander')],
     box: [member('eevee', { id: 'boxed' }), member('raichu', { id: 'boxed-raichu' })],
   })
-  expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 1).')
+  expect(await cmd($, 'pokemon', 'eevee')).toMatch(
+    /^Which Eevee\? 1\. Eevee.* Lv 1 \(party\) · 2\. Eevee.* Lv 1 \(PC box\) — add the number: \/pokemon eevee 2$/,
+  )
+  expect(await cmd($, 'pokemon', 'eevee 1')).toBe('Eevee leads the party again (Lv 1).')
   expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['boxed', 'boxed-raichu'])
+})
+
+test('/pokemon add <name> with that Pokémon in the party adds a twin', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('eevee', { id: 'e1' })] })
+  expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
+  const party = w.saveNow().party
+  expect(party.map(m => m.species)).toEqual(['eevee', 'eevee'])
+  expect(party[1]?.id).not.toBe('e1')
+  expect(await cmd($, 'pokemon', 'eevee')).toContain('Which Eevee? 1. Eevee')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(party.map(m => m.id))
+})
+
+test('a name that fits two members asks which and changes nothing; the number picks one', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' }), member('eevee', { id: 'e3' })],
+    bag: { 'water-stone': 1, 'rare-candy': 1 },
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  const before = JSON.stringify(w.saveNow())
+  const asked = await cmd($, 'pokemon', 'give water stone eevee')
+  expect(asked).toMatch(/^Which Eevee\? 1\. Eevee.* Lv 1 \(party\) · 2\. .* · 3\. .*\(party\) — add the number: /)
+  expect(asked).toMatch(/\/pokemon give water-stone eevee 3$/)
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+  expect(w.toasts).toEqual([])
+  expect(await cmd($, 'pokemon', 'give water stone eevee 2')).toBe('Eevee evolved into Vaporeon!')
+  expect(w.saveNow().party.map(m => `${m.id}:${m.species}`)).toEqual(['e1:eevee', 'e2:vaporeon', 'e3:eevee'])
+  expect(await cmd($, 'pokemon', 'give rare candy eevee')).toContain('Which Eevee?')
+  expect(await cmd($, 'pokemon', 'give rare candy eevee 2')).toBe('Eevee grew to Lv 2!')
+  expect(w.saveNow().party.map(m => level(m.xp))).toEqual([1, 1, 2])
+  expect(w.saveNow().bag).toBeUndefined()
+})
+
+test('everstone, take, deposit, a lead and add each act on the one the number picks', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  const ids = () => [w.saveNow().party.map(m => m.id), (w.saveNow().box ?? []).map(m => m.id)]
+  const held = () => w.saveNow().party.map(m => m.heldItem ?? '')
+  expect(await cmd($, 'pokemon', 'everstone eevee')).toContain('Which Eevee?')
+  expect(held()).toEqual(['', '', ''])
+  expect(await cmd($, 'pokemon', 'everstone eevee 2')).toBe("Eevee holds an everstone: it won't evolve.")
+  expect(held()).toEqual(['', '', 'everstone'])
+  expect(await cmd($, 'pokemon', 'take eevee')).toMatch(/· 2\. Eevee.* Lv 1 holding Everstone \(party\) — /)
+  expect(await cmd($, 'pokemon', 'everstone eevee 1')).toBe("Eevee holds an everstone: it won't evolve.")
+  expect(await cmd($, 'pokemon', 'take eevee 2')).toBe('Eevee dropped its everstone and can evolve again.')
+  expect(held()).toEqual(['', 'everstone', ''])
+  expect(await cmd($, 'pokemon', 'deposit eevee')).toContain('Which Eevee?')
+  expect(await cmd($, 'pokemon', 'deposit eevee 2')).toBe('Eevee (Lv 1) went into the PC box.')
+  expect(ids()).toEqual([['p', 'e1'], ['e2']])
+  // Party first, then the PC box.
+  expect(await cmd($, 'pokemon', 'eevee')).toMatch(
+    /1\. Eevee.* holding Everstone \(party\) · 2\. Eevee.* Lv 1 \(PC box\)/,
+  )
+  expect(await cmd($, 'pokemon', 'eevee 2')).toBe(
+    'Eevee (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
+  )
+  expect(ids()).toEqual([['e2', 'e1'], ['p']])
+  expect(await cmd($, 'pokemon', 'eevee 2')).toBe('Eevee leads the party again (Lv 1).')
+  expect(ids()).toEqual([['e1', 'e2'], ['p']])
+  expect(await cmd($, 'pokemon', 'deposit eevee 1')).toBe('Eevee (Lv 1) went into the PC box.')
+  expect(await cmd($, 'pokemon', 'add eevee')).toBe('Eevee came out of the PC box and joined your party!')
+  expect(ids()).toEqual([['e2', 'e1'], ['p']])
+})
+
+// The columns where `color` shows in a frame `columns` cells wide, all rows taken together, as [first, last] runs:
+// one run per walker standing apart.
+function runsOf(cells: string, columns: number, color: number) {
+  const words = new Uint32Array(Uint8Array.from(atob(cells), c => c.charCodeAt(0)).buffer)
+  const has = new Set<number>()
+  for (let i = 0; i < words.length / 3; i++)
+    if (words[i * 3 + 1] === color || words[i * 3 + 2] === color) has.add(i % columns)
+  const runs: [number, number][] = []
+  for (let x = 0; x < columns; x++) {
+    const last = runs[runs.length - 1]
+    if (has.has(x) && last && last[1] === x - 1) last[1] = x
+    else if (has.has(x)) runs.push([x, x])
+  }
+  return runs
+}
+// Two runs of `color` at least `gap` columns apart, in the frame last sent; null otherwise.
+function apart(cells: string, columns: number, color: number, gap: number) {
+  const runs = cells ? runsOf(cells, columns, color) : []
+  const [a, b] = runs
+  return runs.length === 2 && a && b && b[0] - a[1] > gap ? runs : null
+}
+
+test('twins walk as two: each keeps its own place when the party changes', async ($, on) => {
+  const EEVEE = 0x010203
+  const PIKACHU = 0x040506
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: { eevee: solid('1;2;3', 6), pikachu: solid('4;5;6', 6) },
+  }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' }), member('pikachu')] },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  await mountBand($)
+  await cmd($, 'pokemon-play', 'work')
+  // The twins far enough apart that the tick or two below (at most 0.6 columns each) can't bring them together,
+  // and Pikachu clear of both, so neither twin is partly hidden behind it.
+  const isClear = (eevees: [number, number][]) => {
+    const [pikachu, ...more] = runsOf(w.band.cells, 80, PIKACHU)
+    return Boolean(pikachu && !more.length && eevees.every(([a, b]) => pikachu[1] < a || pikachu[0] > b))
+  }
+  await seen(w, () => {
+    const eevees = apart(w.band.cells, 80, EEVEE, 6)
+    return eevees && isClear(eevees) ? eevees : null
+  })
+  // Taking a walker away leaves nothing that could stand in front of a twin.
+  expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Bye bye, Pikachu! It went back to the wild.')
+  await seen(w, () => (w.band.cells && !colorsIn(w.band.cells).has(PIKACHU)) || null)
+  // Keyed by species, both would now stand on the first one's spot: one run.
+  expect(runsOf(w.band.cells, 80, EEVEE)).toHaveLength(2)
+})
+
+test('one twin evolving keeps its place, and the other its own', async ($, on) => {
+  answerTools(on)
+  const CHARMANDER = 0x010203
+  const CHARMELEON = 0x070809
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: { charmander: solid('1;2;3', 6), charmeleon: solid('7;8;9', 6) },
+  }
+  const ready = { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' as const }
+  const w = await begin(
+    $,
+    on,
+    {
+      ...emptySave(),
+      party: [
+        member('charmander', { id: 'a', ...ready }),
+        member('charmander', { id: 'b', ...ready, heldItem: 'everstone' }),
+      ],
+    },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  // As wide as a band goes, so a new random place is almost never an old one.
+  await $.ui.mount({
+    plugin: 'pokemon',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 512 } as never,
+  })
+  const before = await seen(w, () => apart(w.band.cells, 512, CHARMANDER, 0))
+  // The clock stands still from here to the evolution, and the animation holds everyone still.
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
+  expect(w.saveNow().party.map(m => [m.id, m.species])).toEqual([
+    ['a', 'charmeleon'],
+    ['b', 'charmander'],
+  ])
+  const frame = await seen(w, () => (w.band.cells && colorsIn(w.band.cells).has(CHARMELEON) && w.band.cells) || null)
+  // Keyed by species, the evolved one would get a new spot and its twin would take its old one.
+  const now = [...runsOf(frame, 512, CHARMELEON), ...runsOf(frame, 512, CHARMANDER)]
+  expect(now.sort((p, q) => p[0] - q[0])).toEqual(before)
+  // Past the animation: both walk on, the new sprite and the old.
+  for (let i = 0; i < 12; i++) await w.clock.advance(500)
+  const both = await seen(w, () => {
+    const colors = w.band.cells ? colorsIn(w.band.cells) : new Set<number>()
+    return (colors.has(CHARMELEON) && colors.has(CHARMANDER)) || null
+  })
+  expect(both).toBe(true)
+})
+
+// Another session evolves Charmander; this one adopts that save through `adopt` before its next sync looks.
+async function evolvedElsewhere($: Engine, on: On, adopt: () => Promise<unknown>) {
+  answerTools(on)
+  const CHARMELEON = 0x070809
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: { charmander: solid('1;2;3', 6), charmeleon: solid('7;8;9', 6) },
+  }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('charmander', { id: 'a', gender: 'male', next: [lv('charmeleon', 16)] })] },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  await mountBand($)
+  const [was] = w.saveNow().party
+  w.store.set('save', {
+    ...w.saveNow(),
+    party: [{ ...was!, species: 'charmeleon', evolutions: 1, next: [lv('charizard', 36)] }],
+  })
+  await adopt()
+  let isDrawn = false
+  for (let i = 0; i < 60 && !isDrawn; i++) {
+    await w.clock.advance(500)
+    isDrawn = Boolean(w.band.cells) && colorsIn(w.band.cells).has(CHARMELEON)
+  }
+  return isDrawn
+}
+
+test("another session's evolution is drawn even when XP lands here before the next sync", async ($, on) => {
+  expect(await evolvedElsewhere($, on, () => $.tool.call(bash('git commit -m x') as never))).toBe(true)
+})
+
+test("another session's evolution is drawn even when a command here writes the save first", async ($, on) => {
+  // `size` writes the save without a sync first.
+  expect(await evolvedElsewhere($, on, () => cmd($, 'pokemon', 'size small'))).toBe(true)
 })
 
 test('a boxed Pokémon comes out by name even when the party holds another form of its species', async ($, on) => {
@@ -1711,7 +1958,9 @@ test('a member keeps its time together through evolution, deposit and withdraw; 
   await w.clock.advance(120_000)
   expect(w.togetherNow().c).toBe(5 * 3_600_000)
   expect(await cmd($, 'pokemon', 'box')).toContain('together 5h')
-  await cmd($, 'pokemon', 'release eevee')
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'party')).not.toContain('Eevee')
+  expect([...w.saveNow().party, ...(w.saveNow().box ?? [])].some(m => m.id === 'e')).toBe(false)
   await cmd($, 'pokemon', 'add charmeleon')
   expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
   await w.clock.advance(60_000)
@@ -1876,6 +2125,24 @@ test('the Mart lists what would evolve your party', async ($, on) => {
   const p = await martOf(band)
   expect(p?.items.find(i => i.id === 'thunder-stone')?.party).toBe('Pikachu → Raichu')
   expect(p?.items.find(i => i.id === 'fire-stone')?.party).toBeUndefined()
+})
+
+test('the Mart counts twins that one item would evolve', async ($, on) => {
+  const water = { species: 'vaporeon', way: { kind: 'item' as const, item: 'water-stone' } }
+  const fire = { species: 'flareon', way: { kind: 'item' as const, item: 'fire-stone' } }
+  await begin($, on, {
+    ...emptySave(),
+    party: [
+      member('eevee', { next: [water, fire], gender: 'male' }),
+      member('eevee', { next: [water], gender: 'female' }),
+    ],
+  })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  const p = await martOf(band)
+  expect(p?.items.find(i => i.id === 'water-stone')?.party).toBe('Eevee ×2 → Vaporeon')
+  expect(p?.items.find(i => i.id === 'fire-stone')?.party).toBe('Eevee → Flareon')
 })
 
 test('the Mart takes only its own acts: raw buys of anything, bad picks and tabs change nothing', async ($, on) => {
@@ -2270,4 +2537,197 @@ test('a visitor already out stays the same Pokémon when the time and place chan
   // With a visitor out, asking for another just names the one that is there.
   expect(await cmd($, 'pokemon-play', 'wild')).toBe(first)
   expect(w.toasts.filter(t => /appeared!$/.test(t))).toHaveLength(1)
+})
+
+// Who is where, holding what, and the Bag: what a release changes (evolutions learnt meanwhile left out).
+const kept = (s: Save) => ({
+  party: s.party.map(m => [m.id, m.heldItem]),
+  box: (s.box ?? []).map(m => [m.id, m.heldItem]),
+  bag: s.bag,
+  dex: s.dex,
+})
+
+test('release from the PC box: bye bye, its item back to the Bag, the Pokédex kept', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: [member('eevee', { id: 'e', heldItem: 'fire-stone' })],
+    dex: { pikachu: { seen: 1, shiny: 0, first: 1 }, eevee: { seen: 3, shiny: 0, first: 2, caught: 1 } },
+  })
+  const dex = w.saveNow().dex
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe(
+    'Bye bye, Eevee! It went back to the wild. Its Fire Stone went back to the Bag.',
+  )
+  expect(w.saveNow().box ?? []).toEqual([])
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
+  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+  expect(w.saveNow().dex).toEqual(dex)
+  // Gone: a second release finds no one.
+  expect(await cmd($, 'pokemon', 'release eevee')).toContain('No eevee in your party or PC box.')
+})
+
+test('release from the party: a held Everstone is dropped, never Bagged; the only member stays, box or not', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e', heldItem: 'everstone' })],
+    box: [member('charmander', { id: 'c' })],
+  })
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(w.saveNow().bag).toBeUndefined()
+  const before = w.saveNow()
+  expect(await cmd($, 'pokemon', 'release pikachu')).toBe('Pick a new lead first.')
+  expect(kept(w.saveNow())).toEqual(kept(before))
+})
+
+test('a Bag full of its item keeps a holder from being released', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu'), member('eevee', { heldItem: 'fire-stone' })],
+    bag: { 'fire-stone': 999 },
+  })
+  const before = w.saveNow()
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe(
+    "Your Bag can't hold another Fire Stone (999 already). Use one first.",
+  )
+  expect(kept(w.saveNow())).toEqual(kept(before))
+})
+
+test('twins: release asks which one; the number releases that one', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' })],
+    box: [member('eevee', { id: 'e2', gender: 'male' })],
+  })
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe(
+    'Which Eevee? 1. Eevee Lv 1 (party) · 2. Eevee ♂ Lv 1 (PC box) — add the number: /pokemon release eevee 2',
+  )
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['e2'])
+  expect(await cmd($, 'pokemon', 'release eevee 2')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1'])
+  expect(w.saveNow().box ?? []).toEqual([])
+})
+
+test('releasing the lead: the next one leads, and the band redraws without it', async ($, on) => {
+  const EEVEE = 0x010203
+  const PIKACHU = 0x040506
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: { eevee: solid('1;2;3', 6), pikachu: solid('4;5;6', 6) },
+  }
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('eevee', { id: 'e' }), member('pikachu', { id: 'p' })] },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  await mountBand($)
+  await seen(w, () => (w.band.cells && colorsIn(w.band.cells).has(EEVEE)) || null)
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
+  expect(await cmd($, 'pokemon', 'party')).toContain('Lead  Pikachu')
+  await seen(w, () => {
+    const colors = w.band.cells ? colorsIn(w.band.cells) : new Set<number>()
+    return (!colors.has(EEVEE) && colors.has(PIKACHU)) || null
+  })
+})
+
+const PIKACHU = 0x040506
+const CHARMANDER = 0x010203
+const CHARMELEON = 0x070809
+const EEVEE = 0x0a0b0c
+// Party [Pikachu, Charmander about to evolve, Eevee], each a solid colour, the band 512 columns wide. Charmander
+// evolves, `act` runs at the start of its animation, and the frames drawn over the rest of it are returned.
+async function actWhileEvolving($: Engine, on: On, act: string, said: string) {
+  answerTools(on)
+  const net: Net = {
+    isOnline: true,
+    list: JSON.stringify(LIST),
+    now: hourAt(12),
+    sprites: {
+      pikachu: solid('4;5;6', 6),
+      charmander: solid('1;2;3', 6),
+      charmeleon: solid('7;8;9', 6),
+      eevee: solid('10;11;12', 6),
+    },
+  }
+  const plain = { next: [], gender: 'male' as const }
+  const w = await begin(
+    $,
+    on,
+    {
+      ...emptySave(),
+      party: [
+        member('pikachu', { id: 'p', ...plain }),
+        member('charmander', { id: 'c', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),
+        member('eevee', { id: 'e', ...plain }),
+      ],
+    },
+    ART,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  await $.ui.mount({
+    plugin: 'pokemon',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 512 } as never,
+  })
+  // All three in sight and apart, so none is hidden behind another.
+  await seen(w, () => {
+    const runs = [PIKACHU, CHARMANDER, EEVEE].map(c => (w.band.cells ? runsOf(w.band.cells, 512, c) : []))
+    if (!runs.every(r => r.length === 1)) return null
+    const spans = runs.map(r => r[0] as [number, number]).sort((a, b) => a[0] - b[0])
+    return spans.every((s, i) => i === 0 || (spans[i - 1]?.[1] ?? 0) + 6 < s[0]) || null
+  })
+  // The clock stands still from here to the evolution, and the animation holds everyone still.
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party[1]?.species === 'charmeleon')
+  expect(await cmd($, 'pokemon', act)).toBe(said)
+  const frames: Set<number>[] = []
+  // The animation is 4.5 s: past its end.
+  for (let i = 0; i < 30; i++) {
+    await w.clock.advance(200)
+    if (w.band.cells) frames.push(colorsIn(w.band.cells))
+  }
+  return { w, frames }
+}
+
+test('releasing one before an evolving Pokémon mid-animation: the animation stays on it, the others as they are', async ($, on) => {
+  const { w, frames } = await actWhileEvolving($, on, 'release pikachu', 'Bye bye, Pikachu! It went back to the wild.')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['c', 'e'])
+  // Every frame once Pikachu is gone: Eevee as itself; the evolving one still animating, ending as Charmeleon.
+  const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
+  expect(after.length).toBeGreaterThan(10)
+  expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
+  expect(after.some(c => c.has(CHARMANDER))).toBe(true)
+  expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
+})
+
+test('depositing one before an evolving Pokémon mid-animation: the animation stays on it', async ($, on) => {
+  const { w, frames } = await actWhileEvolving($, on, 'deposit pikachu', 'Pikachu (Lv 2) went into the PC box.')
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['p'])
+  const after = frames.slice(frames.findIndex(c => !c.has(PIKACHU)))
+  expect(after.length).toBeGreaterThan(10)
+  expect(after.filter(c => !c.has(EEVEE))).toHaveLength(0)
+  expect(after.at(-1)?.has(CHARMELEON)).toBe(true)
+})
+
+test('releasing the Pokémon that is evolving stops its animation; it never comes back', async ($, on) => {
+  const { w, frames } = await actWhileEvolving(
+    $,
+    on,
+    'release charmeleon',
+    'Bye bye, Charmeleon! It went back to the wild.',
+  )
+  const after = frames.slice(frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER)))
+  expect(after.length).toBeGreaterThan(10)
+  expect(after.filter(c => c.has(CHARMANDER) || c.has(CHARMELEON) || !c.has(EEVEE) || !c.has(PIKACHU))).toHaveLength(0)
+  await w.clock.advance(5000)
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e'])
 })

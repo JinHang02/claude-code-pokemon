@@ -340,7 +340,7 @@ function moveWild(w: Wild, width: number, wildWidth: number): Wild | null {
 }
 
 // The party's places after it changes from `was` to `keys`: a Pokémon found by key when the party is reordered or
-// trimmed, or by slot when a new one takes the place of one that left (an evolution); only newcomers get `place`.
+// trimmed, or by slot when a new one takes the place of one that left (a new lead); only newcomers get `place`.
 export function carryActors(was: string[], keys: string[], actors: Scene[], place: (i: number) => Scene): Scene[] {
   return keys.map((key, i) => {
     const same = was.indexOf(key)
