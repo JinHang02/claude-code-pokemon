@@ -5,7 +5,7 @@ import { FRIENDSHIP_MS } from '../hooks/evolution'
 import { martRows } from '../hooks/mart'
 import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
-import { emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
+import { displayName, emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 import {
@@ -2151,23 +2151,14 @@ test('a bare /pokemon buy lists the Mart by tab with prices and the balance', as
   expect(text).not.toContain('Everstone')
 })
 
-// A species list in which only Caterpie can ever be wild: the rest have nothing but forms that never appear in the
-// wild. Picking any species at random would hit one of those nine times in ten.
-const onlyCaterpie = (): Net => ({
+// Species that can never be wild (only forms that never appear there), so that choosing a species at random from a
+// list holding them and a few real ones lands on a real one about 1 time in 100.
+const FILLER = Array.from({ length: 1200 }, (_, i) => ({ name: `filler-${i}`, forms: ['mega', 'gmax'] }))
+const withFiller = (wild: { name: string; forms: string[] }[]): Net => ({
   ...throwNet(),
-  list: JSON.stringify([
-    { name: 'caterpie', forms: ['regular'] },
-    { name: 'charizard', forms: ['mega-x', 'gmax'] },
-    { name: 'blastoise', forms: ['mega', 'gmax'] },
-    { name: 'venusaur', forms: ['mega', 'gmax'] },
-    { name: 'groudon', forms: ['primal'] },
-    { name: 'kyogre', forms: ['primal'] },
-    { name: 'gengar', forms: ['mega', 'gmax'] },
-    { name: 'alakazam', forms: ['mega'] },
-    { name: 'gyarados', forms: ['mega'] },
-    { name: 'pikachu', forms: ['gmax'] },
-  ]),
+  list: JSON.stringify([...wild, ...FILLER]),
 })
+const onlyCaterpie = () => withFiller([{ name: 'caterpie', forms: ['regular'] }])
 
 test('an unnamed /pokemon-play wild comes from the weighted draw, which never offers a form that is not wild', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
@@ -2193,8 +2184,70 @@ test('a visitor the timer brings comes from the weighted draw too', { timeoutMs:
 })
 
 test('a summoned /pokemon-play wild <name> ignores the weights', async ($, on) => {
-  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
+  await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu')] },
+    TALL,
+    undefined,
+    withFiller([{ name: 'charizard', forms: ['regular', 'mega-x'] }]),
+  )
   await cmd($, 'pokemon', 'party')
   await mountBand($ as never)
   expect(await cmd($, 'pokemon-play', 'wild charizard mega x')).toBe('A wild Charizard (Mega X) wanders by.')
+})
+
+const WATER = 'psyduck poliwag seel shellder krabby horsea goldeen staryu magikarp remoraid corphish feebas'.split(' ')
+const GROUND = 'mankey machop cubone slugma makuhita nosepass numel trapinch pansear roggenrola timburr mienfoo'.split(
+  ' ',
+)
+
+test(
+  'the place on screen shapes who comes: at the lake Water types win about 4 times in 5 over equally likely Fire, Ground, Rock and Fighting types',
+  { timeoutMs: 120_000 },
+  async ($, on) => {
+    // Odds: 4 * 2630 / (4 * 2630 + 2500) = 81% per visitor. At least 18 of 30 fails by chance about 1 run in 1000
+    // and, with the lake not counted, about 1 in 10.
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('pikachu')] },
+      TALL,
+      undefined,
+      withFiller([...WATER, ...GROUND].map(name => ({ name, forms: ['regular'] }))),
+    )
+    await cmd($, 'pokemon', 'party')
+    await mountBand($ as never)
+    const came = () => w.toasts.filter(t => /appeared!$/.test(t))
+    for (let i = 0; i < 400 && came().length < 30; i++) {
+      await cmd($, 'pokemon-play', 'dusk lake')
+      await cmd($, 'pokemon-play', 'wild')
+      await w.clock.advance(5_000)
+    }
+    expect(came().length).toBe(30)
+    const water = came().filter(t => WATER.some(n => t.endsWith(`wild ${displayName(n)} appeared!`))).length
+    expect(water).toBeGreaterThanOrEqual(18)
+    expect(came().every(t => FILLER.every(f => !t.includes(f.name)))).toBe(true)
+  },
+)
+
+test('a visitor already out stays the same Pokémon when the time and place change', async ($, on) => {
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu')] },
+    TALL,
+    undefined,
+    withFiller([...WATER, ...GROUND].map(name => ({ name, forms: ['regular'] }))),
+  )
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  await cmd($, 'pokemon-play', 'dusk lake')
+  const first = await cmd($, 'pokemon-play', 'wild')
+  expect(first).toMatch(/^A wild .+ wanders by\.$/)
+  expect(await cmd($, 'pokemon-play', 'night hills')).toBe('Showing night hills for 15 seconds.')
+  await w.clock.advance(1_000)
+  // With a visitor out, asking for another just names the one that is there.
+  expect(await cmd($, 'pokemon-play', 'wild')).toBe(first)
+  expect(w.toasts.filter(t => /appeared!$/.test(t))).toHaveLength(1)
 })
