@@ -2150,3 +2150,51 @@ test('a bare /pokemon buy lists the Mart by tab with prices and the balance', as
   expect(text).toContain('Rare Candy ₽4,800')
   expect(text).not.toContain('Everstone')
 })
+
+// A species list in which only Caterpie can ever be wild: the rest have nothing but forms that never appear in the
+// wild. Picking any species at random would hit one of those nine times in ten.
+const onlyCaterpie = (): Net => ({
+  ...throwNet(),
+  list: JSON.stringify([
+    { name: 'caterpie', forms: ['regular'] },
+    { name: 'charizard', forms: ['mega-x', 'gmax'] },
+    { name: 'blastoise', forms: ['mega', 'gmax'] },
+    { name: 'venusaur', forms: ['mega', 'gmax'] },
+    { name: 'groudon', forms: ['primal'] },
+    { name: 'kyogre', forms: ['primal'] },
+    { name: 'gengar', forms: ['mega', 'gmax'] },
+    { name: 'alakazam', forms: ['mega'] },
+    { name: 'gyarados', forms: ['mega'] },
+    { name: 'pikachu', forms: ['gmax'] },
+  ]),
+})
+
+test('an unnamed /pokemon-play wild comes from the weighted draw, which never offers a form that is not wild', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild')).toBe('A wild Caterpie wanders by.')
+  expect(w.toasts.some(t => /^(✨ )?A wild Caterpie appeared!$/.test(t))).toBe(true)
+})
+
+test('a visitor the timer brings comes from the weighted draw too', { timeoutMs: 120_000 }, async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  // Nobody wanders by while the party sleeps, so a command each minute keeps them awake until the timer runs out.
+  for (let i = 0; i < 30 && !w.toasts.some(t => /appeared!$/.test(t)); i++) {
+    await $.tool.call(bash('pytest -q') as never)
+    await w.clock.advance(60_000)
+  }
+  expect(w.toasts.filter(t => /appeared!$/.test(t))).toEqual([
+    expect.stringMatching(/^(✨ )?A wild Caterpie appeared!$/),
+  ])
+})
+
+test('a summoned /pokemon-play wild <name> ignores the weights', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild charizard mega x')).toBe('A wild Charizard (Mega X) wanders by.')
+})

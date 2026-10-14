@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Mon } from '../types'
 import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
 import type { Click, Throw, ThrowEvent } from './catch'
+import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Gender, Stage } from './evolution'
 import { ICONS } from './item-icons'
@@ -1193,7 +1194,9 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
   try {
     const list = await loadSpecies($)
     const words = slug(query).split('-').filter(Boolean)
-    const found = words.length ? lookup(list, words) : { pick: randomPick(list) }
+    const found = words.length
+      ? lookup(list, words)
+      : { pick: drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex }) }
     if ('error' in found) return found.error
     if ('guess' in found)
       return `Did you mean ${displayName(found.guess.species, found.guess.form)}? Run /pokemon-play wild ${spell(found.guess)}`
