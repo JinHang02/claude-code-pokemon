@@ -157,7 +157,7 @@ Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it f
 
 When a wild Pokémon wanders by, **click it** to throw a Poké Ball. Aim for the Pokémon itself: a ball that lands on
 grass or a gap in its sprite misses. A hit wobbles in the grass, and how often it holds follows the games' own
-catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly ever. Break free and it may run.
+catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly ever. Break free and it may run. Claude Code passes clicks only in its fullscreen mode (`/config`, or `"tui": "fullscreen"` in settings), so turn that on to throw.
 
 Catches join your party, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>` brings one
 out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the box, level
@@ -167,7 +167,7 @@ and all.
 
 ## Shop at the PokéMart
 
-Your work earns Pokédollars too, ten for every XP point: **₽20** for a reply, **₽50** for a passing test run, **₽100** for a commit. You start with ₽3,000. Click **🛒 ₽** in the band's top-right corner (or run `/pokemon mart`) to open the PokéMart: evolution stones, trade items, the Linking Cord, Rare Candy, a Lucky Egg and a Soothe Bell, each with its description from the games. It won't open while a wild Pokémon is out: catch it or let it go first. Click into it (after `/pokemon mart` too: Claude Code gives the band the keys only on a click), then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many, `Enter` buys and `x` closes (Esc can't: Claude Code keeps it for the prompt). The mouse wheel doesn't move the list (Claude Code doesn't pass it to the band); `▲` `▼` do. Item pictures show when the band is at least 8 rows tall.
+Your work earns Pokédollars too, ten for every XP point: **₽20** for a reply, **₽50** for a passing test run, **₽100** for a commit. You start with ₽3,000. Click **🛒 ₽** in the band's top-right corner (or run `/pokemon mart`) to open the PokéMart: evolution stones, trade items, the Linking Cord, Rare Candy, a Lucky Egg and a Soothe Bell, each with its description from the games. It won't open while a wild Pokémon is out: catch it or let it go first. Click into it (after `/pokemon mart` too: Claude Code gives the band the keys only on a click), then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many, `Enter` buys and `x` closes (Esc can't: Claude Code keeps it for the prompt). The mouse wheel doesn't move the list (Claude Code doesn't pass it to the band); `▲` `▼` do. Item pictures show when the band is at least 8 rows tall. Clicking needs Claude Code's fullscreen mode (`/config`, or `"tui": "fullscreen"` in settings); without it, `/pokemon mart` shows how and `/pokemon buy <item> [count]` shops by typing (`/pokemon buy fire stone 3`; plain `/pokemon buy` lists everything with prices).
 
 ```text
 /pokemon give thunder-stone pikachu   Pikachu evolved into Raichu!
@@ -189,6 +189,7 @@ A Pokémon holds one item at a time, as in the games. A Lucky Egg earns its hold
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                     |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                         |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                         |
+| `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices                             |
 | `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                       |
 | `/pokemon give <item> <name>`           | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level                                        |
 | `/pokemon take <name>`                  | Put its held item back in your Bag                                                                                                                                                  |

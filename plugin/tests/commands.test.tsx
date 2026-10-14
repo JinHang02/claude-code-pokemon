@@ -1905,12 +1905,12 @@ test('/pokemon mart opens it in the band and says so without one; /pokemon off c
   await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
   expect(await cmd($, 'pokemon', 'mart')).toBe(
-    "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here.",
+    "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here. No mouse? /pokemon buy <item> [count] works too.",
   )
   const band = (await mountBand($)) as Band
   // Claude Code gives a band the keys only on a click: the reply says to click it.
   expect(await cmd($, 'pokemon', 'mart')).toBe(
-    'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.',
+    'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes. No mouse? /pokemon buy <item> [count] works too.',
   )
   expect(await martOf(band)).not.toBeNull()
   await cmd($, 'pokemon', 'off')
@@ -1926,7 +1926,9 @@ test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone
   expect(await martOf(band)).not.toBeNull()
   expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/wanders by/)
   expect(await martOf(band)).toBeNull()
-  expect(await cmd($, 'pokemon', 'mart')).toBe('A wild Caterpie is out: catch it or let it go first.')
+  expect(await cmd($, 'pokemon', 'mart')).toBe(
+    'A wild Caterpie is out: catch it or let it go first. No mouse? /pokemon buy <item> [count] works too.',
+  )
   expect(await martOf(band)).toBeNull()
 })
 
@@ -2075,4 +2077,59 @@ test('buyItem refuses what the Mart never sells and any quantity but 1 to 999, b
     expect(await refuse(id, 1)).toEqual({ text: "That isn't for sale.", isError: true })
   for (const qty of [0, 1000, 1.5, -1, '2', NaN, null])
     expect(await refuse('fire-stone', qty)).toEqual({ text: "That isn't a quantity you can buy.", isError: true })
+})
+
+test('/pokemon buy takes the item first or last, a count, and one by default; ₽ and the Bag follow', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 20_000 })
+  expect(await cmd($, 'pokemon', 'buy rare candy')).toBe('Bought a Rare Candy! ₽18,200 left.')
+  expect(await cmd($, 'pokemon', 'buy 3 fire stone')).toBe('Bought 3 × Fire Stone! ₽9,200 left.')
+  expect(await cmd($, 'pokemon', 'buy fire-stone 2')).toBe('Bought 2 × Fire Stone! ₽3,200 left.')
+  expect(w.saveNow().bag).toEqual({ 'rare-candy': 1, 'fire-stone': 5 })
+  expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,200\n/)
+})
+
+test('/pokemon buy suggests a near miss and asks what when nothing is close', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  expect(await cmd($, 'pokemon', 'buy thunderstone 2')).toBe(
+    'Did you mean Thunder Stone? Run /pokemon buy thunder-stone 2',
+  )
+  expect(await cmd($, 'pokemon', 'buy fire ston')).toBe('Did you mean Fire Stone? Run /pokemon buy fire-stone')
+  expect(await cmd($, 'pokemon', 'buy banana')).toBe(
+    'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.',
+  )
+  expect(w.saveNow().bag).toBeUndefined()
+  expect(w.saveNow().spent).toBeUndefined()
+})
+
+test('/pokemon buy refuses as the Mart does, and changes nothing', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], bag: { 'rare-candy': 998 } })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  const money = () => ({ bag: w.saveNow().bag, spent: w.saveNow().spent, earned: w.saveNow().earned })
+  const before = money()
+  expect(await cmd($, 'pokemon', 'buy fire stone 2')).toBe('Not enough ₽: 3,000 more to go.')
+  expect(await cmd($, 'pokemon', 'buy everstone')).toBe("That isn't for sale.")
+  expect(await cmd($, 'pokemon', 'buy fire stone 0')).toBe("That isn't a quantity you can buy.")
+  expect(await cmd($, 'pokemon', 'buy fire stone 1000')).toBe("That isn't a quantity you can buy.")
+  expect(await cmd($, 'pokemon', 'buy fire stone 2.5')).toBe("That isn't a quantity you can buy.")
+  expect(await cmd($, 'pokemon', 'buy rare candy 2')).toBe('Your Bag has room for 1 more.')
+  expect(money()).toEqual(before)
+})
+
+test('a full stack of one item refuses a buy of it', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], bag: { 'fire-stone': 999 } })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  const money = () => ({ bag: w.saveNow().bag, spent: w.saveNow().spent, earned: w.saveNow().earned })
+  const before = money()
+  expect(await cmd($, 'pokemon', 'buy fire stone')).toBe("Your Bag can't hold more Fire Stone.")
+  expect(money()).toEqual(before)
+})
+
+test('a bare /pokemon buy lists the Mart by tab with prices and the balance', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  const text = await cmd($, 'pokemon', 'buy')
+  expect(text.split('\n')[0]).toBe('PokéMart · ₽3,000')
+  for (const tab of ['Stones', 'Hold items', 'Special', 'Other']) expect(text).toContain(`  ${tab.padEnd(10)}  `)
+  expect(text).toContain('Fire Stone ₽3,000')
+  expect(text).toContain('Rare Candy ₽4,800')
+  expect(text).not.toContain('Everstone')
 })

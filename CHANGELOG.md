@@ -22,6 +22,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   for as many as you can afford, `Enter` or `Buy` to buy, `x` or `✕` to close. `/pokemon mart` opens it too. A buy
   you can't afford says how much more you need and keeps the quantity you chose; `Max` says so when you can't afford
   even one.
+- `/pokemon buy <item> [count]` shops by typing, for terminals that pass no clicks: `buy 3 fire stone`, `buy fire-stone 3`,
+  `buy rare candy`. It refuses exactly as the Mart does and says what you have left; a close misspelling gets a suggestion.
+  Plain `/pokemon buy` lists the Mart by tab with prices. `/pokemon mart` now ends with a reminder of it.
 - Prices: Stones ₽3,000; Rare Candy ₽4,800; Soothe Bell ₽4,000; Lucky Egg ₽10,000; everything else ₽5,000. The Bag
   holds up to 999 of each.
 
@@ -78,6 +81,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ### Known limitations
 
+- **Clicking needs Claude Code's fullscreen mode:** the ₽ button, the Mart and throwing Poké Balls (`/config`, or
+  `"tui": "fullscreen"` in settings). Without it, use `/pokemon mart` to look and `/pokemon buy` to shop.
 - **Close other Claude Code windows before upgrading:** a window still running 1.2.0 can write the save without the
   new Bag, ₽ and held items.
 - **Esc doesn't close the Mart:** Claude Code keeps Escape to give the keyboard back to the prompt. Use `x` or `✕`.
@@ -187,7 +192,8 @@ pytest` and `echo "now: $(date)"; git commit -m x` react again.
 
 ### Known limitations
 
-- **Throwing needs mouse clicks:** your terminal has to pass mouse clicks to Claude Code.
+- **Throwing needs mouse clicks:** your terminal has to pass mouse clicks to Claude Code, which it does only in
+  its fullscreen mode (`/config`, or `"tui": "fullscreen"` in settings).
 - **Pixel-exact aim** needs a terminal that reports where in a cell you clicked: kitty, Ghostty, iTerm2, WezTerm
   and foot do. Elsewhere, and through tmux, a click counts both pixels of the cell.
 - **While a wild Pokémon can be aimed at, the band is drawn as coloured text at 10 frames a second:** a click layer

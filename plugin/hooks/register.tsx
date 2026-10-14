@@ -23,6 +23,7 @@ import {
   formatBag,
   formatBox,
   formatDex,
+  formatMoney,
   formatParty,
   earnInto,
   evolvesText,
@@ -162,8 +163,8 @@ let pitch: Throw | null = null
 const BUTTON_COLUMNS = 13
 // The PokéMart: open in the band, the last thing it said, and what is selected in it.
 let mart = { isOpen: false, message: '', isError: false, view: START }
-// While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a click layer over pixel art
-// stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
+// While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a full-band click layer over
+// pixel art stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
 const AIM_EVERY = 2
 let isAiming = false
 // A wild Pokémon is out (rustling, aimable or in a ball): no ₽ button and no Mart then, as the Mart would cover it.
@@ -838,6 +839,43 @@ export async function buyItem(
   return result
 }
 
+// The Mart by tab with prices, for a bare `/pokemon buy`.
+function formatMart(balance: number): string {
+  const lines = [`PokéMart · ${formatMoney(balance)}`]
+  for (const tab of TABS) {
+    const items = forSale().filter(i => i.tab === tab)
+    if (items.length)
+      lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ${formatMoney(i.price)}`).join(' · ')}`)
+  }
+  lines.push('  /pokemon buy <item> [count] buys, e.g. /pokemon buy fire stone 3')
+  return lines.join('\n')
+}
+
+// `/pokemon buy <item> [count]`: the Mart's buy by typing, for a terminal that passes no clicks. The item and the count
+// come first or last, as `give` takes an item.
+async function buyCommand($: EngineInterface, args: string): Promise<string> {
+  await sync($)
+  if (!args.trim()) return formatMart(balanceOf(save, cash))
+  const tokens = args.trim().split(/\s+/)
+  const isCount = (t: string | undefined) => t !== undefined && /^[-+]?\d+(\.\d+)?$/.test(t)
+  const countAt = isCount(tokens[0]) ? 0 : isCount(tokens[tokens.length - 1]) ? tokens.length - 1 : -1
+  const count = countAt < 0 ? 1 : Number(tokens[countAt])
+  const words = slug(tokens.filter((_, i) => i !== countAt).join(' '))
+    .split('-')
+    .filter(Boolean)
+  const found = splitGive(words)
+  if (!found || found.rest.length) {
+    const guess = !found || !found.rest.length ? guessItem(words) : null
+    return guess && !guess.rest.length
+      ? `Did you mean ${guess.item.name}? Run /pokemon buy ${guess.item.id}${countAt < 0 ? '' : ` ${tokens[countAt]}`}`
+      : 'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.'
+  }
+  const { text, isError } = await buyItem($, found.item.id, count)
+  if (isError) return text
+  await sync($)
+  return `${text} ${formatMoney(balanceOf(save, cash))} left.`
+}
+
 async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
   if (isOff) closeMart($)
   let was = false
@@ -1320,13 +1358,19 @@ function martRefusal(): string | null {
   return null
 }
 
+// Claude Code passes the band clicks only in its fullscreen mode, and the hook can't tell which mode it is in.
+const NO_MOUSE = ' No mouse? /pokemon buy <item> [count] works too.'
+
 // `/pokemon mart`: the Mart opens in the band, when there is one.
 function openMartCommand($: EngineInterface): string {
   const refusal = martRefusal()
-  if (refusal) return refusal
+  if (refusal) return `${refusal}${NO_MOUSE}`
   openMart($)
   // Claude Code gives the band the keys only on a click: `$.ui.focus` is refused for a site the person hasn't focused.
-  return 'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.'
+  return (
+    'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.' +
+    NO_MOUSE
+  )
 }
 
 // The band's look besides the party: time and place, the visitor as a throw shows it, and the ball.
@@ -1459,6 +1503,8 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return takeItem($, tail)
     case 'mart':
       return openMartCommand($)
+    case 'buy':
+      return buyCommand($, tail)
     case 'off':
       return setOff($, true)
     case 'on':
@@ -1552,7 +1598,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add/remove [name] · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
