@@ -1593,6 +1593,13 @@ async function start($: EngineInterface) {
   await learnEvolutions($)
 }
 
+// A /clear goes on in this process as a new session whose state starts empty, with no `session.start`: this
+// process's ledger key and the party drawn are written into it again.
+async function restore($: EngineInterface) {
+  if (ledgerKey) await update($, ledger, () => ledgerKey)
+  if (save.party.length) await refreshParty($)
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -1627,6 +1634,16 @@ export const register: Register = on => {
       ),
     )
 
+    return next(e)
+  })
+
+  // Fires after a /clear (source `clear`), unlike `session.start`; the first start draws the party itself.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (e.source !== 'startup')
+      background(
+        $,
+        started.then(() => restore($)),
+      )
     return next(e)
   })
 

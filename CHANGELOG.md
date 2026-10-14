@@ -78,6 +78,7 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - Dusclops, Rhydon, Lampent, Eelektrik, Doublade, Piloswine, Seadra and 10 others no longer evolve twice in a row.
   They reached their stage above Lv 30 and then hit the old Lv 30 rule straight away.
 - Baby Pokémon (Pichu, Cleffa, Togepi...) no longer wait until Lv 30.
+- After `/clear` the party comes back above the prompt by itself. It used to stay hidden until the party changed.
 
 ### Known limitations
 
