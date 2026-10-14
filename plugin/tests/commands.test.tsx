@@ -1196,7 +1196,7 @@ test('twins walk as two: each keeps its own place when the party changes', async
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })] },
+    { ...emptySave(), party: [member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' }), member('pikachu')] },
     ART,
     undefined,
     net,
@@ -1204,10 +1204,19 @@ test('twins walk as two: each keeps its own place when the party changes', async
   await cmd($, 'pokemon', 'party')
   await mountBand($)
   await cmd($, 'pokemon-play', 'work')
-  // Far enough apart that the tick or two below (at most 0.6 columns each) can't bring them together.
-  await seen(w, () => apart(w.band.cells, 80, EEVEE, 6))
-  expect(await cmd($, 'pokemon', 'add pikachu')).toContain('Pikachu joined your party!')
-  await seen(w, () => (w.band.cells && colorsIn(w.band.cells).has(PIKACHU)) || null)
+  // The twins far enough apart that the tick or two below (at most 0.6 columns each) can't bring them together,
+  // and Pikachu clear of both, so neither twin is partly hidden behind it.
+  const isClear = (eevees: [number, number][]) => {
+    const [pikachu, ...more] = runsOf(w.band.cells, 80, PIKACHU)
+    return Boolean(pikachu && !more.length && eevees.every(([a, b]) => pikachu[1] < a || pikachu[0] > b))
+  }
+  await seen(w, () => {
+    const eevees = apart(w.band.cells, 80, EEVEE, 6)
+    return eevees && isClear(eevees) ? eevees : null
+  })
+  // Taking a walker away leaves nothing that could stand in front of a twin.
+  expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Pikachu went back to the wild.')
+  await seen(w, () => (w.band.cells && !colorsIn(w.band.cells).has(PIKACHU)) || null)
   // Keyed by species, both would now stand on the first one's spot: one run.
   expect(runsOf(w.band.cells, 80, EEVEE)).toHaveLength(2)
 })
