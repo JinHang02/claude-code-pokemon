@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START } from '../hooks/mart'
 import type { Act, MartProps, MartState } from '../hooks/mart'
-import { ICONS } from '../hooks/item-icons'
+import { BAG, ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
 import { shopRows, shopSize, walletLabel } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
@@ -27,16 +27,24 @@ const hitAt = (p: MartProps, s: MartState, a: unknown) =>
 const after = (p: MartProps, ...acts: Act[]) => acts.reduce<MartState>((s, a) => act(p, s, a).state, START)
 const left = Math.floor(80 * 0.44)
 
-test('every item has a picture of at most 12×12 pixels', () => {
+test('every item has a picture of at most 14×14 pixels', () => {
   for (const { id } of ITEMS) {
     const icon = ICONS[id]
     expect(icon).toBeDefined()
-    expect(icon!.width).toBeLessThanOrEqual(12)
-    expect(icon!.height).toBeLessThanOrEqual(12)
+    expect(icon!.width).toBeLessThanOrEqual(14)
+    expect(icon!.height).toBeLessThanOrEqual(14)
     expect(icon!.pixels).toHaveLength(icon!.width * icon!.height)
     for (const px of icon!.pixels)
       expect(px === CLEAR || (Number.isInteger(px) && px >= 0 && px <= 0xffffff)).toBe(true)
   }
+})
+
+// Items no sprite set draws, shown as the plain Bag: none today.
+const BAGGED: string[] = []
+
+test("every item's picture is its own sprite, not the plain Bag", () => {
+  const bagged = ITEMS.filter(({ id }) => JSON.stringify(ICONS[id]) === JSON.stringify(BAG)).map(i => i.id)
+  expect(bagged).toEqual(BAGGED)
 })
 
 test('every line is exactly the band wide, one per row; title, tabs, list, details, actions', () => {
@@ -55,18 +63,33 @@ test('every line is exactly the band wide, one per row; title, tabs, list, detai
   expect(drawn[6]?.slice(left)).toMatch(/^│ {2}◀ ×1 ▶ Max {2}Buy ₽3,000 +$/)
 })
 
-test("a band of 8 rows or more shows the item's picture left of the details; a shorter one the ◆", () => {
+test("a band of 9 rows or more shows the item's picture left of the details; a shorter one the ◆", () => {
   const icon = textRows(ICONS['fire-stone']!)
-  const tall = props({ rows: ICON_ROWS + 1, icon })
-  const drawn = martRows(tall, START).lines
+  expect(icon).toHaveLength(7)
+  const drawn = martRows(props({ rows: ICON_ROWS, icon }), START).lines
   expect(drawn).toHaveLength(9)
   for (const line of drawn) expect([...text(line)].length).toBe(80)
-  // The picture's own colours, in the 12 columns after `│ `.
-  const pictured = drawn.slice(2, 2 + icon.length).map(runs => text(runs).slice(left + 2, left + 14))
-  expect(pictured.some(row => /[▀▄]/.test(row))).toBe(true)
-  expect(text(drawn[2]!).slice(left + 14)).toMatch(/^ {2}Fire Stone · in bag: 0/)
-  expect(text(drawn[8]!).slice(left + 14)).toMatch(/^ {2}◀ ×1 ▶ Max {2}Buy ₽3,000/)
+  // The picture's own colours, in the 14 columns after `│ `, on every row under the tabs.
+  const pictured = drawn.slice(2).map(runs => text(runs).slice(left + 2, left + 16))
+  expect(pictured.filter(row => /[▀▄]/.test(row))).toHaveLength(7)
+  expect(text(drawn[2]!).slice(left + 16)).toMatch(/^ {2}Fire Stone · in bag: 0/)
+  expect(text(drawn[8]!).slice(left + 16)).toMatch(/^ {2}◀ ×1 ▶ Max {2}Buy ₽3,000/)
   expect(lines(props({ rows: ICON_ROWS - 1, icon }))[2]).toContain('◆ Fire Stone')
+  // A shorter picture fits a shorter band.
+  const flat = textRows(ICONS['dragon-scale']!)
+  expect(flat.length).toBeLessThanOrEqual(6)
+  expect(lines(props({ rows: ICON_ROWS - 1, icon: flat }))[2]).not.toContain('◆')
+})
+
+test('a band too narrow for the picture and the actions side by side shows the ◆, and Buy whole', () => {
+  const icon = textRows(ICONS['fire-stone']!)
+  const p = props({ rows: ICON_ROWS, columns: 60, icon })
+  const drawn = lines(p)
+  for (const line of drawn) expect([...line].length).toBe(60)
+  expect(drawn[2]).toContain('◆ Fire Stone')
+  expect(drawn.join('\n')).not.toMatch(/[▀▄]/)
+  expect(drawn[8]).toContain('Buy ₽3,000')
+  expect(hitAt(p, p.state, 'buy')).toBeDefined()
 })
 
 test('the description wraps to at most 3 lines, and a party line shows when an item would evolve one', () => {

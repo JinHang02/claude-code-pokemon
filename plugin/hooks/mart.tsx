@@ -47,9 +47,10 @@ export const KEYS: Record<string, Act> = {
   return: 'buy',
   x: 'close',
 }
-// Bands this tall show the item's picture; shorter ones a ◆.
-export const ICON_ROWS = 8
-const ICON_COLUMNS = 12
+// The item's picture: up to 14 columns by 7 rows, so a band this tall has room for any picture. It shows when the
+// band has its rows and the actions row still fits beside it; else a ◆.
+export const ICON_ROWS = 9
+const ICON_COLUMNS = 14
 
 // The same as items.ts' MAX_BAG: this module imports types only, so it keeps its own copy.
 const MAX_BAG = 999
@@ -186,10 +187,24 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   const left = Math.floor(p.columns * 0.44)
   const body = p.rows - 2
   const list = listRows(p)
-  // The details column: the picture (tall bands) or a ◆, then name, description, party line; actions last.
-  const icon = p.rows >= ICON_ROWS && p.icon ? p.icon : null
-  const textWidth = Math.max(1, p.columns - left - 1 - (icon ? ICON_COLUMNS + 2 : 0) - 2)
+  // The details column: the picture (when it fits) or a ◆, then name, description, party line; actions last.
   const have = item ? (p.bag[item.id] ?? 0) : 0
+  const canBuy = !!item && p.balance >= item.price * s.qty && have + s.qty <= MAX_BAG
+  const actions: [string, string, string, Act?][] = item
+    ? [
+        ['  ', INK, PAPER],
+        ['◀', BLUE, PAPER, 'less'],
+        [` ×${s.qty} `, INK, PAPER],
+        ['▶', BLUE, PAPER, 'more'],
+        [' ', INK, PAPER],
+        ['Max', BLUE, PAPER, 'max'],
+        ['  ', INK, PAPER],
+        [`Buy ₽${fmt(item.price * s.qty)}`, WHITE, canBuy ? RED : GREY, 'buy'],
+      ]
+    : []
+  const actionsWidth = actions.reduce((n, [t]) => n + width(t), 0)
+  const icon = p.icon && p.icon.length <= body && left + 2 + ICON_COLUMNS + actionsWidth <= p.columns ? p.icon : null
+  const textWidth = Math.max(1, p.columns - left - 1 - (icon ? ICON_COLUMNS + 2 : 0) - 2)
   const party = item?.party ? fit(`Your party: ${item.party}`, textWidth) : null
   const textRows = Math.max(1, Math.min(3, body - 2 - (party ? 1 : 0)))
   const details: TextRun[][] = item
@@ -236,15 +251,7 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
       r.pad(left + 2 + ICON_COLUMNS, PAPER)
     }
     if (isLast && item) {
-      r.put('  ', INK, PAPER)
-      r.put('◀', BLUE, PAPER, 'less')
-      r.put(` ×${s.qty} `, INK, PAPER)
-      r.put('▶', BLUE, PAPER, 'more')
-      r.put(' ', INK, PAPER)
-      r.put('Max', BLUE, PAPER, 'max')
-      r.put('  ', INK, PAPER)
-      const canBuy = p.balance >= item.price * s.qty && have + s.qty <= MAX_BAG
-      r.put(`Buy ₽${fmt(item.price * s.qty)}`, WHITE, canBuy ? RED : GREY, 'buy')
+      for (const [t, fg, bg, a] of actions) r.put(t, fg, bg, a)
     } else for (const [t, fg, bg] of details[i] ?? []) r.put(t, fg, bg)
     r.pad(p.columns, PAPER)
     lines.push(r.runs)

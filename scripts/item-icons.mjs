@@ -1,15 +1,33 @@
 #!/usr/bin/env node
-// Writes plugin/hooks/item-icons.ts: a picture of every item in plugin/hooks/items.ts, at most 12×12 pixels, from
-// PokeAPI's item sprites, else Pokémon Showdown's item sheet, else a plain Bag. Run when items.ts changes:
+// Writes plugin/hooks/item-icons.ts: a picture of every item in plugin/hooks/items.ts, at most 14×14 pixels, from
+// PokeAPI's item sprites, else the sprite named in OTHER, else a plain Bag (which a test then refuses). Run when
+// items.ts changes:
 //   node scripts/item-icons.mjs
 import { readFile, writeFile } from 'node:fs/promises'
 import { inflateSync } from 'node:zlib'
 
 const POKEAPI = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items'
-const SHOWDOWN = 'https://play.pokemonshowdown.com'
-const SIZE = 12
-const CELL = 24
-const PER_ROW = 16
+// Items PokeAPI has no sprite for. PokéSprite (MIT; https://github.com/msikma/pokesprite) draws the Galar ones;
+// PokeRogue's assets (https://github.com/pagefaultgames/pokerogue-assets) the rest, which no other pixel-art set has:
+// Bulbapedia's and Serebii's are scaled 3D renders. Both pinned to a commit.
+const POKESPRITE = 'https://raw.githubusercontent.com/msikma/pokesprite/c5aaa610ff2acdf7fd8e2dccd181bca8be9fcb3e/items'
+const POKEROGUE =
+  'https://raw.githubusercontent.com/pagefaultgames/pokerogue-assets/325c7de68e6c323e12243271ea510c6b0e1b992e/images/items'
+const OTHER = {
+  'strawberry-sweet': `${POKESPRITE}/evo-item/strawberry-sweet.png`,
+  'tart-apple': `${POKESPRITE}/evo-item/tart-apple.png`,
+  'sweet-apple': `${POKESPRITE}/evo-item/sweet-apple.png`,
+  'cracked-pot': `${POKESPRITE}/evo-item/cracked-pot.png`,
+  'chipped-pot': `${POKESPRITE}/evo-item/chipped-pot.png`,
+  'galarica-cuff': `${POKESPRITE}/evo-item/galarica-cuff.png`,
+  'galarica-wreath': `${POKESPRITE}/evo-item/galarica-wreath.png`,
+  'linking-cord': `${POKEROGUE}/linking_cord.png`,
+  'black-augurite': `${POKEROGUE}/black_augurite.png`,
+  'peat-block': `${POKEROGUE}/peat_block.png`,
+  'scroll-of-darkness': `${POKEROGUE}/scroll_of_darkness.png`,
+  'scroll-of-waters': `${POKEROGUE}/scroll_of_waters.png`,
+}
+const SIZE = 14
 const CLEAR = -1
 const deadline = Date.now() + 5 * 60_000
 
@@ -87,49 +105,89 @@ function decodePng(buf) {
   return { width, height, rgba }
 }
 
-const crop = (img, x0, y0, w, h) => {
-  const rgba = new Uint8Array(w * h * 4)
-  for (let y = 0; y < h; y++)
-    rgba.set(img.rgba.subarray(((y0 + y) * img.width + x0) * 4, ((y0 + y) * img.width + x0 + w) * 4), y * w * 4)
-  return { width: w, height: h, rgba }
-}
-
-const isSolid = (img, x, y) => img.rgba[(y * img.width + x) * 4 + 3] >= 128
-
-// The image cut to its opaque pixels, or null when it has none.
+// The opaque part of the image as pixels (0xRRGGBB, CLEAR), or null when it has none.
 function trim(img) {
+  const isSolid = (x, y) => img.rgba[(y * img.width + x) * 4 + 3] >= 128
   let [x0, y0, x1, y1] = [img.width, img.height, -1, -1]
   for (let y = 0; y < img.height; y++)
     for (let x = 0; x < img.width; x++)
-      if (isSolid(img, x, y)) [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)]
-  return x1 < 0 ? null : crop(img, x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+      if (isSolid(x, y)) [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)]
+  if (x1 < 0) return null
+  const pixels = []
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * img.width + x) * 4
+      pixels.push(isSolid(x, y) ? (img.rgba[i] << 16) | (img.rgba[i + 1] << 8) | img.rgba[i + 2] : CLEAR)
+    }
+  return { width: x1 - x0 + 1, height: y1 - y0 + 1, pixels }
 }
 
-// Pixels (0xRRGGBB, CLEAR) scaled down to fit SIZE×SIZE: each one the average of the opaque pixels it covers, clear
-// when fewer than half are opaque.
-function toPixels(img) {
+const rgb = c => [(c >> 16) & 255, (c >> 8) & 255, c & 255]
+const luma = c => {
+  const [r, g, b] = rgb(c)
+  return 0.299 * r + 0.587 * g + 0.114 * b
+}
+const distance = (a, b) => rgb(a).reduce((sum, v, i) => sum + (v - rgb(b)[i]) ** 2, 0)
+const SIDES = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+]
+
+// Pixel art shrunk to fit SIZE×SIZE without blurring it. Each target pixel covers a block of source pixels (2×2 at
+// exactly half size, else 1 or 2 a side) and takes the block's most common colour, ties going to the colour nearest
+// the block's average, so no new in-between colour appears. A block is clear when less than half of it is opaque.
+// Along the picture's edge, a block that holds some of the source's outline takes its darkest outline pixel, so the
+// outline stays whole on the Mart's pale paper.
+function shrink(img) {
   const f = Math.min(1, SIZE / Math.max(img.width, img.height))
   const width = Math.max(1, Math.round(img.width * f))
   const height = Math.max(1, Math.round(img.height * f))
-  const pixels = []
-  for (let ty = 0; ty < height; ty++)
-    for (let tx = 0; tx < width; tx++) {
-      const [sx0, sx1] = [Math.floor((tx * img.width) / width), Math.ceil(((tx + 1) * img.width) / width)]
-      const [sy0, sy1] = [Math.floor((ty * img.height) / height), Math.ceil(((ty + 1) * img.height) / height)]
-      let [r, g, b, n, all] = [0, 0, 0, 0, 0]
-      for (let y = sy0; y < sy1; y++)
-        for (let x = sx0; x < sx1; x++) {
-          all++
-          if (!isSolid(img, x, y)) continue
-          const i = (y * img.width + x) * 4
-          ;[r, g, b, n] = [r + img.rgba[i], g + img.rgba[i + 1], b + img.rgba[i + 2], n + 1]
+  const at = (x, y) => (x >= 0 && y >= 0 && x < img.width && y < img.height ? img.pixels[y * img.width + x] : CLEAR)
+  const isOutline = (x, y) => at(x, y) !== CLEAR && SIDES.some(([dx, dy]) => at(x + dx, y + dy) === CLEAR)
+  // Source columns (or rows) [from, to) for each target one, the shorter side centred in blocks as big as the longer's.
+  const k = Math.max(img.width / width, img.height / height)
+  const spans = (n, t) => {
+    const pad = Math.round(t * k) - n
+    const edge = i => Math.round((i * (n + pad)) / t) - Math.floor(pad / 2)
+    return Array.from({ length: t }, (_, i) => [edge(i), edge(i + 1)])
+  }
+  const [xs, ys] = [spans(img.width, width), spans(img.height, height)]
+  const blocks = []
+  for (const [y0, y1] of ys)
+    for (const [x0, x1] of xs) {
+      const colors = []
+      const outline = []
+      for (let y = y0; y < y1; y++)
+        for (let x = x0; x < x1; x++) {
+          if (at(x, y) === CLEAR) continue
+          colors.push(at(x, y))
+          if (isOutline(x, y)) outline.push(at(x, y))
         }
-      pixels.push(n * 2 < all ? CLEAR : (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n))
+      blocks.push({ colors, outline, isSolid: colors.length > 0 && colors.length * 2 >= (x1 - x0) * (y1 - y0) })
     }
+  const isSolid = (x, y) => x >= 0 && y >= 0 && x < width && y < height && blocks[y * width + x].isSolid
+  const pixels = blocks.map(({ colors, outline, isSolid: solid }, i) => {
+    if (!solid) return CLEAR
+    const [x, y] = [i % width, Math.floor(i / width)]
+    if (outline.length && SIDES.some(([dx, dy]) => !isSolid(x + dx, y + dy)))
+      return outline.reduce((a, c) => (luma(c) < luma(a) ? c : a))
+    const counts = new Map()
+    for (const c of colors) counts.set(c, (counts.get(c) ?? 0) + 1)
+    const most = Math.max(...counts.values())
+    const sum = colors.map(rgb).reduce((a, c) => a.map((v, j) => v + c[j]), [0, 0, 0])
+    const [r, g, b] = sum.map(v => Math.round(v / colors.length))
+    const average = (r << 16) | (g << 8) | b
+    return [...counts]
+      .filter(([, n]) => n === most)
+      .map(([c]) => c)
+      .reduce((a, c) => (distance(c, average) < distance(a, average) ? c : a))
+  })
   return { width, height, pixels }
 }
 
-// The plain Bag for items neither source draws.
+// The plain Bag for an item no source draws (a test fails on it).
 const BAG_ART = [
   '...dddd...',
   '..d....d..',
@@ -153,32 +211,23 @@ const BAG = {
 const ids = [
   ...(await readFile(new URL('../plugin/hooks/items.ts', import.meta.url), 'utf8')).matchAll(/id: '([a-z-]+)'/g),
 ].map(m => m[1])
-const items = (await get(`${SHOWDOWN}/data/items.js`))?.toString('utf8') ?? ''
-const sheetPng = await get(`${SHOWDOWN}/sprites/itemicons-sheet.png`)
-const sheet = sheetPng && decodePng(sheetPng)
-const icons = {}
-const from = { pokeapi: [], showdown: [], bag: [] }
+const icons = []
+const bagged = []
 for (const id of ids) {
-  const png = await get(`${POKEAPI}/${id}.png`)
-  let img = png && trim(decodePng(png))
-  let source = 'pokeapi'
-  if (!img && sheet) {
-    const num = new RegExp(`[{,]${id.replace(/-/g, '')}:\\{name:"[^"]*",spritenum:(\\d+)`).exec(items)?.[1]
-    if (num !== undefined) {
-      const n = Number(num)
-      img = trim(crop(sheet, (n % PER_ROW) * CELL, Math.floor(n / PER_ROW) * CELL, CELL, CELL))
-      source = 'showdown'
-    }
-  }
-  icons[id] = img ? toPixels(img) : BAG
-  from[img ? source : 'bag'].push(id)
+  const url = OTHER[id] ?? `${POKEAPI}/${id}.png`
+  const png = await get(url)
+  const img = png && trim(decodePng(png))
+  if (!img) bagged.push(id)
+  icons.push({ id, url: img ? url : 'none: the plain Bag', ...(img ? shrink(img) : BAG) })
 }
-const body = Object.entries(icons)
-  .map(([id, p]) => `  '${id}': { width: ${p.width}, height: ${p.height}, pixels: [${p.pixels.join(',')}] },`)
-  .join('\n')
+const line = p => `{ width: ${p.width}, height: ${p.height}, pixels: [${p.pixels.join(',')}] }`
+const body = icons.map(({ id, url, ...p }) => `  // ${url}\n  '${id}': ${line(p)},`).join('\n')
 await writeFile(
   new URL('../plugin/hooks/item-icons.ts', import.meta.url),
   `// Generated by scripts/item-icons.mjs: don't edit by hand.\nimport type { Pixels } from './sprite'\n\n` +
+    `// The picture for an item no source draws.\nexport const BAG: Pixels = ${line(BAG)}\n\n` +
     `export const ICONS: Record<string, Pixels> = {\n${body}\n}\n`,
 )
-for (const [source, list] of Object.entries(from)) console.log(`${source}: ${list.length} ${list.join(' ')}`)
+console.log(
+  `${ids.length - bagged.length} drawn, ${bagged.length} the plain Bag${bagged.length ? `: ${bagged.join(' ')}` : ''}`,
+)
