@@ -57,6 +57,8 @@ export function weightOf(species: string, form: string, where: Where, forms?: st
   if (!isWildForm(species, form)) return 0
   const info = SPECIES[species]
   const others = (forms ?? Object.keys(info?.forms ?? {})).filter(f => f !== 'regular' && isWildForm(species, f))
+  // A form the caller's list doesn't offer can't be drawn (and would divide by zero below).
+  if (form !== 'regular' && !others.includes(form)) return 0
   const share = form === 'regular' ? (others.length ? 1 - FORM_SHARE : 1) : FORM_SHARE / others.length
   const types = typesOf(species, form)
   const place = types.some(t => PLACE[where.landscape].includes(t)) ? 4 : 1

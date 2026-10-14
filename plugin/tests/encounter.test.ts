@@ -64,6 +64,39 @@ test('rarity, stage, place, time and novelty multiply', () => {
   expect(weightOf('charizard', 'mega-x', meadowDay)).toBe(0)
 })
 
+test('stage, baby, dusk Ghost, mythical and form-share weights, each on its own', () => {
+  // Lake at dusk fits none of these types by place, and every species is marked seen, so only the factor under test is left.
+  const everSeen = Object.fromEntries(
+    ['ivysaur', 'venusaur', 'tyrogue', 'gastly', 'mew', 'mewtwo', 'vulpix'].map(n => [
+      n,
+      { seen: 1, shiny: 0, first: 0 },
+    ]),
+  )
+  const lakeDusk = at('lake', 'dusk', everSeen)
+  const lakeDay = at('lake', 'day', everSeen)
+  const near = (a: number, b: number) => expect(Math.abs(a - b) < 1e-9, `${a} vs ${b}`).toBe(true)
+  near(weightOf('ivysaur', 'regular', lakeDusk), (45 / 255) * 0.6)
+  near(weightOf('venusaur', 'regular', lakeDusk), (45 / 255) * 0.35)
+  near(weightOf('tyrogue', 'regular', lakeDusk), (75 / 255) * 0.3)
+  near(weightOf('gastly', 'regular', lakeDusk), (190 / 255) * 1.5)
+  near(weightOf('gastly', 'regular', lakeDay), 190 / 255)
+  // Inside the rare pool a mythical counts half a legendary.
+  near(weightOf('mew', 'regular', lakeDay), 0.5)
+  near(weightOf('mewtwo', 'regular', lakeDay), 1)
+  // A species with an eligible alternate form keeps 7/8 for its regular one.
+  near(weightOf('vulpix', 'regular', lakeDusk), (190 / 255) * (7 / 8))
+})
+
+test('a form the species list does not offer has no weight, and the regular form then keeps the whole share', () => {
+  const where = at('mountains', 'day')
+  expect(weightOf('vulpix', 'alola', where, ['regular'])).toBe(0)
+  expect(weightOf('vulpix', 'alola', where, ['regular', 'alola'])).toBeGreaterThan(0)
+  const alone = weightOf('vulpix', 'regular', at('lake', 'dusk', { vulpix: { seen: 1, shiny: 0, first: 0 } }), [
+    'regular',
+  ])
+  expect(Math.abs(alone - 190 / 255) < 1e-9).toBe(true)
+})
+
 test('about 1% of wild Pokémon are legendary, mythical or Ultra Beasts', { timeoutMs: 60_000 }, () => {
   const rand = seeded(1)
   const where = at('meadow', 'day')
