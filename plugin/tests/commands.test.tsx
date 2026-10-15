@@ -2676,6 +2676,40 @@ test('releasing the lead: the next one leads, and the band redraws without it', 
   })
 })
 
+test('releasing a party member while a wild Pokémon is out: it stays out and can still be caught', async ($, on) => {
+  const EEVEE = '#0a0b0c'
+  const net = throwNet()
+  net.sprites = { ...net.sprites, eevee: solid('10;11;12', 6) }
+  const w = await begin(
+    $,
+    on,
+    {
+      ...emptySave(),
+      party: [member('pikachu', { next: [lv('raichu', 30)] }), member('eevee', { id: 'e', next: [] })],
+    },
+    TALL,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  const aim = (await mountBand($ as never)) as Aim
+  await cmd($, 'pokemon-play', 'day')
+  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/^A wild .+ wanders by\.$/)
+  // While aiming the band is the click layer's text: the colours its cells are drawn in.
+  const colors = async () => new Set((await aimLines(aim))?.flat().flatMap(([, fg, bg]) => [fg, bg]))
+  await seenIn(w, aim, '#00ffff')
+  expect((await colors()).has(EEVEE)).toBe(true)
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+  // The band redraws without Eevee, the visitor still in it.
+  for (let i = 0; i < 200 && (await colors()).has(EEVEE); i++) await w.clock.advance(50)
+  expect((await colors()).has(EEVEE)).toBe(false)
+  const cell = await seenIn(w, aim, '#00ffff')
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'caterpie'])
+  expect(w.toasts.filter(t => t.startsWith('Pokémon:'))).toEqual([])
+})
+
 const PIKACHU = 0x040506
 const CHARMANDER = 0x010203
 const CHARMELEON = 0x070809
