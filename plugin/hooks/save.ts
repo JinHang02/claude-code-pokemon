@@ -371,12 +371,15 @@ export function putInBag(save: Save, id: string): Save | null {
   return have >= MAX_BAG ? null : { ...save, bag: { ...save.bag, [id]: have + 1 } }
 }
 
-// The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named). An Everstone is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps
-// the member; its time together goes at the next beat.
+// The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named).
+// The text names its level (`levelOf`, as the party stands) and where it was, so a misfire shows at once. An Everstone
+// is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps the member; its time
+// together goes at the next beat.
 export function releaseMember(
   save: Save,
   spot: { place: 'party' | 'box'; at: number },
   query: string,
+  levelOf = (m: Member) => level(m.xp),
 ): { save: Save; text: string } | string {
   const isParty = spot.place === 'party'
   const m = isParty ? save.party[spot.at] : save.box?.[spot.at]
@@ -390,7 +393,7 @@ export function releaseMember(
   const back = item ? ` Its ${itemName(item)} went back to the Bag.` : ''
   return {
     save: { ...rest, party: save.party.filter((_, i) => !isParty || i !== spot.at), ...(box.length ? { box } : {}) },
-    text: `Bye bye, ${displayName(m.species, m.form)}! It went back to the wild.${back}`,
+    text: `Bye bye, ${displayName(m.species, m.form)} (Lv ${levelOf(m)}, ${isParty ? 'party' : 'PC box'})! It went back to the wild.${back}`,
   }
 }
 

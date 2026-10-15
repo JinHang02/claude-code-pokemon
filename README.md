@@ -199,8 +199,8 @@ catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly e
 
 Catches join your party, twin or not, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>`
 brings one out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the
-box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, Eevee! It went back
-to the wild."_ Whatever it held goes back to your Bag.
+box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, Eevee (Lv 16, party)!
+It went back to the wild."_ Whatever it held goes back to your Bag.
 
 Two of a kind? Any command that names one asks which, and you add the number:
 
@@ -208,7 +208,7 @@ Two of a kind? Any command that names one asks which, and you add the number:
 /pokemon release eevee
 Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2
 /pokemon release eevee 2
-Bye bye, Eevee! It went back to the wild.
+Bye bye, Eevee (Lv 3, PC box)! It went back to the wild.
 ```
 
 ---

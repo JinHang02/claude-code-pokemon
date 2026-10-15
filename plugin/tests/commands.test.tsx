@@ -50,11 +50,13 @@ test('party: add up to three, twins too, remove any but the last', async ($, on)
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'eevee'])
   // Twins: which one, then the one the number picks.
   expect(await cmd($, 'pokemon', 'remove eevee')).toContain('Which Eevee?')
-  expect(await cmd($, 'pokemon', 'remove eevee 1')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'remove eevee 1')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
   expect(w.saveNow().party.map(m => m.id)).toEqual([lead?.id, second?.id])
   expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr Mime (Galar) joined your party!')
-  expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
-  expect(await cmd($, 'pokemon', 'release mr mime')).toBe('Bye bye, Mr Mime (Galar)! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release mr mime')).toBe(
+    'Bye bye, Mr Mime (Galar) (Lv 1, party)! It went back to the wild.',
+  )
   expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Pick a new lead first.')
   expect(await cmd($, 'pokemon', 'remove vaporeon')).toContain('No vaporeon in your party')
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
@@ -703,7 +705,7 @@ test('remove names the right one of two forms; leading again records no new sigh
     ...emptySave(),
     party: [member('vulpix', { form: 'alola', xp: 900 }), member('pikachu'), member('vulpix')],
   })
-  expect(await cmd($, 'pokemon', 'remove vulpix')).toBe('Bye bye, Vulpix! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'remove vulpix')).toBe('Bye bye, Vulpix (Lv 1, party)! It went back to the wild.')
   expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['vulpix:alola', 'pikachu:regular'])
   expect(await cmd($, 'pokemon', 'shiny pikachu')).toBe('Pikachu leads the party again (Lv 1).')
   expect(w.saveNow().dex).toEqual({})
@@ -1305,7 +1307,7 @@ test('twins walk as two: each keeps its own place when the party changes', async
     return eevees && isClear(eevees) ? eevees : null
   })
   // Taking a walker away leaves nothing that could stand in front of a twin.
-  expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Bye bye, Pikachu! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Bye bye, Pikachu (Lv 1, party)! It went back to the wild.')
   await seen(w, () => (w.band.cells && !colorsIn(w.band.cells).has(PIKACHU)) || null)
   // Keyed by species, both would now stand on the first one's spot: one run.
   expect(runsOf(w.band.cells, 80, EEVEE)).toHaveLength(2)
@@ -1996,7 +1998,7 @@ test('a member keeps its time together through evolution, deposit and withdraw; 
   await w.clock.advance(120_000)
   expect(w.togetherNow().c).toBe(5 * 3_600_000)
   expect(await cmd($, 'pokemon', 'box')).toContain('together 5h')
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
   expect(await cmd($, 'pokemon', 'party')).not.toContain('Eevee')
   expect([...w.saveNow().party, ...(w.saveNow().box ?? [])].some(m => m.id === 'e')).toBe(false)
   await cmd($, 'pokemon', 'add charmeleon')
@@ -2594,7 +2596,7 @@ test('release from the PC box: bye bye, its item back to the Bag, the Pokédex k
   })
   const dex = w.saveNow().dex
   expect(await cmd($, 'pokemon', 'release eevee')).toBe(
-    'Bye bye, Eevee! It went back to the wild. Its Fire Stone went back to the Bag.',
+    'Bye bye, Eevee (Lv 1, PC box)! It went back to the wild. Its Fire Stone went back to the Bag.',
   )
   expect(w.saveNow().box ?? []).toEqual([])
   expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
@@ -2610,7 +2612,7 @@ test('release from the party: a held Everstone is dropped, never Bagged; the onl
     party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e', heldItem: 'everstone' })],
     box: [member('charmander', { id: 'c' })],
   })
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
   expect(w.saveNow().bag).toBeUndefined()
   const before = w.saveNow()
   expect(await cmd($, 'pokemon', 'release pikachu')).toBe('Pick a new lead first.')
@@ -2640,7 +2642,7 @@ test('twins: release asks which one; the number releases that one', async ($, on
     'Which Eevee? 1. Eevee Lv 1 (party) · 2. Eevee ♂ Lv 1 (PC box) — add the number: /pokemon release eevee 2',
   )
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['e2'])
-  expect(await cmd($, 'pokemon', 'release eevee 2')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release eevee 2')).toBe('Bye bye, Eevee (Lv 1, PC box)! It went back to the wild.')
   expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1'])
   expect(w.saveNow().box ?? []).toEqual([])
 })
@@ -2665,7 +2667,7 @@ test('releasing the lead: the next one leads, and the band redraws without it', 
   await cmd($, 'pokemon', 'party')
   await mountBand($)
   await seen(w, () => (w.band.cells && colorsIn(w.band.cells).has(EEVEE)) || null)
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
   expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
   expect(await cmd($, 'pokemon', 'party')).toContain('Lead  Pikachu')
   await seen(w, () => {
@@ -2754,7 +2756,7 @@ test(
       $,
       on,
       'release pikachu',
-      'Bye bye, Pikachu! It went back to the wild.',
+      'Bye bye, Pikachu (Lv 2, party)! It went back to the wild.',
     )
     expect(w.saveNow().party.map(m => m.id)).toEqual(['c', 'e'])
     // Every frame once Pikachu is gone: Eevee as itself; the evolving one still animating, ending as Charmeleon.
@@ -2787,7 +2789,7 @@ test(
       $,
       on,
       'release charmeleon',
-      'Bye bye, Charmeleon! It went back to the wild.',
+      'Bye bye, Charmeleon (Lv 16, party)! It went back to the wild.',
     )
     const gone = frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER))
     const after = frames.slice(gone)

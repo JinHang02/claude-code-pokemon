@@ -442,25 +442,25 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
   )
 })
 
-test('a release: from the party or the PC box, its held item back to the Bag, the Pokédex kept', () => {
-  const eevee: Member = { ...pikachu, id: 'e1', species: 'eevee', heldItem: 'fire-stone' }
+test('a release: from the party or the PC box, named with its level and place, its held item back to the Bag, the Pokédex kept', () => {
+  const eevee: Member = { ...pikachu, id: 'e1', species: 'eevee', heldItem: 'fire-stone', xp: 400 }
   const dex = { pikachu: { seen: 1, shiny: 0, first: 1 }, eevee: { seen: 2, shiny: 0, first: 2, caught: 1 } }
   const s = loadSave({ party: [pikachu], box: [eevee], dex })
   const boxed = releaseMember(s, { place: 'box', at: 0 }, 'eevee')
   expect(boxed).toEqual({
     save: { ...s, box: undefined, bag: { 'fire-stone': 1 } },
-    text: 'Bye bye, Eevee! It went back to the wild. Its Fire Stone went back to the Bag.',
+    text: 'Bye bye, Eevee (Lv 11, PC box)! It went back to the wild. Its Fire Stone went back to the Bag.',
   })
-  // The lead: the next one leads. Nothing held: no Bag line.
+  // The lead: the next one leads. Nothing held: no Bag line. Its level as the party stands, XP not yet saved too.
   const two = loadSave({ party: [{ ...eevee, heldItem: undefined }, pikachu] })
-  const led = releaseMember(two, { place: 'party', at: 0 }, 'eevee')
+  const led = releaseMember(two, { place: 'party', at: 0 }, 'eevee', m => level(m.xp + 2116 - 400))
   expect(typeof led === 'object' && led.save.party).toEqual([pikachu])
-  expect(typeof led === 'object' && led.text).toBe('Bye bye, Eevee! It went back to the wild.')
+  expect(typeof led === 'object' && led.text).toBe('Bye bye, Eevee (Lv 24, party)! It went back to the wild.')
   // An Everstone is free and never in the Bag: dropped, as a take drops it.
   const held = loadSave({ party: [pikachu, { ...eevee, heldItem: 'everstone' }], bag: { 'fire-stone': 999 } })
   expect(releaseMember(held, { place: 'party', at: 1 }, 'eevee')).toEqual({
     save: { ...held, party: [pikachu] },
-    text: 'Bye bye, Eevee! It went back to the wild.',
+    text: 'Bye bye, Eevee (Lv 11, party)! It went back to the wild.',
   })
   // The only party member stays, whatever the box holds; a Bag already full of its item keeps it.
   expect(releaseMember(s, { place: 'party', at: 0 }, 'pikachu')).toBe('Pick a new lead first.')

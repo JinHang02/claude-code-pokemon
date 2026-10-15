@@ -658,7 +658,7 @@ async function releaseOne($: EngineInterface, query: string, command: string): P
   let isPartyChanged = false
   await mutate($, s => {
     const spot = pickIn(s, query, ['party', 'box'], `${command} `)
-    const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query)
+    const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query, m => level(m.xp + (extra[m.id] ?? 0)))
     if (typeof done === 'string') {
       text = done
       return s

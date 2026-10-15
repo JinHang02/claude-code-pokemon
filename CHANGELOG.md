@@ -43,7 +43,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 ### Added: release from the PC box
 
 - `/pokemon release <name> [n]` (or `remove`) works on the party and the PC box, with no confirmation:
-  _"Bye bye, Eevee! It went back to the wild."_
+  _"Bye bye, Eevee (Lv 16, party)! It went back to the wild."_ It names the level and where it was, so a slip shows
+  at once.
 - A held item goes back to the Bag. The free Everstone goes with the Pokémon (`/pokemon everstone` gives another).
   When the Bag already holds 999 of that item, the release is refused: "Your Bag can't hold another Fire Stone (999
   already). Use one first."
