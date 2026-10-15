@@ -34,16 +34,26 @@ const NOT_WILD_FORM = [
   /^starter$/,
   /^(hisui-)?noble$/,
   /^(shadow|ice)-rider$/,
+  // Event and gift forms: Spiky-eared Pichu, Dada Zarude, Fancy and Poké Ball Vivillon.
+  /^(spiky-eared|dada|fancy|poke-ball)$/,
 ]
-const NOT_WILD_PAIR = new Set(['necrozma:dawn', 'necrozma:dusk', 'kyurem:black', 'kyurem:white', 'lugia:shadow']) // Shadow Lugia (XD) is Psychic/Dark, which PokeAPI lacks
+// Shadow Lugia (XD) is Psychic/Dark, which PokeAPI lacks; Original Color Magearna is a gift.
+const NOT_WILD_PAIR = new Set([
+  'necrozma:dawn',
+  'necrozma:dusk',
+  'kyurem:black',
+  'kyurem:white',
+  'lugia:shadow',
+  'magearna:original',
+])
 // Forms PokeAPI has no entry for whose types match the regular form's.
 // Alcremie's sweets, Minior's gen7 colours, Spinda and Marshadow's gen7 share the regular types.
 const KNOWN_SAME_TYPES = pair =>
   /^alcremie:/.test(pair) ||
   /^minior:.*-gen7$/.test(pair) ||
   ['marshadow:gen7', 'spinda:blank', 'spinda:filled'].includes(pair)
-// Arceus and Silvally alternates are type forms, never wild.
-const ALL_FORMS_NOT_WILD = new Set(['arceus', 'silvally'])
+// Arceus and Silvally alternates are type forms, Furfrou's are trims from a groomer: never wild.
+const ALL_FORMS_NOT_WILD = new Set(['arceus', 'silvally', 'furfrou'])
 
 // Resolves to null on a 404; retries anything else.
 async function get(url) {

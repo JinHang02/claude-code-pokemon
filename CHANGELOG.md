@@ -56,7 +56,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 - A wild Pokémon is never a Mega, Gigantamax, Primal or other battle-only form (Zen Darmanitan, Ash-Greninja,
   Crowned Zacian...), a costume (Cosplay Pikachu, Pikachu in a cap), a Let's Go partner, a Hisuian noble, Shadow
-  Lugia, or an Arceus or Silvally type. `/pokemon <name>` and `/pokemon-play wild <name>` still bring any of them.
+  Lugia, an Arceus or Silvally type, a gift or event form (Spiky-eared Pichu, Dada Zarude, Original Color Magearna,
+  Fancy and Poké Ball Vivillon, Eternal Floette) or a Furfrou trim. `/pokemon <name>` and `/pokemon-play wild <name>` still bring any of them.
 - Plain `/pokemon release` (or `remove`) asks "Which one? /pokemon release <name>". It used to release a random
   member.
 - `/pokemon vulpix` with only an Alolan Vulpix of yours makes that one lead. It used to catch a plain Vulpix.

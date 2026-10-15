@@ -146,7 +146,7 @@ Who comes depends on **where and when you are**, as in the games. A Pidgey turns
 | Legendary, mythical, Ultra Beast | about 1 in 100                                     |
 | Never seen yet                   | ×2.5                                               |
 
-A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but anyone can still wander anywhere. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only or costume form: those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
+A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but anyone can still wander anywhere. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only, costume, gift or event form, or a Furfrou trim: those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
 
 ```text
 /pokedex

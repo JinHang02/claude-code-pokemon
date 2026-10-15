@@ -25,6 +25,8 @@ const NOT_WILD_FORM = [
   /^starter$/,
   /^(hisui-)?noble$/,
   /^(shadow|ice)-rider$/,
+  // Event and gift forms: Spiky-eared Pichu, Dada Zarude, Fancy and Poké Ball Vivillon.
+  /^(spiky-eared|dada|fancy|poke-ball)$/,
 ]
 
 const PLACE: Record<Landscape, string[]> = {

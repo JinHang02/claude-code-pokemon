@@ -29,6 +29,32 @@ test('no Mega, Gigantamax, Primal or costume form is wild', () => {
   expect(wild('meloetta', 'pirouette')).toBe(false)
 })
 
+test('no gift, event or grooming form is wild: those come only by name', () => {
+  const wild = (n: string, f: string) => SPECIES[n]?.forms[f]?.isWild
+  for (const [n, f] of [
+    ['pichu', 'spiky-eared'],
+    ['zarude', 'dada'],
+    ['magearna', 'original'],
+    ['vivillon', 'fancy'],
+    ['vivillon', 'poke-ball'],
+    ['greninja', 'ash'],
+    ['floette', 'eternal'],
+    ['eevee', 'starter'],
+    ['pikachu', 'partner-cap'],
+  ])
+    expect([n, f, wild(n ?? '', f ?? '')]).toEqual([n, f, false])
+  const trims = Object.keys(SPECIES.furfrou?.forms ?? {})
+  expect(trims).toHaveLength(9)
+  for (const f of trims) expect([f, wild('furfrou', f)]).toEqual([f, false])
+  // Their natural kin still turn up.
+  expect(wild('vivillon', 'garden')).toBe(true)
+  expect(wild('floette', 'blue')).toBe(true)
+  expect(isWildForm('furfrou', 'regular')).toBe(true)
+  // A newer sprite list's event form, not in the table yet, isn't wild either.
+  expect(isWildForm('pichu', 'spiky-eared')).toBe(false)
+  expect(isWildForm('newmon', 'dada')).toBe(false)
+})
+
 test('tiers, babies and stages', () => {
   expect(SPECIES.mewtwo?.tier).toBe('legendary')
   expect(SPECIES.mew?.tier).toBe('mythical')
