@@ -830,6 +830,32 @@
             <button type="button" role="tab" data-phase="night" aria-selected="false">Night</button>
           </div>
           <div class="scenes" role="tabpanel" aria-live="polite"></div>
+          <div class="levels shelves">
+            <div>
+              <h3>Who wanders by</h3>
+              <p>
+                Every 10 to 20 minutes a wild Pokémon steps out of the tall grass, and who it is depends on where and
+                when you are. A Pidgey turns up all the time, a Dratini now and then, a legendary about once in 100
+                visits, and a Pokémon you've never seen is 2.5 times as likely. A fitting place makes a type 4 times as
+                likely and a fitting hour twice, but anyone can still wander anywhere.
+              </p>
+              <p>
+                Click it to throw a Poké Ball. Catches join your party, twins welcome, or your PC box when it's full.
+              </p>
+            </div>
+            <div>
+              <h3>Where and when</h3>
+              <ul class="ways">
+                <li>by the lake: Water, Ice, Flying, Bug</li>
+                <li>in the mountains: Rock, Ground, Steel, Ice, Dragon, Fighting, Flying</li>
+                <li>on the hills: Ground, Normal, Fighting, Fire, Rock, Flying</li>
+                <li>at the forest's edge: Bug, Grass, Poison, Fairy, Normal, Dark</li>
+                <li>in the meadow: Normal, Grass, Bug, Electric, Fairy, Flying</li>
+                <li>at night: Ghost, Dark, Poison, Psychic, Fairy; by day: Fire, Grass, Bug, Normal</li>
+                <li>at dawn: Flying, Psychic; at dusk: Flying, Psychic, Ghost</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -842,8 +868,21 @@
               <code>/pokemon &lt;name&gt;</code
               ><span>Pick your lead, spelled exactly: <code>shiny gengar</code>, <code>galarian mr mime</code></span>
             </li>
-            <li><code>/pokemon add [name]</code><span>Grow your party to three; no name catches a random one</span></li>
-            <li><code>/pokemon remove [name]</code><span>Release one; with no name, never your lead</span></li>
+            <li>
+              <code>/pokemon add [name]</code
+              ><span>Grow your party to three, twins welcome; no name catches a random one</span>
+            </li>
+            <li>
+              <code>/pokemon release &lt;name&gt; [n]</code
+              ><span>Set one free, from the party or the PC box; what it held goes back to your Bag</span>
+            </li>
+            <li>
+              <code>&lt;name&gt; &lt;n&gt;</code
+              ><span
+                >Two of a kind? Any command lists them numbered: <code>/pokemon release eevee 2</code> picks the
+                second</span
+              >
+            </li>
             <li><code>/pokemon party</code><span>Levels, how each one evolves, held items and time together</span></li>
             <li><code>/pokemon box</code><span>Your PC box: Pokémon you caught while the party was full</span></li>
             <li>

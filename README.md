@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![778 tests](https://img.shields.io/badge/tests-778_passing-27c93f?style=flat-square)](plugin/tests)
+[![823 tests](https://img.shields.io/badge/tests-823_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
@@ -124,11 +124,29 @@ Love your Charmander just the way it is? Give it an everstone and it won't evolv
 
 ## Gotta see 'em all
 
-**905 Pokémon**, Bulbasaur to Enamorus, plus **424 alternate forms**: Megas, Gigantamax, Alolan, Galarian, Hisuian and more. Any of them can show up **shiny** ✨ (1 in 32).
+**905 Pokémon**, Bulbasaur to Enamorus, plus **424 alternate forms**: Megas, Gigantamax, Alolan, Galarian, Hisuian and more. Any of them can be **shiny** ✨ (1 in 32).
 
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/wild.gif" width="400" alt="Tall grass rustles, a wild Bulbasaur steps out, and Pikachu and Eevee jump and turn to it with a red ! speech bubble">
 
-Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustles at the edge, your party jumps and turns to it with a red **!** speech bubble, and Claude Code tells you who it is: _"A wild Bulbasaur appeared!"_. It stops halfway to look around, then moves on. Everything you meet goes into your Pokédex:
+Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustles at the edge, your party jumps and turns to it with a red **!** speech bubble, and Claude Code tells you who it is: _"A wild Bulbasaur appeared!"_. It stops halfway to look around, then moves on.
+
+Who comes depends on **where and when you are**, as in the games. A Pidgey turns up all the time, a Dratini now and then, and a legendary, mythical or Ultra Beast about once in 100 visits. Water types gather at the lake, Ghosts come out at night, and a Pokémon **you've never seen** is 2.5 times as likely to step out of the grass:
+
+| Where or when                    | Who's more likely                                  |
+| :------------------------------- | :------------------------------------------------- |
+| Meadow                           | Normal, Grass, Bug, Electric, Fairy, Flying        |
+| Hills                            | Ground, Normal, Fighting, Fire, Rock, Flying       |
+| Mountains                        | Rock, Ground, Steel, Ice, Dragon, Fighting, Flying |
+| Lake                             | Water, Ice, Flying, Bug                            |
+| Forest                           | Bug, Grass, Poison, Fairy, Normal, Dark            |
+| Dawn                             | Flying, Psychic                                    |
+| Day                              | Fire, Grass, Bug, Normal                           |
+| Dusk                             | Flying, Psychic, Ghost                             |
+| Night                            | Ghost, Dark, Poison, Psychic, Fairy                |
+| Legendary, mythical, Ultra Beast | about 1 in 100                                     |
+| Never seen yet                   | ×2.5                                               |
+
+A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but anyone can still wander anywhere. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only or costume form: those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
 
 ```text
 /pokedex
@@ -142,7 +160,7 @@ Shinies: Pikachu, Granbull
 Recently seen: Bulbasaur, Golurk, Eevee, Charmander
 ```
 
-Build a **party of up to three** and they'll travel together:
+Build a **party of up to three** and they'll travel together. Twins are welcome: two Eevees walk side by side, and each evolves its own way.
 
 ```text
 /pokemon add charmander
@@ -179,9 +197,19 @@ When a wild Pokémon wanders by, **click it** to throw a Poké Ball. Aim for the
 grass or a gap in its sprite misses. A hit wobbles in the grass, and how often it holds follows the games' own
 catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly ever. Break free and it may run. Claude Code passes clicks only in its fullscreen mode (`/config`, or `"tui": "fullscreen"` in settings), so turn that on to throw.
 
-Catches join your party, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>` brings one
-out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the box, level
-and all.
+Catches join your party, twin or not, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>`
+brings one out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the
+box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, Eevee! It went back
+to the wild."_ Whatever it held goes back to your Bag.
+
+Two of a kind? Any command that names one asks which, and you add the number:
+
+```text
+/pokemon release eevee
+Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2
+/pokemon release eevee 2
+Bye bye, Eevee! It went back to the wild.
+```
 
 ---
 
@@ -237,7 +265,9 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/pokemon`                              | A random Pokémon becomes your lead                                                                                                                                                  |
 | `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. Close misses get a suggestion                                          |
-| `/pokemon add [name]` / `remove [name]` | Grow or trim your party (up to 3). No name: a random catch, or a random release that never picks your lead                                                                          |
+| `/pokemon add [name]`                   | Grow your party (up to 3, twins welcome): from your PC box, or a new catch. No name: a random catch                                                                                 |
+| `/pokemon release <name> [n]`           | Set one free, from the party or the PC box (`remove` works too). What it held goes back to your Bag                                                                                 |
+| `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered: add the number to pick, as in `/pokemon give rare candy eevee 2`                                          |
 | `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                             |
 | `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                          |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                     |
@@ -372,7 +402,7 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 - **Rendering:** sprites arrive as truecolor ANSI art. They're parsed into a pixel grid, scaled to fit, and painted into a cell grid of `▀` half-blocks, two pixels per cell, 20 times a second.
 - **Reactions:** hooks on `turn.start`, `turn.complete`, `tool.call` and `session.compact` feed a small state machine: moods, roaming with easing and braking, particles, clones following the leader's path.
 - **Saving:** party, XP and Pokédex live in Claude Code's per-plugin store. Each session writes its XP under its own key and party changes re-read the latest save first, so parallel sessions add up rather than undo each other.
-- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` (names), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
+- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` and `hooks/members.ts` (names, and which one you mean), `hooks/encounter.ts` and `hooks/species-data.ts` (who wanders by), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
 
 ## Development
 
@@ -385,6 +415,7 @@ claude plugin validate plugin/.claude-plugin/plugin.json --strict
 node scripts/evolution-coverage.mjs   # regenerate specs/evolution-coverage.md
 node scripts/evolution-fixture.mjs    # refresh the PokeAPI fixture the evolution tests read
 node scripts/item-icons.mjs           # rebuild the item pictures
+node scripts/species-data.mjs         # refresh catch rates, stages and types for the wild odds
 ```
 
 Ideas, bug reports and pull requests are very welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the details.

@@ -4,6 +4,64 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
+## [1.4.0] - 2026-10-14
+
+### Added: wild Pokémon that fit the place and the hour
+
+- Who wanders by follows the games' odds now, instead of all 905 being equally likely. Each species weighs its catch
+  rate from the games (Pidgey 255, Dratini 45, so a Pidgey comes nearly six times as often), a first stage more than
+  its evolutions, a baby less.
+- Legendaries, mythicals and Ultra Beasts come about once in 100 visits, a mythical half as often as a legendary.
+- The landscape on screen matters: a Pokémon with a fitting type is 4 times as likely. Water, Ice, Flying and Bug by
+  the lake; Rock, Ground, Steel, Ice, Dragon, Fighting and Flying in the mountains; Ground, Normal, Fighting, Fire,
+  Rock and Flying on the hills; Bug, Grass, Poison, Fairy, Normal and Dark at the forest's edge; Normal, Grass, Bug,
+  Electric, Fairy and Flying in the meadow.
+- So does the time of day, twice as likely: Ghost, Dark, Poison, Psychic and Fairy at night; Flying and Psychic at
+  dawn; Fire, Grass, Bug and Normal by day; Flying and Psychic at dusk, and Ghost 1.5 times. Place and time stack (up
+  to 8 times). Any Pokémon can still turn up anywhere now and then.
+- A Pokémon you've never seen is 2.5 times as likely to show up. The ones you've met keep coming too.
+- A regional form counts its own types: an Alolan Vulpix is Ice, so it likes the mountains. Alternate forms share
+  one in eight of their species' visits, as before.
+- The odds need no download: the species data (catch rates, stages, the types of every form) ships with the plugin.
+- `/pokemon-play wild` draws with these odds, for the place and time on screen (`/pokemon-play lake` first to try the
+  lake). `/pokemon-play wild <name>` still brings exactly that one.
+
+### Added: twins and a numbered pick
+
+- Your party can hold two or three of the same Pokémon. A catch joins the party whenever it has room, twin or not,
+  and `/pokemon add eevee` catches another Eevee even with one in the party. Twins walk as two, each evolves its own
+  way, and each counts its own time together. The Mart's "Your party" line counts them: `Eevee ×2 → Vaporeon`.
+- When a name fits more than one of yours, the command lists them, numbered, and does nothing:
+  `Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2`.
+  Each line shows gender, shininess, level, held item and where it is: the party first, then the PC box. Add the
+  number to pick one. A number past the end answers with the list again.
+- Every command that names one of yours does this: `/pokemon <name>`, `add`, `deposit`, `release` (`remove`),
+  `give` (Rare Candy too), `take` and `everstone`.
+- A number that is part of a name stays part of it: `/pokemon porygon 2` is Porygon2 unless you have two Porygon,
+  and `zygarde 10` is Zygarde's 10% form.
+
+### Added: release from the PC box
+
+- `/pokemon release <name> [n]` (or `remove`) works on the party and the PC box, with no confirmation:
+  _"Bye bye, Eevee! It went back to the wild."_
+- A held item goes back to the Bag. The free Everstone goes with the Pokémon (`/pokemon everstone` gives another).
+  When the Bag already holds 999 of that item, the release is refused: "Your Bag can't hold another Fire Stone (999
+  already). Use one first."
+- Your only party member can't be released ("Pick a new lead first."); releasing the lead makes the next one lead.
+  The Pokédex still counts it as seen and caught.
+- Releasing or depositing a Pokémon while another evolves leaves the animation on the evolving one. Releasing the
+  evolving one stops it.
+
+### Changed
+
+- A wild Pokémon is never a Mega, Gigantamax, Primal or other battle-only form (Zen Darmanitan, Ash-Greninja,
+  Crowned Zacian...), a costume (Cosplay Pikachu, Pikachu in a cap), a Let's Go partner, a Hisuian noble, Shadow
+  Lugia, or an Arceus or Silvally type. `/pokemon <name>` and `/pokemon-play wild <name>` still bring any of them.
+- Plain `/pokemon release` (or `remove`) asks "Which one? /pokemon release <name>". It used to release a random
+  member.
+- `/pokemon vulpix` with only an Alolan Vulpix of yours makes that one lead. It used to catch a plain Vulpix.
+  `/pokemon-play wild vulpix` still brings a plain one to catch.
+
 ## [1.3.0] - 2026-10-13
 
 ### Added: the PokéMart and Pokédollars
