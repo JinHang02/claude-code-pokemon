@@ -61,8 +61,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   Fancy and Poké Ball Vivillon, Eternal Floette) or a Furfrou trim. `/pokemon <name>` and `/pokemon-play wild <name>` still bring any of them.
 - Plain `/pokemon release` (or `remove`) asks "Which one? /pokemon release <name>". It used to release a random
   member.
-- `/pokemon vulpix` with only an Alolan Vulpix of yours makes that one lead. It used to catch a plain Vulpix.
-  `/pokemon-play wild vulpix` still brings a plain one to catch.
+- `/pokemon vulpix` with only an Alolan Vulpix in your party makes that one lead. It used to catch a plain Vulpix.
+  From the PC box a plain name never takes another form: with the Alolan one there, `/pokemon vulpix` still catches a
+  plain one (`/pokemon alolan vulpix` brings it out). `/pokemon-play wild vulpix` still brings a plain one to catch.
 
 ## [1.3.0] - 2026-10-13
 
