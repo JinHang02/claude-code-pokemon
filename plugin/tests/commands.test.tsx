@@ -2697,13 +2697,15 @@ async function actWhileEvolving($: Engine, on: On, act: string, said: string) {
   await until($, () => w.saveNow().party[1]?.species === 'charmeleon')
   expect(await cmd($, 'pokemon', act)).toBe(said)
   const frames: Set<number>[] = []
-  // The animation is 4.5 s: just past its end, too soon for anyone to walk all the way in front of another
-  // (12 columns at 0.6 a tick).
+  const cells: string[] = []
+  // The animation is 4.5 s: just past its end. While it plays everyone stands still, and after it too little time
+  // goes by for anyone to walk all the way in front of another (12 columns at 0.6 a tick).
   for (let i = 0; i < 24; i++) {
     await w.clock.advance(200)
-    frames.push(colorsIn(await now()))
+    cells.push(await now())
+    frames.push(colorsIn(cells[i] ?? ''))
   }
-  return { w, frames }
+  return { w, frames, cells }
 }
 
 test(
@@ -2743,17 +2745,27 @@ test(
   'releasing the Pokémon that is evolving stops its animation; it never comes back',
   { timeoutMs: 30_000 },
   async ($, on) => {
-    const { w, frames } = await actWhileEvolving(
+    const { w, frames, cells } = await actWhileEvolving(
       $,
       on,
       'release charmeleon',
       'Bye bye, Charmeleon! It went back to the wild.',
     )
-    const after = frames.slice(frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER)))
+    const gone = frames.findIndex(c => !c.has(CHARMELEON) && !c.has(CHARMANDER))
+    const after = frames.slice(gone)
     expect(after.length).toBeGreaterThan(10)
-    expect(after.filter(c => c.has(CHARMANDER) || c.has(CHARMELEON) || !c.has(EEVEE) || !c.has(PIKACHU))).toHaveLength(
-      0,
-    )
+    expect(after.filter(c => c.has(CHARMANDER) || c.has(CHARMELEON))).toHaveLength(0)
+    // The others as themselves, never a white silhouette. With the animation stopped they walk again, and Pikachu,
+    // drawn in front, may pass right over Eevee: Eevee may be missing only while Pikachu stands where it was last
+    // seen (each walks at most 2.4 columns between two frames).
+    let eevee: [number, number] = [-99, -99]
+    for (const frame of cells.slice(gone)) {
+      const [pikachu, ...more] = runsOf(frame, 512, PIKACHU)
+      expect(pikachu && !more.length).toBe(true)
+      const [seen] = runsOf(frame, 512, EEVEE)
+      if (seen) eevee = seen
+      else expect((pikachu?.[0] ?? 0) <= eevee[1] + 3 && (pikachu?.[1] ?? 0) >= eevee[0] - 3).toBe(true)
+    }
     await w.clock.advance(5000)
     expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e'])
   },
