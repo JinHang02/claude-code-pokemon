@@ -1294,23 +1294,36 @@ test('twins walk as two: each keeps its own place when the party changes', async
     net,
   )
   await cmd($, 'pokemon', 'party')
-  await mountBand($)
+  const band = (await mountBand($)) as Band
   await cmd($, 'pokemon-play', 'work')
+  // The scene as it stands, drawn afresh. The frames the ticks send arrive later, in real time: which moment one of
+  // them shows depends on how loaded the machine is.
+  const now = async () =>
+    String((await nodeIn(band, n => n.type === 'Raster' && n.props?.key === 'scene'))?.props?.cells)
+  // Moves the clock on, a step at a time and drawing afresh at each, until `find` finds something. Walkers that
+  // start side by side may take a while to wander apart.
+  const waitFor = async <T,>(find: (cells: string) => T | null, step = 250) => {
+    for (let i = 0; i < 120_000 / step; i++) {
+      const found = find(await now())
+      if (found) return found
+      await w.clock.advance(step)
+    }
+    throw new Error('never showed up')
+  }
   // The twins far enough apart that the tick or two below (at most 0.6 columns each) can't bring them together,
   // and Pikachu clear of both, so neither twin is partly hidden behind it.
-  const isClear = (eevees: [number, number][]) => {
-    const [pikachu, ...more] = runsOf(w.band.cells, 80, PIKACHU)
-    return Boolean(pikachu && !more.length && eevees.every(([a, b]) => pikachu[1] < a || pikachu[0] > b))
-  }
-  await seen(w, () => {
-    const eevees = apart(w.band.cells, 80, EEVEE, 6)
-    return eevees && isClear(eevees) ? eevees : null
+  await waitFor(cells => {
+    const eevees = apart(cells, 80, EEVEE, 6)
+    const [pikachu, ...more] = runsOf(cells, 80, PIKACHU)
+    return eevees && pikachu && !more.length && eevees.every(([a, b]) => pikachu[1] < a || pikachu[0] > b)
+      ? eevees
+      : null
   })
   // Taking a walker away leaves nothing that could stand in front of a twin.
   expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Bye bye, Pikachu (Lv 1, party)! It went back to the wild.')
-  await seen(w, () => (w.band.cells && !colorsIn(w.band.cells).has(PIKACHU)) || null)
+  const after = await waitFor(cells => (cells && !colorsIn(cells).has(PIKACHU) ? cells : null), 50)
   // Keyed by species, both would now stand on the first one's spot: one run.
-  expect(runsOf(w.band.cells, 80, EEVEE)).toHaveLength(2)
+  expect(runsOf(after, 80, EEVEE)).toHaveLength(2)
 })
 
 test('one twin evolving keeps its place, and the other its own', async ($, on) => {
