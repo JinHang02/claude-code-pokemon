@@ -37,8 +37,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   number to pick one. A number past the end answers with the list again.
 - Every command that names one of yours does this: `/pokemon <name>`, `add`, `deposit`, `release` (`remove`),
   `give` (Rare Candy too), `take` and `everstone`.
-- A number that is part of a name stays part of it: `/pokemon porygon 2` is Porygon2 unless you have two Porygon,
-  and `zygarde 10` is Zygarde's 10% form.
+- A number that is part of a name stays part of it: `/pokemon porygon 2` is Porygon2 unless you have two Porygon
+  (with just one, `porygon 1` picks it), and `zygarde 10` is Zygarde's 10% form.
 
 ### Added: release from the PC box
 

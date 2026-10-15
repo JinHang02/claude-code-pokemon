@@ -14,7 +14,7 @@ import { act, isAct, START } from './mart'
 import type { Act, MartProps } from './mart'
 import { didYouMean, findMembers, formatChoices, isList } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, lookup, randomPick, slug, spell } from './lookup'
+import { guessItem, isSpacedOut, lookup, randomPick, slug, spell } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -502,8 +502,10 @@ async function catchOne($: EngineInterface, query: string, command = ''): Promis
   if (!words.length && query.trim()) return `No Pokémon called "${query.trim()}".`
   const found = named.length ? lookup(list, named) : { pick: randomPick(list) }
   if ('error' in found) return found.error
-  if ('guess' in found) return didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`)
-  const pick = found.pick
+  // Spelt right but spaced apart (`porygon 2`) is that one.
+  if ('guess' in found && !isSpacedOut(found.guess, named))
+    return didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`)
+  const pick = 'pick' in found ? found.pick : found.guess
   const { isShiny } = await fetchArt($, fileOf(pick), wantsShiny || Math.random() < SHINY_ODDS)
   return { id: newId(), species: pick.species, form: pick.form, isShiny, xp: 0, evolutions: 0 }
 }

@@ -151,6 +151,9 @@ export function guessItem(
 // The words that pick `p` exactly: "charizard mega x".
 export const spell = (p: Pick) => [p.species, ...(p.form === 'regular' ? [] : [p.form])].join(' ').replace(/-/g, ' ')
 
+// Whether `words` spell `p` right, only spaced apart: `porygon 2` is Porygon2.
+export const isSpacedOut = (p: Pick, words: string[]) => spell(p).replace(/ /g, '') === words.join('')
+
 // Any species; now and then one of its alternate forms.
 export function randomPick(list: Species[], rand = Math.random): Pick {
   const dex = Math.floor(rand() * list.length)

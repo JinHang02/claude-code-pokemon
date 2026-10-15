@@ -1,7 +1,7 @@
 // One name finder for every command that names a Pokémon: the members a query names in the party and the PC box,
 // and the numbered pick among several.
 import { itemName } from './items'
-import { lookup, slug, spell } from './lookup'
+import { isSpacedOut, lookup, slug, spell } from './lookup'
 import type { Lookup, Pick, Species } from './lookup'
 import { displayName, formatParty } from './save'
 import type { Member, Save } from './save'
@@ -32,7 +32,7 @@ const wordsOf = (query: string) => slug(query).split('-').filter(Boolean)
 // spaced apart (`porygon 2`) pick it too. The lookup when it picks nothing.
 function matching(pool: Spot[], named: string[], wantsShiny: boolean): Spot[] | Lookup | null {
   const found = named.length && pool.length ? lookup(namesOf(pool.map(p => p.member)), named) : null
-  const isSpaced = found && 'guess' in found && spell(found.guess).replace(/ /g, '') === named.join('')
+  const isSpaced = found && 'guess' in found && isSpacedOut(found.guess, named)
   const pick = found && ('pick' in found ? found.pick : isSpaced && 'guess' in found ? found.guess : null)
   if (!pick) return found
   const { species, form } = pick
@@ -46,7 +46,7 @@ const isSpots = (found: Spot[] | Lookup | null): found is Spot[] => Array.isArra
 // The members `query` names in `places`, party first then the PC box, each in its stored order. `shiny` anywhere asks
 // for a shiny one. A last word that is a number picks the nth of the list the words before it name, when they name
 // several and it is in range; otherwise the whole words are tried as a name (`porygon 2`: Porygon2, `zygarde 10`),
-// then the number as a pick again. So every list's own hint, typed back, picks its line.
+// then the number as a pick again: of one, 1 picks it. So every list's own hint, typed back, picks its line.
 // `command` is what comes before the name (`'release '`), for a suggestion and the numbered list.
 export function findMembers(
   s: Save,
@@ -70,10 +70,13 @@ export function findMembers(
   if (picked) return { spot: picked }
   const whole = matching(pool, named, wantsShiny)
   if (isSpots(whole)) return whole.length === 1 && whole[0] ? { spot: whole[0] } : { choices: whole }
-  if (isSpots(before)) {
-    const spot = nth > 0 ? before[nth - 1] : undefined
+  // Just one of the name before the number: 1 is that one, and any other number names none of yours (`porygon 2`
+  // with one Porygon: a lead or an add goes on to catch Porygon2).
+  const only = isSpots(before) && before.length === 1 && nth === 1 ? before[0] : undefined
+  if (only) return { spot: only }
+  if (isSpots(before) && before.length > 1) {
     const name = words.slice(0, words.lastIndexOf(last)).join(' ')
-    return spot ? { spot } : { error: formatChoices(before, name, command, levelOf) }
+    return { error: formatChoices(before, name, command, levelOf) }
   }
   const guessOf = (found: Spot[] | Lookup | null) => (found && 'guess' in found ? found.guess : undefined)
   const [early, full] = [guessOf(before), guessOf(whole)]

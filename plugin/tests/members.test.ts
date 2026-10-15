@@ -112,6 +112,21 @@ test('a number that is part of a name stays in the name; a suggestion keeps a nu
   expect(ids(findMembers(one, 'porygn 2', ['party'], 'remove ', levelOf))).toBe(
     'Did you mean Porygon2? Run /pokemon remove porygon2',
   )
+  // One Porygon: no list of one to pick from. 1 is that one; any other number names none of yours (a near miss at
+  // most), so a lead or an add goes on to catch Porygon2.
+  const lone = { ...emptySave(), party: [member('pikachu')], box: [member('porygon', { id: 'lone' })] }
+  const owned: ('party' | 'box')[] = ['party', 'box']
+  expect(ids(findMembers(lone, 'porygon 2', owned, '', levelOf))).toBe('Did you mean Porygon? Run /pokemon porygon')
+  expect(ids(findMembers(lone, 'porygon 2', ['box'], 'add ', levelOf))).toBe(
+    'Did you mean Porygon? Run /pokemon add porygon',
+  )
+  expect(ids(findMembers(lone, 'porygon 3', owned, '', levelOf))).toBe('Did you mean Porygon? Run /pokemon porygon')
+  expect(ids(findMembers(lone, 'porygon 1', owned, '', levelOf))).toBe('lone')
+  const zygarde = { ...emptySave(), party: [member('zygarde', { id: 'plain' })] }
+  expect(ids(findMembers(zygarde, 'zygarde 10', owned, '', levelOf))).toMatch(
+    /^No zygarde 10 in your party or PC box\./,
+  )
+  expect(ids(findMembers(zygarde, 'zygarde 1', owned, '', levelOf))).toBe('plain')
   const unowns = { ...emptySave(), box: [member('unown', { form: 'a' }), member('unown', { form: 'a' })] }
   expect(ids(findMembers(unowns, 'unown 2', ['box'], 'add ', levelOf))).toBe(
     'Did you mean Unown (A)? Run /pokemon add unown a 2',

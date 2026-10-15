@@ -1408,6 +1408,44 @@ test("another session's evolution is drawn even when a command here writes the s
   expect(await evolvedElsewhere($, on, () => cmd($, 'pokemon', 'size small'))).toBe(true)
 })
 
+const NUMBERED = [
+  ...LIST,
+  { name: 'porygon', forms: ['regular'] },
+  { name: 'porygon2', forms: ['regular'] },
+  { name: 'zygarde', forms: ['regular', '10', 'complete'] },
+]
+
+test('a number that is part of a name catches that Pokémon when only one of the name before it is yours', async ($, on) => {
+  const saved = {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: [member('porygon', { id: 'lone' }), member('zygarde', { id: 'plain' })],
+  }
+  const w = await begin($, on, saved, ART, undefined, { isOnline: true, list: JSON.stringify(NUMBERED) })
+  expect(await cmd($, 'pokemon', 'add porygon 2')).toBe('Porygon2 joined your party!')
+  expect(await cmd($, 'pokemon', 'zygarde 10')).toContain("A wild Zygarde (10) appeared! It's your new lead.")
+  expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['zygarde:10', 'porygon2:regular'])
+  expect(await cmd($, 'pokemon', 'porygon 2')).toBe('Porygon2 leads the party again (Lv 1).')
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['lone', 'plain'])
+  // 1 is the one there is.
+  expect(await cmd($, 'pokemon', 'porygon 1')).toBe(
+    'Porygon (Lv 1) came out of the PC box to lead your party. Porygon2 (Lv 1) went into the PC box.',
+  )
+})
+
+test('two Porygon: the number picks one of them, even with a Porygon2 there', async ($, on) => {
+  const saved = {
+    ...emptySave(),
+    party: [member('pikachu'), member('porygon', { id: 'first' })],
+    box: [member('porygon', { id: 'second' }), member('porygon2', { id: 'two' })],
+  }
+  const w = await begin($, on, saved, ART, undefined, { isOnline: true, list: JSON.stringify(NUMBERED) })
+  expect(await cmd($, 'pokemon', 'porygon 2')).toBe(
+    'Porygon (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
+  )
+  expect(w.saveNow().party[0]?.id).toBe('second')
+})
+
 test('a boxed Pokémon comes out by name even when the party holds another form of its species', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
