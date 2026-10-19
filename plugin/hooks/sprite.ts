@@ -95,9 +95,32 @@ export function resample(img: Pixels, f: number): Pixels {
 
 export const shrink = (img: Pixels, s: number): Pixels => resample(img, 1 / s)
 
+// Text laid over a picture's cells as real characters, from column `x` of cell row `y`.
+export type Label = { x: number; y: number; text: string; fg: number; bg: number }
+
+// A Raster cell takes one printable character a single column wide; anything else (a wide or combining character,
+// one outside the BMP) shows as '?' rather than having the whole picture refused.
+const isNarrow = (cp: number) =>
+  cp >= 0x20 &&
+  cp <= 0xffff &&
+  !(cp >= 0x7f && cp < 0xa0) &&
+  !(cp >= 0x300 && cp < 0x370) &&
+  !(cp >= 0x1100 && cp < 0x1160) &&
+  !(cp >= 0x2e80 && cp < 0xa4d0) &&
+  !(cp >= 0xac00 && cp < 0xd7a4) &&
+  !(cp >= 0xd800 && cp < 0xe000) &&
+  !(cp >= 0xf900 && cp < 0xfb00) &&
+  !(cp >= 0xfe00 && cp < 0xfe70) &&
+  !(cp >= 0xff00 && cp < 0xff61) &&
+  !(cp >= 0xffe0 && cp < 0xffe7)
+
 // Pixels into Raster cells: two pixels per cell as an upper half block over its background; a
-// one-color cell is a bare background, so no glyph edge or terminal contrast fix touches it.
-export function toCells({ pixels, width, height }: Pixels): { cells: string; columns: number; rows: number } {
+// one-color cell is a bare background, so no glyph edge or terminal contrast fix touches it. `labels` are drawn over
+// the picture as text, cut at its right edge.
+export function toCells(
+  { pixels, width, height }: Pixels,
+  labels: Label[] = [],
+): { cells: string; columns: number; rows: number } {
   const rows = Math.ceil(height / 2)
   const words = new Uint32Array(width * rows * 3)
   for (let r = 0; r < rows; r++)
@@ -114,6 +137,16 @@ export function toCells({ pixels, width, height }: Pixels): { cells: string; col
               : [UPPER, top, bottom === CLEAR ? DEFAULT : bottom]
       words.set(cell, (r * width + x) * 3)
     }
+  for (const { x, y, text, fg, bg } of labels) {
+    if (y < 0 || y >= rows) continue
+    let at = x
+    for (const ch of text) {
+      if (at >= width) break
+      const cp = ch.codePointAt(0) ?? 0x3f
+      if (at >= 0) words.set([isNarrow(cp) ? cp : 0x3f, fg, bg], (y * width + at) * 3)
+      at++
+    }
+  }
   return { cells: toBase64(new Uint8Array(words.buffer)), columns: width, rows }
 }
 

@@ -1489,7 +1489,8 @@ test('one twin evolving keeps its place, and the other its own', async ($, on) =
     isOnline: true,
     list: JSON.stringify(LIST),
     now: hourAt(12),
-    sprites: { charmander: solid('1;2;3', 6), charmeleon: solid('7;8;9', 6) },
+    // A band of 7 rows: the evolution plays in place, among the party.
+    sprites: { charmander: solid('1;2;3', 4), charmeleon: solid('7;8;9', 4) },
   }
   const ready = { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' as const }
   const w = await begin(
@@ -2918,11 +2919,12 @@ async function actWhileEvolving($: Engine, on: On, act: string, said: string) {
     isOnline: true,
     list: JSON.stringify(LIST),
     now: hourAt(12),
+    // 8 rows of pixels: a band of 7 rows, where an evolution plays in place rather than on its own screen.
     sprites: {
-      pikachu: solid('4;5;6', 6),
-      charmander: solid('1;2;3', 6),
-      charmeleon: solid('7;8;9', 6),
-      eevee: solid('10;11;12', 6),
+      pikachu: solid('4;5;6', 4),
+      charmander: solid('1;2;3', 4),
+      charmeleon: solid('7;8;9', 4),
+      eevee: solid('10;11;12', 4),
     },
   }
   const plain = { next: [], gender: 'male' as const }
@@ -3056,6 +3058,11 @@ test('/pokemon evolution shows the style and the choices, sets one, and answers 
   expect(bad).toContain('gradient')
   expect(bad).not.toContain('Did you mean')
   expect(await cmd($, 'pokemon', 'evolution gradiant')).toContain('Did you mean gradient')
+  expect(w.saveNow().evolutionStyle).toBe('white')
+  // Kept through other changes to the save.
+  await cmd($, 'pokemon', 'size small')
+  await cmd($, 'pokemon', 'add eevee')
+  expect(w.saveNow().size).toBe('small')
   expect(w.saveNow().evolutionStyle).toBe('white')
   expect(await cmd($, 'pokemon-play', 'evolve nope')).toContain('rays')
 })

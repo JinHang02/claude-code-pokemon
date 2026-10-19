@@ -26,6 +26,8 @@ export type Member = {
   gender?: 'female' | 'male' | null
   // Caught with a Poké Ball from the wild, not summoned by name.
   isCaught?: true
+  // When it last evolved: another session shows the evolution's screen only when it is recent.
+  evolvedAt?: number
 }
 
 export type DexEntry = { seen: number; shiny: number; first: number; caught?: number }
@@ -149,6 +151,7 @@ function loadMember(raw: unknown, at: number): Member | null {
         : {}),
     ...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === null ? { gender: raw.gender } : {}),
     ...(raw.isCaught === true ? { isCaught: true as const } : {}),
+    ...(count(raw.evolvedAt) ? { evolvedAt: count(raw.evolvedAt) } : {}),
   }
 }
 

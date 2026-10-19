@@ -1,4 +1,5 @@
 import { backdrop } from './backdrop'
+import { SCREEN_MS } from './evolution-screen'
 import type { Landscape, Phase } from './backdrop'
 import { CLEAR, mirror, shrink } from './sprite'
 import type { Pixels } from './sprite'
@@ -93,6 +94,8 @@ const STARTLE = ticks(400)
 const WILD_HOP = ticks(400)
 // Evolution: the two forms swap as white silhouettes, ever faster, then a flash and the new form.
 export const EVOLVE = ticks(4500)
+// Evolution on its own screen over the whole band: everyone holds still under it.
+export const EVOLVE_SCREEN = ticks(SCREEN_MS)
 const EVOLVE_FLASH = ticks(500)
 
 // `pace` scales a stroll's walking speed.
@@ -100,7 +103,13 @@ export type Roam = { kind: 'walk' | 'idle' | 'turn' | 'look' | 'skip'; left: num
 
 export type Scene = { x: number; v: number; facing: 1 | -1; roam: Roam; t: number; stride: number }
 
-export type Mood = { kind: 'hop' | 'cheer' | 'faint' | 'spring' | 'evolve'; t: number; actor?: number } | null
+// `isScreen`: an evolution playing on its own screen, not in place.
+export type Mood = {
+  kind: 'hop' | 'cheer' | 'faint' | 'spring' | 'evolve'
+  t: number
+  actor?: number
+  isScreen?: true
+} | null
 
 export type Particle = {
   kind: 'dust' | 'spark' | 'z' | 'confetti'
@@ -187,7 +196,9 @@ const moodLength = (mood: NonNullable<Mood>) =>
     : mood.kind === 'faint'
       ? FAINT
       : mood.kind === 'evolve'
-        ? EVOLVE
+        ? mood.isScreen
+          ? EVOLVE_SCREEN
+          : EVOLVE
         : SPRING
 
 // Nobody dozes off with a wild Pokémon around.
@@ -218,10 +229,10 @@ export function react(s: Status, what: Happening): Status {
   }
 }
 
-export const evolve = (s: Status, actor: number): Status => ({
+export const evolve = (s: Status, actor: number, isScreen = false): Status => ({
   ...s,
   idleTicks: 0,
-  mood: { kind: 'evolve', t: 0, actor },
+  mood: { kind: 'evolve', t: 0, actor, ...(isScreen ? { isScreen: true as const } : {}) },
 })
 
 // A wild Pokémon waits just out of sight at a random edge, rustling the grass, before it steps out.

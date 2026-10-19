@@ -60,3 +60,18 @@ test('draws pixels as coloured text: half blocks, a bare background for one colo
   ])
   expect(textRows({ width: 2, height: 2, pixels: [-1, -1, -1, -1] })).toEqual([[['  ', '', '']]])
 })
+
+test('lays text over the cells as characters, cut at the edge, anything a cell cannot hold shown as ?', () => {
+  const img = { pixels: Array<number>(6 * 4).fill(0x112233), width: 6, height: 4 }
+  const words = decode(toCells(img, [{ x: 1, y: 1, text: 'Aé…世x🌟yz', fg: 0x010101, bg: 0x020202 }]).cells)
+  const row = (y: number) => Array.from({ length: 6 }, (_, x) => words.slice((y * 6 + x) * 3, (y * 6 + x) * 3 + 3))
+  expect(row(1)).toEqual([
+    [0x20, 0x01000000, 0x112233],
+    [0x41, 0x010101, 0x020202],
+    [0xe9, 0x010101, 0x020202],
+    [0x2026, 0x010101, 0x020202],
+    [0x3f, 0x010101, 0x020202],
+    [0x78, 0x010101, 0x020202],
+  ])
+  expect(row(0).every(c => c[0] === 0x20 && c[2] === 0x112233)).toBe(true)
+})
