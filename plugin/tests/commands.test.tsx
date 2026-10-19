@@ -1490,13 +1490,15 @@ test('a number that is part of a name catches that Pokémon when only one of the
     box: [member('porygon', { id: 'lone' }), member('zygarde', { id: 'plain' })],
   }
   const w = await begin($, on, saved, ART, undefined, { isOnline: true, list: JSON.stringify(NUMBERED) })
-  expect(await cmd($, 'pokemon', 'add porygon 2')).toBe('Porygon2 joined your party!')
-  expect(await cmd($, 'pokemon', 'zygarde 10')).toContain("A wild Zygarde (10) appeared! It's your new lead.")
+  // Either catch may be a lucky shiny (1 in 32), and its ✨ follows it into every line that names it.
+  const said = async (query: string) => (await cmd($, 'pokemon', query)).split('✨ ').join('')
+  expect(await said('add porygon 2')).toBe('Porygon2 joined your party!')
+  expect(await said('zygarde 10')).toContain("A wild Zygarde (10) appeared! It's your new lead.")
   expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['zygarde:10', 'porygon2:regular'])
-  expect(await cmd($, 'pokemon', 'porygon 2')).toBe('Porygon2 leads the party again (Lv 1).')
+  expect(await said('porygon 2')).toBe('Porygon2 leads the party again (Lv 1).')
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['lone', 'plain', 'p'])
   // 1 is the one there is.
-  expect(await cmd($, 'pokemon', 'porygon 1')).toBe(
+  expect(await said('porygon 1')).toBe(
     'Porygon (Lv 1) came out of the PC box to lead your party. Porygon2 (Lv 1) went into the PC box.',
   )
 })
