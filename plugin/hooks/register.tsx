@@ -210,6 +210,8 @@ let isButtonHidden = false
 const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
+// The timer's visitor whose downloads ended under an evolution's screen: it comes as soon as the screen is over.
+let wildHeld: { pick: Pick; isShiny: boolean } | null = null
 let evolveFrom: Pixels | null = null
 // An evolution shown on its own screen over the whole band, `from` and `to` at their downloaded size. `said`: the
 // toast telling what it became, held back until the screen has shown it (or plays none after all). `rows`: the
@@ -1398,16 +1400,25 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
   try {
     const list = await loadSpecies($)
     const words = slug(query).split('-').filter(Boolean)
+    const held = words.length ? null : wildHeld
+    wildHeld = null
     const found = words.length
       ? lookup(list, words)
-      : { pick: drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex }) }
+      : { pick: held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex }) }
     if ('error' in found) return found.error
     if ('guess' in found)
       return `Did you mean ${displayName(found.guess.species, found.guess.form)}? Run /pokemon-play wild ${spell(found.guess)}`
     const pick = found.pick
-    const { art, isShiny } = await fetchArt($, fileOf(pick), Math.random() < SHINY_ODDS)
+    const { art, isShiny } = await fetchArt($, fileOf(pick), held?.isShiny ?? Math.random() < SHINY_ODDS)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
-    if (!band || !fitted || status.wild || pitch || screen) return null
+    if (!band || !fitted || status.wild || pitch) return null
+    if (screen) {
+      if (words.length) return 'No wild Pokémon comes by while an evolution is on screen.'
+      // The timer's visitor isn't lost: the first tick after the screen brings it.
+      wildHeld = { pick, isShiny }
+      wildDue = 0
+      return null
+    }
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
     wild = { mon, left: fitWild(mon), pick }
     // The table has every listed species' rate; only one it doesn't know is downloaded.

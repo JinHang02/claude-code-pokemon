@@ -283,6 +283,49 @@ test("the timer's visitor due while a screen plays comes as soon as it has ended
   expect(seen[end + 10]?.isOut).toBe(true)
 })
 
+test(
+  "the timer's visitor still downloading as a screen starts comes, the same one, once it has ended",
+  SLOW,
+  async ($, on) => {
+    const w = await stoneWorld($ as never, on as never)
+    const band = await mount($)
+    for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
+    await w.clock.advance(60_000 - 2000)
+    // Awake, so the timer brings its visitor on time.
+    await cmd($, 'pokemon-play', 'hop')
+    // The visitor's sprite, the first one asked for from here on, takes until the screen has begun.
+    let release = () => {}
+    const stall = new Promise<void>(r => (release = r))
+    let stalled = ''
+    w.net.artStall = file => {
+      if (stalled) return undefined
+      stalled = file
+      return stall
+    }
+    await watch(w.clock, band, 3000)
+    expect(stalled).not.toBe('')
+    const appeared = () => w.toasts.filter(t => /A wild .+ appeared!$/.test(t))
+    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
+    await w.clock.advance(300)
+    expect((await look(band)).kind).toBe('screen')
+    release()
+    const sprites = () => w.fetched.filter(u => u.includes('/colorscripts/')).length
+    const before = sprites()
+    const seen: { kind: string; isOut: boolean }[] = []
+    for (let t = 0; t < SCREEN_MS + 3000; t += 100) {
+      await w.clock.advance(100)
+      seen.push({ kind: (await look(band)).kind, isOut: appeared().length > 0 })
+    }
+    const end = seen.map(l => l.kind).lastIndexOf('screen')
+    expect(end).toBeGreaterThan(SCREEN_MS / 100 - 10)
+    expect(seen.slice(0, end + 1).some(l => l.isOut)).toBe(false)
+    expect(seen[end + 10]?.isOut).toBe(true)
+    // The one already downloaded, not a new draw.
+    expect(appeared().length).toBe(1)
+    expect(sprites()).toBe(before)
+  },
+)
+
 test('the Mart closes when a screen starts, and opens again only once it ends', SLOW, async ($, on) => {
   const w = await stoneWorld($ as never, on as never)
   const band = await mount($)

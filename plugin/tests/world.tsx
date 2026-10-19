@@ -202,6 +202,8 @@ export type Net = {
   stall?: Promise<void>
   // Holds back the PokeAPI species entries alone (where catch rates come from).
   speciesStall?: Promise<void>
+  // Holds back a sprite download, by its file, while it returns a promise.
+  artStall?: (file: string) => Promise<void> | undefined
   isStoreBroken?: boolean
   cacheAgeMs?: number
   sprites?: Record<string, string>
@@ -276,6 +278,7 @@ export function world(
     if (mon)
       return ok(JSON.stringify({ types: ((net.types ?? TYPES)[mon] ?? ['normal']).map(name => ({ type: { name } })) }))
     const file = /\/colorscripts\/small\/(?:regular|shiny)\/([a-z0-9-]+)$/.exec(e.url)?.[1]
+    if (file) await net.artStall?.(file)
     return ok((file && net.sprites?.[file]) || art)
   })
   on('store.get', async (_$, e) => {
