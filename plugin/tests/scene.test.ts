@@ -229,6 +229,32 @@ test('evolution swaps white silhouettes ever faster, then flashes and shows the 
   expect(count(frame(end, [SPRITE], W, ROWS), 0xabcdef)).toBe(16)
 })
 
+test('an evolving Pokémon is drawn in front of the lead, which is back in front once it is done', () => {
+  const wide = { pixels: Array<number>(24).fill(0xabcdef), width: 6, height: 4 }
+  const fresh = { pixels: Array<number>(16).fill(0x2468ac), width: 4, height: 4 }
+  const party: Status = {
+    ...still,
+    actors: [
+      { ...newScene(10), roam: idle },
+      { ...newScene(11), roam: idle },
+    ],
+  }
+  const look = { phase: 'day' as const, evolveFrom: OTHER }
+  const widths = [wide.width, fresh.width]
+  const s = run(evolve(party, 1), Math.floor(EVOLVE / 2), widths)
+  expect(s.actors.map(a => a.x)).toEqual([10, 11])
+  expect(count(frame(s, [wide, fresh], W, ROWS, look), 0xffffff)).toBe(16)
+  const settled = run(s, EVOLVE - Math.floor(EVOLVE / 2) - 2, widths)
+  expect(settled.mood?.kind).toBe('evolve')
+  expect(count(frame(settled, [wide, fresh], W, ROWS, look), 0x2468ac)).toBe(16)
+  const end = run(settled, 2, widths)
+  expect(end.mood).toBeNull()
+  const after = frame(end, [wide, fresh], W, ROWS)
+  expect(count(after, 0xabcdef)).toBe(24)
+  expect(count(after, 0x2468ac)).toBe(0)
+  expect(paintedBy(12, after.height - 3)).toBe('party')
+})
+
 test('an evolution is never cut short by a faint, hop or cheer', () => {
   const s = run(evolve(still, 0), 10)
   for (const what of ['tool-error', 'turn-answer', 'cheer', 'compact-end'] as const)

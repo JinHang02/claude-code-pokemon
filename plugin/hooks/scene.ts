@@ -659,7 +659,7 @@ export function slice(img: Pixels, from: number, count: number): Pixels {
 }
 
 // The band's picture: the meadow, clones trailing the lead, a wild visitor, the party in their poses with
-// feet in the grass (lead in front), then dust, sparks, confetti and Zs. `lefts`: the party facing left.
+// feet in the grass (lead in front, but an evolving Pokémon in front of all), then dust, sparks, confetti and Zs. `lefts`: the party facing left.
 // `total`: how wide the whole picture is: the party keeps to the left `width` columns, the landscape alone beyond.
 export function frame(
   s: Status,
@@ -709,7 +709,11 @@ export function frame(
   }
 
   const tops: number[] = []
-  for (let i = s.actors.length - 1; i >= 0; i--) {
+  // Last over the lead, so a Pokémon standing behind it never evolves out of sight.
+  const evolving = s.mood?.kind === 'evolve' ? s.mood.actor : undefined
+  const order = s.actors.map((_, i) => s.actors.length - 1 - i).filter(i => i !== evolving)
+  if (evolving !== undefined && evolving < s.actors.length) order.push(evolving)
+  for (const i of order) {
     const a = s.actors[i]
     let left = lefts[i]
     if (!a || !left) continue

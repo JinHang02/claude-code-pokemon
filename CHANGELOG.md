@@ -104,6 +104,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   your party. Your Water Stone is still in your Bag." It used to say "Eevee already evolved."
 - An evolution that starts while a sprite is still downloading for another session's change (a release and a catch
   there) plays from the evolving Pokémon's own picture, never the released one's, and never shows it twice.
+- An evolving Pokémon is drawn in front of the whole party for its animation, so one standing behind the lead no
+  longer evolves out of sight. The lead is back in front once it's done.
 
 ### Upgrading
 
