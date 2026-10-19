@@ -737,7 +737,7 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   const spot = pickIn(save, who, ['party'], `give ${item.id} `)
   if (typeof spot === 'string') return spot
   // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
-  return evolveMember($, spot.at, false, item.id)
+  return evolveMember($, spot.member.id, false, item.id)
 }
 
 // The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
@@ -1055,13 +1055,36 @@ async function checkEvolutions($: EngineInterface) {
   const isDue = (id: string) => view().party.some(m => m.id === id && dueFor(m, context).length > 0)
   for (const { id } of save.party) {
     if (save.isOff || !isDue(id)) continue
-    // The one before finishes its animation first; nothing to wait for when no band is drawn.
-    for (let wait = 0; band && status.mood?.kind === 'evolve' && wait < EVOLVE + ticks(2000); wait += 5)
-      await $.clock.sleep(TICK_MS * 5)
-    // The party may have changed during the wait: it is looked up again by id.
-    const at = save.party.findIndex(m => m.id === id)
-    if (!save.isOff && isDue(id)) await evolveMember($, at)
+    // The one before finishes its animation first. The party may have changed during the wait: due is asked again.
+    await animationDone($)
+    if (!save.isOff && isDue(id)) await evolveMember($, id)
   }
+}
+
+// Waits out an evolution animation still playing; nothing to wait for when no band is drawn.
+async function animationDone($: EngineInterface) {
+  for (let wait = 0; band && status.mood?.kind === 'evolve' && wait < EVOLVE + ticks(2000); wait += 5)
+    await $.clock.sleep(TICK_MS * 5)
+}
+
+// Evolutions run one at a time, by a level, a stone, a dropped everstone or a preview alike: each waits for the one
+// before to finish, its animation too, so no animation is cut short.
+let evolutions: Promise<unknown> = Promise.resolve()
+function evolveMember($: EngineInterface, id: string, isPreview = false, given?: string): Promise<string> {
+  // As it is now, to name it if it has gone by its turn.
+  const asked = save.party.find(m => m.id === id)
+  const run = evolutions.catch(() => {}).then(() => evolveNow($, id, asked, isPreview, given))
+  evolutions = run
+  return run
+}
+
+// Why `m` isn't there to evolve: it evolved in another session, or it left the party (released or put in the PC box,
+// here while it waited its turn or in another session). An item given for it stays in the Bag.
+function goneText(s: Save, m: Member, given?: string) {
+  const name = displayName(m.species, m.form)
+  return s.party.some(p => p.id === m.id)
+    ? `${name} already evolved.`
+    : `${name} is no longer in your party.${given ? ` Your ${itemName(given)} is still in your Bag.` : ''}`
 }
 
 // A member's gender, rolled from its species' ratio and saved when it has none yet (kept through evolutions when the
@@ -1079,13 +1102,20 @@ async function settleGender($: EngineInterface, member: Member): Promise<Gender>
   return gender
 }
 
-// Evolves party member `at` into a form it can reach now: by itself, or by the item `given` from the Bag (used up
-// in the same write). The animation plays from its current sprite. A preview plays it and puts the old form back
-// afterwards; a real one saves the new form and tells the person.
-async function evolveMember($: EngineInterface, at: number, isPreview = false, given?: string): Promise<string> {
-  const member = save.party[at]
-  if (!member) return 'Your party is empty.'
+// Evolves party member `id` into a form it can reach now: by itself, or by the item `given` from the Bag (used up
+// in the same write). The animation plays from its current sprite, once any other has finished. A preview plays it
+// and puts the old form back afterwards; a real one saves the new form and tells the person.
+async function evolveNow(
+  $: EngineInterface,
+  id: string,
+  asked: Member | undefined,
+  isPreview = false,
+  given?: string,
+): Promise<string> {
+  const member = save.party.find(m => m.id === id)
+  if (!member) return asked ? goneText(save, asked, given) : 'Your party is empty.'
   const name = displayName(member.species, member.form)
+  const gone = (s: Save) => goneText(s, member, given)
   // Before any download or animation; the save write checks again.
   if (given && !isPreview && !save.bag?.[given]) return noItem(itemName(given))
   try {
@@ -1122,19 +1152,23 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
     const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
     const form = evolvedForm(next, member.form, forms)
     const { art, isShiny } = await fetchArt($, fileOf({ species: next.species, form }), member.isShiny)
-    // It may have moved, left, or been given an everstone during the downloads.
-    const slot = isPreview ? at : save.party.findIndex(m => m.id === member.id && m.species === member.species)
-    const now = save.party[slot]
-    if (!now) return `${name} already evolved.`
+    await animationDone($)
+    // It may have moved, left, or been given an everstone during the downloads and the wait.
+    const now = save.party.find(m => m.id === member.id && m.species === member.species)
+    if (!now) return gone(save)
     if (!isPreview && !given && now.heldItem === 'everstone') return `${name} holds an everstone: it won't evolve.`
-    evolveFrom = fitted?.lefts[slot] ?? null
     const { next: _, ...rest } = member
     const evolved: Member = { ...rest, species: next.species, form, isShiny, evolutions: member.evolutions + 1 }
     const newName = displayName(next.species, form)
     const mon: Mon = { key: keyOf(evolved), name: newName, isShiny, ...parseAnsi(art) }
-    await update($, party, list => list.map((m, i) => (i === slot ? mon : m)))
+    // Found by key in the party as drawn, which can lag the save (a download for another session's catch): its own
+    // picture to start from, and never a second walker with its key.
+    const drawnAt = fitted?.keys.indexOf(member.id) ?? -1
+    evolveFrom = (drawnAt >= 0 && fitted?.lefts[drawnAt]) || null
+    await update($, party, list => list.map(m => (m.key === member.id ? mon : m)))
     evolving = member.id
-    status = evolve(status, slot)
+    // Not drawn yet: it simply comes out in its new form.
+    if (drawnAt >= 0) status = evolve(status, drawnAt)
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
       return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
@@ -1143,11 +1177,14 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
     const shed = next.way.kind === 'level' ? stages.find(s => s.way.kind === 'shed') : undefined
     let shedText = ''
     // Another session may have evolved it first: then that evolution stands.
-    let outcome = `${name} already evolved.`
+    let outcome = ''
     await mutate($, s => {
       const i = s.party.findIndex(m => m.id === member.id && m.species === member.species)
       const latest = s.party[i]
-      if (!latest) return s
+      if (!latest) {
+        outcome = gone(s)
+        return s
+      }
       if (!given && latest.heldItem === 'everstone') {
         outcome = `${name} holds an everstone: it won't evolve.`
         return s
@@ -1573,7 +1610,7 @@ async function play($: EngineInterface, args: string): Promise<string> {
       demoAgents = 0
       countAgents()
     })
-  } else if (name === 'evolve') return evolveMember($, 0, true)
+  } else if (name === 'evolve') return evolveMember($, save.party[0]?.id ?? '', true)
   else if (words[0] === 'wild') {
     const said = await spawnWild($, words.slice(1).join(' '))
     if (said) return said

@@ -72,6 +72,12 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   after a buy asks "Press Enter again to buy another Fire Stone." instead of buying again; a click on Buy still buys.
 - The open Mart's "in bag" counts follow every Bag change at once: a release or `take` from the PC box, a `give`, a
   `/pokemon buy`, another session's change.
+- Two stones given one after the other no longer cut the first evolution short. Evolutions go one at a time, each with
+  its whole animation: the second command answers once its own evolution has started.
+- A stone given to a Pokémon that another session has just released or put in the PC box says "Eevee is no longer in
+  your party. Your Water Stone is still in your Bag." It used to say "Eevee already evolved."
+- An evolution that starts while a sprite is still downloading for another session's change (a release and a catch
+  there) plays from the evolving Pokémon's own picture, never the released one's, and never shows it twice.
 
 ## [1.3.0] - 2026-10-13
 
