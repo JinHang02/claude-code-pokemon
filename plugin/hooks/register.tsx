@@ -153,7 +153,8 @@ const arts = new Map<string, string>()
 // Downloads are kept here between sessions; null where there is no home directory.
 let cacheDir: string | null = null
 
-// `columns`: where the party may go; `total`: the band's picture, the button's corner beyond `columns` included.
+// `columns`: where the party may go; `total`: the band's picture, the button's corner beyond `columns` included,
+// where only a wild visitor may go.
 let band: { requestId: string; columns: number; rows: number; total: number } | null = null
 // `keys` carry each walker over a party change; `looks` also changes when one evolves (same key, new sprite).
 let fitted: { budget: number; keys: string[]; looks: string; lefts: Pixels[] } | null = null
@@ -1333,7 +1334,7 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
           }),
       )
     } else wildRate = known
-    status = startWild(status, band.columns, wild.left.width)
+    status = startWild(status, band.total, wild.left.width)
     closeMart($)
     $.ui.toast(`${isShiny ? '✨ ' : ''}A wild ${mon.name} appeared!`, { timeoutMs: 6000 })
     await mutate($, s => recordSeen(s, pick.species, isShiny, Date.now()))
@@ -1420,7 +1421,7 @@ async function keepCatch($: EngineInterface) {
 function afterThrow($: EngineInterface, event: ThrowEvent) {
   if (event === 'broke-free') status = hopWild(status)
   else if (event === 'released') status = holdWild(status, false)
-  else if (event === 'fled') status = fleeWild(status, band?.columns ?? 0, wild?.left.width ?? 0)
+  else if (event === 'fled') status = fleeWild(status, band?.total ?? 0, wild?.left.width ?? 0)
   else background($, keepCatch($))
 }
 
@@ -1587,6 +1588,8 @@ async function tick($: EngineInterface) {
     band.columns,
     fitted.lefts.map(l => l.width),
     wild?.left.width ?? 0,
+    Math.random,
+    band.total,
   )
   if (pitch) {
     const { pitch: next, event } = stepThrow(pitch)
@@ -2016,7 +2019,7 @@ export const register: Register = on => {
         x: Math.min(a.x, Math.max(0, columns - (fitted?.lefts[i]?.width ?? 0))),
       })),
     }
-    status = keepRustleAtEdge(status, columns)
+    status = keepRustleAtEdge(status, total)
     band = { requestId: e.requestId, columns, rows, total }
     isHidden = false
     isAiming = canAim()
@@ -2033,7 +2036,8 @@ export const register: Register = on => {
     // and a click there is a throw like any other.
     if (isAiming)
       return <Client key="aim" module="./aim.tsx" width={total} height={rows} props={{ lines: textRows(img) }} />
-    // The whole band is one picture, the landscape running on under the button; nobody walks there.
+    // The whole band is one picture, the landscape running on under the button; only a wild visitor walks there, and
+    // then the button is gone.
     const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />
     // No button while a wild Pokémon is out, aimable or not: the Mart would hold up the catch.
     if (!button || isButtonHidden) return scene

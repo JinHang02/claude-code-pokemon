@@ -231,7 +231,8 @@ export const startWild = (s: Status, width: number, wildWidth: number, rand = Ma
   return { ...s, wild: { x, facing, stride: 0, pause: 0, hasPaused: false, rustle: RUSTLE } }
 }
 
-// A wild Pokémon still in the grass on the right steps out at the band's right edge, wherever that is now.
+// A wild Pokémon still in the grass on the right steps out at the band's right edge, wherever that is now. `width`
+// is the visitor's room: the whole band, the button's corner included.
 export const keepRustleAtEdge = (s: Status, width: number): Status =>
   s.wild && s.wild.rustle > 0 && s.wild.facing === -1 ? { ...s, wild: { ...s.wild, x: width } } : s
 
@@ -244,7 +245,7 @@ export function holdWild(s: Status, isHeld: boolean): Status {
 
 export const hopWild = (s: Status): Status => (s.wild ? { ...s, wild: { ...s.wild, hop: WILD_HOP } } : s)
 
-// It turns for the nearest edge and dashes off.
+// It turns for the nearest edge of its room (`width`, the whole band) and dashes off.
 export function fleeWild(s: Status, width: number, wildWidth: number): Status {
   if (!s.wild) return s
   const { isHeld: _, ...rest } = s.wild
@@ -319,7 +320,7 @@ export function advance(s: Scene, width: number, spriteWidth: number, rand = Mat
   return { x: Math.min(Math.max(0, x), max), v, facing, roam, t: s.t + 1, stride: s.stride + Math.abs(step) }
 }
 
-// A wild Pokémon strolls across, stops once mid-way to look about, and leaves the other side.
+// A wild Pokémon strolls across the `width` of its room, stops once mid-way to look about, and leaves the other side.
 function moveWild(w: Wild, width: number, wildWidth: number): Wild | null {
   if (w.rustle > 0) return { ...w, rustle: w.rustle - 1 }
   if (w.hop) w = { ...w, hop: w.hop - 1 }
@@ -350,15 +351,23 @@ export function carryActors(was: string[], keys: string[], actors: Scene[], plac
 }
 
 // One tick: a mood plays on (everyone holds still for it), idle ones doze off, free ones roam (running
-// while Claude works); clones, the wild visitor and particles come and go. `widths` per actor.
-export function step(s: Status, width: number, widths: number[], wildWidth = 0, rand = Math.random): Status {
+// while Claude works); clones, the wild visitor and particles come and go. `widths` per actor. The party keeps to
+// `width` columns; the visitor roams `room` (the whole band, the button's corner included).
+export function step(
+  s: Status,
+  width: number,
+  widths: number[],
+  wildWidth = 0,
+  rand = Math.random,
+  room = width,
+): Status {
   const t = s.t + 1
   let mood = s.mood && { ...s.mood, t: s.mood.t + 1 }
   if (mood && mood.t >= moodLength(mood)) mood = null
   const isBusy = s.isWorking || s.isCompacting || s.agents > 0
   const idleTicks = isBusy ? 0 : s.idleTicks + 1
   const asleep = isAsleep({ ...s, idleTicks, mood })
-  const wild = s.wild && moveWild(s.wild, width, wildWidth)
+  const wild = s.wild && moveWild(s.wild, room, wildWidth)
   const stepsOut = s.wild?.rustle === 1 && wild?.rustle === 0
   // The "!" goes with the visitor: gone early (the band shrank under it), so is the "!".
   const alert = stepsOut ? ALERT : wild ? Math.max(0, s.alert - 1) : 0
@@ -431,7 +440,7 @@ export function step(s: Status, width: number, widths: number[], wildWidth = 0, 
   })
   // One that fled leaves a puff of dust at the edge it ran out of.
   if (s.wild?.isFleeing && !wild) {
-    const edge = s.wild.facing === 1 ? width - 3 : 1
+    const edge = s.wild.facing === 1 ? room - 3 : 1
     fx = [
       ...fx,
       ...[0, 1, 2].map(i => ({ kind: 'dust' as const, x: edge + i - 1, y: -1 - (i % 2), age: 0, life: ticks(450) })),
@@ -660,7 +669,8 @@ export function slice(img: Pixels, from: number, count: number): Pixels {
 
 // The band's picture: the meadow, clones trailing the lead, a wild visitor, the party in their poses with
 // feet in the grass (lead in front, but an evolving Pokémon in front of all), then dust, sparks, confetti and Zs. `lefts`: the party facing left.
-// `total`: how wide the whole picture is: the party keeps to the left `width` columns, the landscape alone beyond.
+// `total`: how wide the whole picture is: the party keeps to the left `width` columns, the landscape (and a wild
+// visitor, who may use the button's corner while it is out) beyond.
 export function frame(
   s: Status,
   lefts: Pixels[],
@@ -670,11 +680,11 @@ export function frame(
   total = width,
 ): Pixels {
   const land = scenery(total, rows, look, s.t, width)
-  const out = slice(land, 0, width)
+  const out = slice(land, 0, total)
   const ground = out.height - 2
-  body = new Uint8Array(width * out.height)
-  bodyWidth = width
-  if (s.wild && s.wild.rustle > 0) rustle(out, s.wild.facing === 1 ? 0 : width - RUSTLE_COLUMNS, s.t)
+  body = new Uint8Array(total * out.height)
+  bodyWidth = total
+  if (s.wild && s.wild.rustle > 0) rustle(out, s.wild.facing === 1 ? 0 : total - RUSTLE_COLUMNS, s.t)
   const night = look.phase === 'night' ? 0.85 : 1
   const lead = s.actors[0] ?? newScene()
   const leadLeft = lefts[0]
@@ -771,16 +781,5 @@ export function frame(
     }
   }
   for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
-  return width === total ? out : beside(out, slice(land, width, total - width))
-}
-
-// Two pictures of one height side by side.
-export function beside(left: Pixels, right: Pixels): Pixels {
-  const pixels: number[] = []
-  for (let y = 0; y < left.height; y++)
-    pixels.push(
-      ...left.pixels.slice(y * left.width, (y + 1) * left.width),
-      ...right.pixels.slice(y * right.width, (y + 1) * right.width),
-    )
-  return { pixels, width: left.width + right.width, height: left.height }
+  return out
 }
