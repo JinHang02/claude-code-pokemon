@@ -218,7 +218,6 @@ test('on average over the 20 place and time pairs a Pidgey is 1 in 189, an Eevee
       for (const n of Object.keys(sum)) sum[n] = (sum[n] ?? 0) + (0.99 * (own[n] ?? 0)) / total
     }
   const oneIn = (n: string) => 20 / (sum[n] ?? 0)
-  console.log('one in', Math.round(oneIn('pidgey')), Math.round(oneIn('eevee')), Math.round(oneIn('dratini')))
   for (const [n, want] of [
     ['pidgey', 189],
     ['eevee', 966],

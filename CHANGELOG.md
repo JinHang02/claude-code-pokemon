@@ -64,6 +64,14 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokemon vulpix` with only an Alolan Vulpix in your party makes that one lead. It used to catch a plain Vulpix.
   From the PC box a plain name never takes another form: with the Alolan one there, `/pokemon vulpix` still catches a
   plain one (`/pokemon alolan vulpix` brings it out). `/pokemon-play wild vulpix` still brings a plain one to catch.
+- Wild odds are gentler on evolved and rare-catch-rate Pokémon: the catch rate counts by its square root, and a second
+  stage is 0.75, a third 0.55 and a baby 0.4 as likely as a first.
+- Forms that need an item or an event are never wild: Rotom's appliances, Deoxys' Attack, Defense and Speed, the
+  Therian formes, the Origin formes of Giratina, Dialga and Palkia, Genesect's Drives, Sky Shaymin, Resolute Keldeo
+  and Alcremie's sweets. Wormadam's cloaks still are. `/pokemon <name>` still brings any of them.
+- `/pokemon-play wild <name>` takes everything after `wild` as the name, so `wild lycanroc dusk` brings Dusk Lycanroc
+  instead of switching the scene to dusk. Asking again while a visitor is out answers "<Name> is still here."
+- A wild Pokémon can be aimed at at once, offline too: its catch rate comes from the shipped table, not a download.
 
 ## [1.3.0] - 2026-10-13
 
