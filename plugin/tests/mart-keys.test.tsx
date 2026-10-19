@@ -28,10 +28,12 @@ async function martNow(band: Band, isRedrawn = false): Promise<MartProps | null>
   }
   return find(await band.drawn())
 }
-// What the plugin put in the prompt box, as Claude Code's own fill would take it.
-function promptBox(on: On) {
+// What the plugin put in the prompt box, as Claude Code's own fill would take it; `isFilled` false: a dialog holds
+// the box, and it takes nothing.
+function promptBox(on: On, isFilled = true) {
   const box = { text: '' }
   on('prompt.fill', async (_$, e) => {
+    if (!isFilled) return { isFilled: false, refusal: 'dialog' }
     box.text = e.mode === 'replace' ? e.text : box.text + e.text
     return { isFilled: true }
   })
@@ -92,6 +94,58 @@ test("a letter that isn't one of the Mart's keys closes it too, and goes to the 
   // Once typing has begun, x is a letter of what is typed.
   expect(box.text).toBe('Fx')
   expect(w.saveNow().bag).toBeUndefined()
+})
+
+// The Mart open, the keys given to it by a click, and what the prompt receives.
+async function martOpen(
+  $: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0] & Parameters<typeof mountBand>[0],
+  on: On,
+  isFilled = true,
+) {
+  const box = promptBox(on, isFilled)
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 30_000 })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  await band.redraw()
+  return { w, band, box }
+}
+
+for (const line of ['xcode', '-v', '+1 to that', '= 2'])
+  test(`a line that arrives as one key and starts with a Mart key goes to the prompt whole: "${line}"`, async ($, on) => {
+    const { w, band, box } = await martOpen($, on)
+    await band.key({ key: line, in: 'mart' })
+    expect(await martNow(band, true)).toBeNull()
+    expect(box.text).toBe(line)
+    expect(w.saveNow().bag).toBeUndefined()
+  })
+
+test('a single x still closes the Mart, and a single - or + still sets how many', async ($, on) => {
+  const { band, box } = await martOpen($, on)
+  await band.key({ key: '+', in: 'mart' })
+  await band.key({ key: '=', in: 'mart' })
+  await band.key({ key: '-', in: 'mart' })
+  expect((await martNow(band, true))?.state.qty).toBe(2)
+  await band.key({ key: 'x', in: 'mart' })
+  expect(await martNow(band, true)).toBeNull()
+  expect(box.text).toBe('')
+})
+
+test('a capital X sent as x with shift held is typing, not a close; shifted letters after it stay capitals', async ($, on) => {
+  const { band, box } = await martOpen($, on)
+  await band.key({ key: 'x', shift: true, in: 'mart' })
+  await band.key({ key: 'm', shift: true, in: 'mart' })
+  await band.key({ key: 'l', in: 'mart' })
+  expect(await martNow(band, true)).toBeNull()
+  expect(box.text).toBe('XMl')
+})
+
+test("typing the prompt can't take (a dialog holds it) is not lost silently: a toast says what was typed", async ($, on) => {
+  const { w, band, box } = await martOpen($, on, false)
+  await band.key({ key: '/pokemon bag', in: 'mart' })
+  expect(await martNow(band, true)).toBeNull()
+  expect(box.text).toBe('')
+  expect(w.toasts).toContain(`Pokémon: the prompt couldn't take what you typed in the Mart: "/pokemon bag"`)
 })
 
 test('Enter right after a buy asks before buying again: two Enters buy one; a third buys the next', async ($, on) => {

@@ -282,12 +282,16 @@ const SPECIAL = new Set([
   ...['up', 'down', 'left', 'right', 'return', 'enter', 'tab', 'backspace', 'delete', 'escape'],
   ...['pageup', 'pagedown', 'home', 'end', 'insert', 'clear'],
 ])
+// A letter with shift held, should the engine report it so rather than as the capital it types.
+const isShifted = (e: { key: string; shift?: true }) => Boolean(e.shift) && /^[a-z]$/.test(e.key)
+
 // What a key types, or null for a special key or a chord. Characters that arrive together (typed faster than the
 // terminal reads them, or pasted) come as one key; control characters in them are left out.
-export function typedBy(e: { key: string; ctrl?: true; meta?: true }): string | null {
+export function typedBy(e: { key: string; ctrl?: true; shift?: true; meta?: true }): string | null {
   if (e.ctrl || e.meta) return null
   if (e.key === 'space') return ' '
   if (SPECIAL.has(e.key) || /^f\d{1,2}$/.test(e.key)) return null
+  if (isShifted(e)) return e.key.toUpperCase()
   const text = e.key.replace(/[\u0000-\u001f\u007f]/g, '')
   return text || null
 }
@@ -303,8 +307,9 @@ const Mart: ClientModule<MartProps, { typed: string }> = (p, s) => {
     if (hit) s.post({ act: hit.act })
   })
   s.onKey(e => {
-    // Once typing has begun, every key is the person's line until the Mart has gone: no buy, and an x is a letter.
-    const a = typed ? undefined : KEYS[e.key]
+    // Once typing has begun, every key is the person's line until the Mart has gone: no buy, and an x is a letter. A
+    // Mart key acts only alone: a run of characters starting with one (`xcode`, `-v`) matches none, and is typed.
+    const a = typed || isShifted(e) ? undefined : KEYS[e.key]
     if (a) return s.post({ act: a })
     const ch = typedBy(e)
     if (ch === null) return

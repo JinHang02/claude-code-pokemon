@@ -21,6 +21,7 @@ import {
   addTogether,
   bagFull,
   balanceOf,
+  BOX_FULL,
   buy,
   displayName,
   emptySave,
@@ -34,12 +35,14 @@ import {
   extraMoney,
   extraXp,
   foldLedger,
+  isBoxFull,
   isName,
   level,
   LEDGER,
   loadLedger,
   loadSave,
   loadTogether,
+  MAKE_ROOM,
   MAX_LEVEL,
   MAX_PARTY,
   MONEY_PER_XP,
@@ -562,12 +565,21 @@ const isNoneIn = (found: Found) => 'error' in found && !isList(found.error)
 async function setLead($: EngineInterface, query: string): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
+  // Before any download: the save write checks again.
+  const lead = save.party[0]
+  if (lead && isBoxFull(save)) return noRoomForLead(lead)
   const caught = await catchOne($, query)
   if (typeof caught === 'string') return caught
   let text = ''
+  let isCaught = false
   await mutate($, latest => {
+    const gone = latest.party[0]
+    if (gone && isBoxFull(latest)) {
+      text = noRoomForLead(gone)
+      return latest
+    }
     const s = recordSeen(latest, caught.species, caught.isShiny, Date.now())
-    const gone = s.party[0]
+    isCaught = true
     text = `${caught.isShiny ? '✨ ' : ''}A wild ${displayName(caught.species, caught.form)} appeared! It's your new lead.`
     if (gone) text += ` ${nameOf(gone)} (Lv ${levelWithLedger(gone)}) went into the PC box.`
     return {
@@ -576,10 +588,15 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
       ...(gone ? { box: [...(s.box ?? []), gone] } : {}),
     }
   })
+  if (!isCaught) return text
   await refreshParty($)
   background($, learnEvolutions($))
   return text
 }
+
+// A new lead needs the old one to go into the PC box: refused when it's full, and nothing changes.
+const noRoomForLead = (lead: Member) =>
+  `${BOX_FULL} ${nameOf(lead)} can't go there to make way for a new lead. ${MAKE_ROOM}`
 
 async function addMember($: EngineInterface, query: string): Promise<string> {
   // Another session may have made room since the last sync.
@@ -701,6 +718,7 @@ async function depositMember($: EngineInterface, query: string): Promise<string>
     if (typeof spot === 'string') text = spot
     else if (s.party.length === 1)
       text = 'That would leave your party empty. Pick a new lead with /pokemon <name> instead.'
+    else if (m && isBoxFull(s)) text = `${BOX_FULL} ${nameOf(m)} stays in your party. ${MAKE_ROOM}`
     else if (m) {
       text = `${nameOf(m)} (Lv ${levelWithLedger(m)}) went into the PC box.`
       return { ...s, party: s.party.filter((_, i) => i !== at), box: [...(s.box ?? []), m] }
@@ -1206,9 +1224,14 @@ async function evolveNow(
         xp: latest.xp + (extra[member.id] ?? 0),
         evolutions: 1,
       }
+      const shedName = displayName(shed.species)
+      // As in the games, it comes along only where there's room for it.
+      if (after.party.length >= MAX_PARTY && isBoxFull(after)) {
+        shedText = ` ${shedName} didn't come along: there's no more room in your PC box.`
+        return after
+      }
       const found = recordCaught(recordSeen(after, shed.species, isShiny, Date.now()), shed.species, Date.now())
       const stored = storeCaught(found, shedinja)
-      const shedName = displayName(shed.species)
       shedText = stored.isInParty ? ` ${shedName} joined your party!` : ` ${shedName} went to the PC box.`
       return stored.save
     })
@@ -1320,11 +1343,16 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
   return null
 }
 
-// A left click on the band: a Poké Ball at that spot while a wild Pokémon is out of the grass, one at a time.
-function throwAt(click: Click) {
+// A left click on the band: a Poké Ball at that spot while a wild Pokémon is out of the grass, one at a time. With
+// nowhere to keep a catch, no ball is thrown, and the visitor stays to aim at once there's room.
+function throwAt($: EngineInterface, click: Click) {
   feel('activity')
   const w = status.wild
   if (!band || !wild || !w || !canAim()) return
+  if (isNoRoom(save)) {
+    $.ui.toast(NO_ROOM_TO_CATCH)
+    return
+  }
   const height = band.rows * 2
   const place = wildPlacement(w, wild.left, height)
   const { x, ys } = clickPixels(click)
@@ -1337,9 +1365,16 @@ function throwAt(click: Click) {
   if (isHit) status = holdWild(status, true)
 }
 
-// The Pokémon in the ball is kept: in the party while it has room, else the PC box.
+// No room for a catch: the party and the PC box are both full.
+const isNoRoom = (s: Save) => s.party.length >= MAX_PARTY && isBoxFull(s)
+const NO_ROOM_TO_CATCH = `${BOX_FULL} Your party is full too. ${MAKE_ROOM}`
+
+// The Pokémon in the ball is kept: in the party while it has room, else the PC box. When another session has filled
+// both since the throw, it breaks free instead, and can be aimed at again.
 async function keepCatch($: EngineInterface) {
   if (!wild) return
+  const visitor = wild
+  const scene = status.wild
   const { pick, mon } = wild
   status = { ...status, wild: null }
   wild = null
@@ -1353,11 +1388,27 @@ async function keepCatch($: EngineInterface) {
     isCaught: true,
   }
   let isInParty = false
+  let isStored = true
   await mutate($, s => {
+    if (isNoRoom(s)) {
+      isStored = false
+      return s
+    }
     const kept = storeCaught(recordCaught(s, pick.species, Date.now()), caught)
     isInParty = kept.isInParty
     return kept.save
   })
+  if (!isStored) {
+    // Back out of the ball, unless another visitor has come meanwhile.
+    if (scene && !status.wild && !wild) {
+      wild = visitor
+      status = hopWild({ ...status, wild: scene })
+      if (pitch) pitch = { ...pitch, phase: 'burst', t: 0, isCaught: false, flees: false }
+      else status = holdWild(status, false)
+    }
+    $.ui.toast(NO_ROOM_TO_CATCH)
+    return
+  }
   const where = isInParty ? 'It joined your party.' : 'It was sent to the PC box.'
   $.ui.toast(`Gotcha! ${mon.isShiny ? '✨ ' : ''}${mon.name} was caught! ${where}`)
   feel('cheer')
@@ -1483,7 +1534,10 @@ async function typedInMart($: EngineInterface, typed: string) {
   mart = { ...mart, typed: typed.length }
   closeMart($)
   try {
-    await $.prompt.fill({ text: more, mode: 'insert' })
+    const filled = await $.prompt.fill({ text: more, mode: 'insert' })
+    // A dialog holds the prompt: the text is shown, so it isn't lost without a word.
+    if (!filled.isFilled)
+      $.ui.toast(`Pokémon: the prompt couldn't take what you typed in the Mart: "${more}"`, { timeoutMs: 6000 })
   } catch (err) {
     await report($, err)
   }
@@ -1615,14 +1669,19 @@ async function play($: EngineInterface, args: string): Promise<string> {
   return `Playing ${name}.`
 }
 
+// How long a naming command waits for a species list still downloading.
+const SPECIES_WAIT_MS = 2000
 // The `/pokemon` words that take no Pokémon's name.
 const UNNAMED = new Set(['party', 'box', 'size', 'bag', 'mart', 'buy', 'off', 'on'])
 
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
   const tail = rest.join(' ')
-  // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde).
-  if (!UNNAMED.has(head.toLowerCase())) await loadSpecies($).catch(() => null)
+  // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde). A list not
+  // there yet is waited for a moment only: a hanging download would hold every naming command up, and without it a
+  // name is read the plain way.
+  if (!species && !UNNAMED.has(head.toLowerCase()))
+    await Promise.race([loadSpecies($).catch(() => null), $.clock.sleep(SPECIES_WAIT_MS)])
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
@@ -1892,7 +1951,7 @@ export const register: Register = on => {
 
   on('ui.message', async ($, e, next) => {
     const click = e.element === 'aim' ? readClick(e.data) : null
-    if (click) throwAt(click)
+    if (click) throwAt($, click)
     // A click on a button drawn before a visitor came opens nothing.
     if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
     const typed = e.element === 'mart' ? (e.data as { typed?: unknown } | null)?.typed : undefined

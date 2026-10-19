@@ -424,16 +424,14 @@ async function seen<T>(w: { clock: { advance: (ms: number) => Promise<unknown> }
   }
   throw new Error('never showed up')
 }
-// A party of one in daylight with the band up and `name` stepped out of the grass.
-async function visited($: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0], on: On, name: string) {
-  const w = await begin(
-    $,
-    on,
-    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
-    TALL,
-    undefined,
-    throwNet(),
-  )
+// A party of one (or `saved`) in daylight with the band up and `name` stepped out of the grass.
+async function visited(
+  $: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0],
+  on: On,
+  name: string,
+  saved: Save = { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+) {
+  const w = await begin($, on, saved, TALL, undefined, throwNet())
   await cmd($, 'pokemon', 'party')
   const aim = (await mountBand($ as never)) as Aim
   await cmd($, 'pokemon-play', 'day')
@@ -584,6 +582,83 @@ test('the click layer is there only while a wild Pokémon can be aimed at; a sec
   expect(w.toasts.filter(t => t.startsWith('Gotcha'))).toHaveLength(1)
   expect(w.saveNow().party.filter(m => m.species === 'caterpie')).toHaveLength(1)
   expect(await isAiming(aim)).toBe(false)
+})
+
+// `n` Pokémon for the PC box, cheaply: a full box is 960 of them.
+const boxOf = (n: number, species = 'caterpie') =>
+  Array.from({ length: n }, (_, i) => member(species, { id: `b${i}`, next: [] }))
+const fullParty = () => ['pikachu', 'eevee', 'charmander'].map(s => member(s, { next: [] }))
+
+test('a full party and a full PC box: no ball is thrown, the visitor stays, and once there is room it can be caught', async ($, on) => {
+  const { w, aim, cell } = await visited($, on, 'caterpie', { ...emptySave(), party: fullParty(), box: boxOf(960) })
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  let flew = false
+  for (let i = 0; i < 40; i++) {
+    await w.clock.advance(50)
+    if (colorsIn(w.band.cells).has(BALL_RED) || JSON.stringify(await aimLines(aim)).includes('#e3350d')) flew = true
+  }
+  expect(flew).toBe(false)
+  expect(w.toasts).toContain(
+    "There's no more room in your PC box! Your party is full too. Make room with /pokemon release <name>.",
+  )
+  expect(await isAiming(aim)).toBe(true)
+  expect(w.saveNow().box).toHaveLength(960)
+  expect(w.saveNow().dex.caterpie?.caught).toBeUndefined()
+  // A release makes room: the next ball catches it, into the box.
+  expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
+  const again = await seenIn(w, aim, '#00ffff')
+  await aim.pointer({ type: 'down', ...again, button: 'left' })
+  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+  expect(w.toasts.some(t => /^Gotcha! (✨ )?Caterpie was caught! It was sent to the PC box\.$/.test(t))).toBe(true)
+  expect(w.saveNow().box).toHaveLength(960)
+})
+
+test('a PC box another session fills while the ball wobbles: the catch breaks free, nothing is kept, and it can be aimed at again', async ($, on) => {
+  const { w, aim, cell } = await visited($, on, 'caterpie', { ...emptySave(), party: fullParty(), box: boxOf(959) })
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  await w.clock.advance(100)
+  w.store.set('save', { ...w.saveNow(), box: boxOf(960) })
+  await seen(w, () => w.toasts.find(t => t.startsWith("There's no more room")) ?? null)
+  expect(w.toasts.some(t => t.startsWith('Gotcha'))).toBe(false)
+  for (let i = 0; i < 30; i++) await w.clock.advance(50)
+  expect(await isAiming(aim)).toBe(true)
+  expect(w.saveNow().box).toHaveLength(960)
+  expect(w.saveNow().party).toHaveLength(3)
+  expect(w.saveNow().dex.caterpie?.caught).toBeUndefined()
+})
+
+test('a full PC box refuses a new lead, a reroll and a deposit, and changes nothing; swaps and releases still work', async ($, on) => {
+  const party = [member('pikachu', { next: [] }), member('eevee', { next: [] })]
+  const box = [...boxOf(959), member('charmander', { id: 'c', next: [] })]
+  const w = await begin($, on, { ...emptySave(), party, box })
+  await cmd($, 'pokemon', 'party')
+  const before = JSON.stringify(w.saveNow())
+  expect(await cmd($, 'pokemon', 'raichu')).toBe(
+    "There's no more room in your PC box! Pikachu can't go there to make way for a new lead. Make room with /pokemon release <name>.",
+  )
+  expect(await cmd($, 'pokemon', '')).toMatch(/^There's no more room in your PC box! Pikachu /)
+  expect(await cmd($, 'pokemon', 'deposit eevee')).toBe(
+    "There's no more room in your PC box! Eevee stays in your party. Make room with /pokemon release <name>.",
+  )
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(960 \/ 960\):\n/)
+  // A boxed one leading swaps places with the lead: the box stays at 960.
+  expect(await cmd($, 'pokemon', 'charmander')).toBe(
+    'Charmander (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
+  )
+  expect(w.saveNow().box).toHaveLength(960)
+  expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
+  expect(await cmd($, 'pokemon', 'deposit eevee')).toBe('Eevee (Lv 1) went into the PC box.')
+  expect(w.saveNow().box).toHaveLength(960)
+})
+
+test('an older save with more than 960 in the PC box keeps them all; only adding is refused', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], box: boxOf(1000) })
+  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1000 \/ 960\):\n/)
+  expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
+  expect(w.saveNow().box).toHaveLength(999)
+  expect(await cmd($, 'pokemon', 'raichu')).toMatch(/^There's no more room in your PC box!/)
+  expect(w.saveNow().box).toHaveLength(999)
 })
 
 test('a wild Pokémon still downloading when another steps out stays away: one visitor at a time', async ($, on) => {
@@ -1151,7 +1226,7 @@ test('the PC box: listed with /pokemon box; a boxed Pokémon can lead (the old l
     party: [member('pikachu', { xp: 100 }), member('charmander')],
     box: [member('eevee', { xp: 40, isCaught: true })],
   })
-  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box:\n {2}1\. {2}Eevee ◓ {2}Lv 4 /)
+  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1 \/ 960\):\n {2}1\. {2}Eevee ◓ {2}Lv 4 /)
   expect(await cmd($, 'pokemon', 'eevee')).toBe(
     'Eevee (Lv 4) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
   )
@@ -1718,6 +1793,29 @@ test('with a full party, Shedinja goes to the PC box', async ($, on) => {
   await until($, () => w.toasts.length === 1)
   expect(w.toasts).toEqual(['What? Nincada evolved into Ninjask! Shedinja went to the PC box.'])
   expect(w.saveNow().box?.map(m => m.species)).toEqual(['shedinja'])
+})
+
+test('with a full party and a full PC box, Nincada still evolves, and Shedinja stays behind', async ($, on) => {
+  answerTools(on)
+  const box = Array.from({ length: 960 }, (_, i) => member('caterpie', { id: `b${i}`, next: [] }))
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [
+      member('nincada', { xp: xpForLevel(20) - 5 }),
+      member('pikachu', { next: [] }),
+      member('charmander', { next: [] }),
+    ],
+    box,
+  })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.toasts.length === 1)
+  expect(w.toasts).toEqual([
+    "What? Nincada evolved into Ninjask! Shedinja didn't come along: there's no more room in your PC box.",
+  ])
+  expect(w.saveNow().party[0]?.species).toBe('ninjask')
+  expect(w.saveNow().box).toHaveLength(960)
+  expect(w.saveNow().dex.shedinja).toBeUndefined()
 })
 
 test('Dusclops waits for a Reaper Cloth: past Lv 30 it stays, and the party says what it needs', async ($, on) => {

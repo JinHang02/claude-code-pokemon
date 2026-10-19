@@ -64,6 +64,12 @@ export type Together = { at: number; ms: Record<string, number> }
 export const TOGETHER = 'together'
 
 export const MAX_PARTY = 3
+// As many as the games' PC (32 boxes of 30). Only adding is refused: an older save holding more keeps them all.
+export const MAX_BOX = 960
+export const isBoxFull = (save: Save) => (save.box?.length ?? 0) >= MAX_BOX
+// Why nothing more can go into the PC box, wherever something would: a catch, a new lead, a deposit.
+export const BOX_FULL = "There's no more room in your PC box!"
+export const MAKE_ROOM = 'Make room with /pokemon release <name>.'
 export const XP = { reply: 2, tests: 5, commit: 10 }
 export const MONEY_PER_XP = 10
 export const STARTING_MONEY = 3000
@@ -349,12 +355,13 @@ export function recordCaught(save: Save, species: string, now: number): Save {
   return { ...save, dex: { ...save.dex, [species]: { ...was, caught: (was.caught ?? 0) + 1 } } }
 }
 
-// A catch joins the party while it has room, else the PC box. Twins are allowed since 1.4.0.
-export function storeCaught(save: Save, m: Member): { save: Save; isInParty: boolean } {
+// A catch joins the party while it has room, else the PC box; with no room in either, `save` unchanged and
+// `isStored` false. Twins are allowed since 1.4.0.
+export function storeCaught(save: Save, m: Member): { save: Save; isInParty: boolean; isStored: boolean } {
   const isInParty = save.party.length < MAX_PARTY
-  return isInParty
-    ? { save: { ...save, party: [...save.party, m] }, isInParty }
-    : { save: { ...save, box: [...(save.box ?? []), m] }, isInParty }
+  if (isInParty) return { save: { ...save, party: [...save.party, m] }, isInParty, isStored: true }
+  if (isBoxFull(save)) return { save, isInParty, isStored: false }
+  return { save: { ...save, box: [...(save.box ?? []), m] }, isInParty, isStored: true }
 }
 
 export function takeFromBag(save: Save, id: string): Save {
@@ -566,7 +573,10 @@ export function formatBag(save: Save, cash: number): string {
 export function formatBox(save: Save): string {
   const box = save.box ?? []
   if (!box.length) return 'Your PC box is empty.'
-  return ['Your PC box:', ...lineUp(box.map((m, i) => [`${i + 1}.`, ...memberColumns(m)]))].join('\n')
+  return [
+    `Your PC box (${box.length} / ${MAX_BOX}):`,
+    ...lineUp(box.map((m, i) => [`${i + 1}.`, ...memberColumns(m)])),
+  ].join('\n')
 }
 
 // The Pokédex: totals, progress per generation, shinies and the latest sightings. `names` is the national dex order.

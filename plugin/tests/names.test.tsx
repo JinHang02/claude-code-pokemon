@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { emptySave, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
-import { begin, cmd, LIST, member } from './world'
+import { ART, begin, cmd, LIST, member } from './world'
 
 const NUMBERED = [...LIST, { name: 'zygarde', forms: ['regular', '10', 'complete'] }]
 const numbered = { isOnline: true, list: JSON.stringify(NUMBERED) }
@@ -263,4 +263,36 @@ test('a full Bag says the same in every command: release, give, take and buy', a
   expect(await cmd($, 'pokemon', 'buy fire stone')).toBe(full('Fire Stone'))
   expect(w.saveNow().bag).toEqual({ 'fire-stone': 999, 'lucky-egg': 999, 'soothe-bell': 1 })
   expect(await cmd($, 'pokemon', 'buy thunder stone 3')).toMatch(/^Not enough ₽: ₽[\d,]+ more to go\.$/)
+})
+
+// Only a form's name (`zygarde 10`) needs the species list: with none cached and a network that hangs, a name
+// command waits for it a moment, then reads the name without it.
+test('a name command never waits long for a species list that hangs: it answers within about 2 seconds', async ($, on) => {
+  const sprites = '/home/ash/.cache/claude-code-pokemon/sprites/regular'
+  const files = new Map([
+    [`${sprites}/pikachu`, ART],
+    [`${sprites}/charmander`, ART],
+  ])
+  const w = await begin(
+    $,
+    on,
+    {
+      ...emptySave(),
+      party: [member('pikachu', { next: [], gender: null }), member('charmander', { next: [], gender: null })],
+      box: [member('eevee'), member('eevee', { isShiny: true })],
+    },
+    ART,
+    files,
+    { isOnline: true, list: JSON.stringify(LIST), stall: new Promise(() => {}) },
+  )
+  const timed = async (args: string) => {
+    let said: string | null = null
+    void cmd($, 'pokemon', args).then(text => (said = text))
+    await w.clock.advance(2100)
+    return said
+  }
+  expect(await timed('release shiny eevee')).toBe('Bye bye, ✨ Eevee (Lv 1, PC box)! It went back to the wild.')
+  // Each command waits afresh, never for the stalled download's whole 20 seconds.
+  expect(await timed('deposit charmander')).toBe('Charmander (Lv 1) went into the PC box.')
+  expect(await timed('take eevee')).toBe("Eevee isn't holding anything.")
 })
