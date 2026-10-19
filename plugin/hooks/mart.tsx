@@ -128,7 +128,7 @@ export function act(p: MartProps, s: MartState, a: Act): { state: MartState; pos
     if (item && p.balance < item.price)
       return {
         state: { ...s, qty: 1 },
-        refusal: `Not enough ₽ for one ${item.name}: ${fmt(item.price - p.balance)} more to go.`,
+        refusal: `Not enough ₽ for one ${item.name}: ₽${fmt(item.price - p.balance)} more to go.`,
       }
     return { state: { ...s, qty: most(p, s) } }
   }

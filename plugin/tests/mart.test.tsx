@@ -186,9 +186,9 @@ test('Max with not even one affordable says how much more is needed, and stays a
   const poor = props({ balance: 1200 })
   expect(act(poor, after(poor, 'more', 'more'), 'max')).toEqual({
     state: START,
-    refusal: 'Not enough ₽ for one Fire Stone: 1,800 more to go.',
+    refusal: 'Not enough ₽ for one Fire Stone: ₽1,800 more to go.',
   })
-  expect(act(poor, after(poor, 'right'), 'max').refusal).toBe('Not enough ₽ for one Metal Coat: 3,800 more to go.')
+  expect(act(poor, after(poor, 'right'), 'max').refusal).toBe('Not enough ₽ for one Metal Coat: ₽3,800 more to go.')
   // One is affordable: no refusal.
   expect(act(props({ balance: 3000 }), START, 'max')).toEqual({ state: START })
   expect(act(props(), START, 'max')).toEqual({ state: { ...START, qty: 4 } })

@@ -2190,7 +2190,7 @@ test('a refused buy keeps its quantity; a bought one goes back to ×1; any move 
   expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 0 })
   await clickMart(band, 'max')
   expect(await shown()).toEqual({
-    message: 'Not enough ₽ for one Water Stone: 3,000 more to go.',
+    message: 'Not enough ₽ for one Water Stone: ₽3,000 more to go.',
     isError: true,
     qty: 1,
     sel: 1,
