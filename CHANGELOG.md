@@ -70,6 +70,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - After a click in the PokéMart, typing a command no longer vanishes with every Enter a buy. Any key the Mart doesn't
   use (`/`, a letter other than `x`, a digit, a space) closes it, and what you type goes to the prompt. Enter right
   after a buy asks "Press Enter again to buy another Fire Stone." instead of buying again; a click on Buy still buys.
+- The open Mart's "in bag" counts follow every Bag change at once: a release or `take` from the PC box, a `give`, a
+  `/pokemon buy`, another session's change.
 
 ## [1.3.0] - 2026-10-13
 

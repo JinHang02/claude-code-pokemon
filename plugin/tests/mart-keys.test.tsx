@@ -120,3 +120,36 @@ test('Enter right after a buy asks before buying again: two Enters buy one; a th
   await band.pointer({ type: 'down', x: hit!.x0, y: hit!.y, button: 'left', in: 'mart' })
   expect(w.saveNow().bag).toEqual({ 'fire-stone': 2, 'water-stone': 2 })
 })
+
+// Claude Code draws the Mart again only when the plugin says it changed (`ui.invalidate`); the test world counts
+// those and draws on request, so each step checks both.
+test('the Mart is redrawn with the Bag a release from the PC box, a take or a buy by command leaves', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: [
+      member('eevee', { id: 'e', heldItem: 'fire-stone' }),
+      member('charmander', { id: 'c', heldItem: 'fire-stone' }),
+    ],
+    earned: 30_000,
+  })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  expect((await martNow(band, true))?.bag).toEqual({})
+  const redrawn = async (command: string, said: string, bag: Record<string, number>) => {
+    const before = w.band.invalidated
+    expect(await cmd($, 'pokemon', command)).toContain(said)
+    expect(w.band.invalidated).toBeGreaterThan(before)
+    expect((await martNow(band, true))?.bag).toEqual(bag)
+  }
+  await redrawn('release eevee', 'Bye bye, Eevee', { 'fire-stone': 1 })
+  await redrawn('take charmander', 'went back to your Bag', { 'fire-stone': 2 })
+  await redrawn('buy water stone', 'Bought a Water Stone', { 'fire-stone': 2, 'water-stone': 1 })
+  // Another session's change, at the next sync.
+  w.store.set('save', { ...w.saveNow(), bag: { 'fire-stone': 2 } })
+  const before = w.band.invalidated
+  await w.clock.advance(10_500)
+  expect(w.band.invalidated).toBeGreaterThan(before)
+  expect((await martNow(band, true))?.bag).toEqual({ 'fire-stone': 2 })
+})

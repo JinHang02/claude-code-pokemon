@@ -393,6 +393,8 @@ function mutate($: EngineInterface, change: (s: Save) => Save) {
   // In the background: a stalled download never holds up the command.
   return run.then(() => {
     if (isRedrawn) background($, refreshParty($))
+    // The open Mart shows the Bag, the wallet and the party's evolutions: any change to the save may move them.
+    if (mart.isOpen) $.ui.invalidate('ui.render')
   })
 }
 
@@ -404,7 +406,11 @@ async function sync($: EngineInterface) {
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     isNewParty = isOtherParty(latest, save)
-    isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
+    isNewLook =
+      latest.size !== save.size ||
+      latest.isOff !== save.isOff ||
+      (mart.isOpen &&
+        JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== JSON.stringify([save.bag, balanceOf(save, cash)]))
     save = latest
     countLedgers(await readLedgers($))
     times = loadTogether(await $.store.get(TOGETHER)).ms
