@@ -3040,3 +3040,22 @@ test(
     expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e'])
   },
 )
+
+test('/pokemon evolution shows the style and the choices, sets one, and answers a bad word with the choices', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  const shown = await cmd($, 'pokemon', 'evolution')
+  expect(shown).toContain('rays')
+  expect(shown).toContain('(current)')
+  expect(shown).toContain('white')
+  expect(shown).toContain('gradient')
+  expect(shown).toContain('Gen 3')
+  expect(await cmd($, 'pokemon', 'evolution white')).toContain('white')
+  expect(w.saveNow().evolutionStyle).toBe('white')
+  expect(await cmd($, 'pokemon', 'evolution')).toMatch(/white.*\(current\)/)
+  const bad = await cmd($, 'pokemon', 'evolution sparkly')
+  expect(bad).toContain('gradient')
+  expect(bad).not.toContain('Did you mean')
+  expect(await cmd($, 'pokemon', 'evolution gradiant')).toContain('Did you mean gradient')
+  expect(w.saveNow().evolutionStyle).toBe('white')
+  expect(await cmd($, 'pokemon-play', 'evolve nope')).toContain('rays')
+})

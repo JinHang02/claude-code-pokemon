@@ -1,4 +1,6 @@
 import { FRIENDSHIP_MS } from './evolution'
+import { DEFAULT_EVOLUTION_STYLE, isEvolutionStyle } from './evolution-style'
+import type { EvolutionStyle } from './evolution-style'
 import type { Stage, Time, Way } from './evolution'
 import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -39,6 +41,8 @@ export type Save = {
   dex: Record<string, DexEntry>
   recent: string[]
   box?: Member[]
+  // How the evolution screen looks (/pokemon evolution); absent means the default.
+  evolutionStyle?: EvolutionStyle
   isOff?: boolean
   folded?: string[]
   foldedXp?: Record<string, Record<string, number>>
@@ -79,6 +83,8 @@ export const TOGETHER_CAP_MS = 120_000
 const TIMES: Time[] = ['day', 'night', 'dusk']
 export const GENERATIONS = [151, 251, 386, 493, 649, 721, 809, 905]
 const SIZES: Size[] = ['auto', 'normal', 'small']
+
+export const styleOf = (save: Save): EvolutionStyle => save.evolutionStyle ?? DEFAULT_EVOLUTION_STYLE
 
 export const emptySave = (): Save => ({ party: [], size: 'auto', dex: {}, recent: [] })
 
@@ -208,6 +214,7 @@ export function loadSave(raw: unknown): Save {
     dex,
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
     ...(box.length ? { box } : {}),
+    ...(isEvolutionStyle(s.evolutionStyle) ? { evolutionStyle: s.evolutionStyle } : {}),
     ...(s.isOff === true ? { isOff: true } : {}),
     ...(folded.length ? { folded } : {}),
     ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
