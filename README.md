@@ -110,7 +110,7 @@ Stones and trade items come from the [PokéMart](#welcome-to-the-pokémart). Han
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/give.gif" width="820" alt="Typing /pokemon give water stone eevee: a toast says What? Eevee evolved into Vaporeon!, Eevee flashes between white silhouettes in the band and comes out a Vaporeon">
 </p>
 
-`/pokemon party` says how each one evolves, what it holds and how long it's been with you:
+`/pokemon party` says how long each one has been with you, what it holds and how it evolves:
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/party-1.4.png" width="820" alt="/pokemon party: each with its time together, then what it holds, then how it evolves. Vaporeon, together 1d 3h 8m, holds a Soothe Bell and is a final form; Gloom holds a Lucky Egg and evolves with a Leaf Stone or with a Sun Stone; Charmeleon evolves at Lv 36">
