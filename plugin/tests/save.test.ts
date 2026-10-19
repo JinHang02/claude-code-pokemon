@@ -201,6 +201,24 @@ test('the party lists levels, xp to go and when each evolves', () => {
   expect(formatParty(emptySave())).toContain('empty')
 })
 
+test('a long "evolves" text goes last, so time together and the held item line up for everyone', () => {
+  const branches: Stage[] = ['water-stone', 'thunder-stone', 'fire-stone', 'leaf-stone'].map(item => ({
+    species: item,
+    way: { kind: 'item' as const, item },
+  }))
+  const save = {
+    ...emptySave(),
+    party: [
+      { ...pikachu, species: 'eevee', togetherMs: 3 * 3600000, heldItem: 'lucky-egg', next: branches },
+      { ...pikachu, togetherMs: 7200000, next: [] },
+    ],
+  }
+  const lines = formatParty(save).split('\n')
+  expect(lines[1]).toMatch(/^ {2}Lead {2}Eevee {4}Lv 1 .*· together 3h .*· holds a Lucky Egg {2}· evolves /)
+  expect(lines[1]!.indexOf('· together')).toBe(lines[2]!.indexOf('· together'))
+  expect(lines[2]!.indexOf('· final form')).toBe(lines[1]!.indexOf('· evolves'))
+})
+
 test('sprite size: small halves it, auto goes small on a short terminal, all fit the band', () => {
   expect(spriteBudget('normal', 30, 3)).toBe(12)
   expect(spriteBudget('small', 30, 3)).toBe(6)

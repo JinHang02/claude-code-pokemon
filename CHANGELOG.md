@@ -90,6 +90,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   already)." Not enough ₽ shows the ₽: "Not enough ₽: ₽6,000 more to go."
 - `/pokemon add` right after another session made room in the party adds at once, instead of saying the party is full
   until the next sync.
+- `/pokemon party` and `box` put "together …" and "holds …" before "evolves …", and the evolves text, which can run
+  long for a branching line, comes last. One long cell no longer pushes everyone else's columns off to the right.
 
 ### Fixed
 

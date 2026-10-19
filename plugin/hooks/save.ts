@@ -509,7 +509,8 @@ export function evolvesText(m: Member): string {
   return `evolves ${texts.length > 3 ? `${texts.slice(0, 3).join(', ')} or another way` : texts.join(' or ')}`
 }
 
-// A member's columns: name, level, xp to the next level, how it evolves, what it holds, time together.
+// A member's columns: name, level, xp to the next level, time together, what it holds, how it evolves. The evolves
+// text is last and unpadded: it can run long (a branching line), and must not push the others to the right.
 function memberColumns(m: Member): string[] {
   const lv = level(m.xp)
   const evolves = evolvesText(m)
@@ -518,9 +519,9 @@ function memberColumns(m: Member): string[] {
     `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
     `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})`,
-    evolves ? `· ${evolves}` : '',
-    m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
     m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
+    m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
+    evolves ? `· ${evolves}` : '',
   ]
 }
 
@@ -531,7 +532,14 @@ const widthOf = (text: string) => [...text].length + (text.match(/✨/g)?.length
 function lineUp(rows: string[][]): string[] {
   const widths = (rows[0] ?? []).map((_, c) => Math.max(...rows.map(r => widthOf(r[c] ?? ''))))
   const pad = (text: string, c: number) => text + ' '.repeat((widths[c] ?? 0) - widthOf(text))
-  return rows.map(r => `  ${r.map(pad).join('  ').trimEnd()}`)
+  // A column nobody fills (no one holds anything, say) takes no room.
+  return rows.map(
+    r =>
+      `  ${r
+        .flatMap((text, c) => (widths[c] ? [pad(text, c)] : []))
+        .join('  ')
+        .trimEnd()}`,
+  )
 }
 
 // One row per member, every column lined up.
