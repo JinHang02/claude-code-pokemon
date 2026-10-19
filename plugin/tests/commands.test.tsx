@@ -42,6 +42,8 @@ test('a saved party comes back next session, levels intact', async ($, on) => {
 })
 
 test('party: add up to three, twins too, remove any but the last', async ($, on) => {
+  // A caught Pokémon is shiny 1 time in 32: its ✨ isn't what this test is about.
+  const said = async (query: string) => (await cmd($, 'pokemon', query)).split('✨ ').join('')
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
   expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
@@ -50,13 +52,11 @@ test('party: add up to three, twins too, remove any but the last', async ($, on)
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'eevee'])
   // Twins: which one, then the one the number picks.
   expect(await cmd($, 'pokemon', 'remove eevee')).toContain('Which Eevee?')
-  expect(await cmd($, 'pokemon', 'remove eevee 1')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+  expect(await said('remove eevee 1')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
   expect(w.saveNow().party.map(m => m.id)).toEqual([lead?.id, second?.id])
   expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr Mime (Galar) joined your party!')
-  expect(await cmd($, 'pokemon', 'remove eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
-  expect(await cmd($, 'pokemon', 'release mr mime')).toBe(
-    'Bye bye, Mr Mime (Galar) (Lv 1, party)! It went back to the wild.',
-  )
+  expect(await said('remove eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+  expect(await said('release mr mime')).toBe('Bye bye, Mr Mime (Galar) (Lv 1, party)! It went back to the wild.')
   expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Pick a new lead first.')
   expect(await cmd($, 'pokemon', 'remove vaporeon')).toContain('No vaporeon in your party')
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
