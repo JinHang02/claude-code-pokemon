@@ -1534,7 +1534,10 @@ async function typedInMart($: EngineInterface, typed: string) {
   mart = { ...mart, typed: typed.length }
   closeMart($)
   try {
-    await $.prompt.fill({ text: more, mode: 'insert' })
+    const filled = await $.prompt.fill({ text: more, mode: 'insert' })
+    // A dialog holds the prompt: the text is shown, so it isn't lost without a word.
+    if (!filled.isFilled)
+      $.ui.toast(`Pokémon: the prompt couldn't take what you typed in the Mart: "${more}"`, { timeoutMs: 6000 })
   } catch (err) {
     await report($, err)
   }

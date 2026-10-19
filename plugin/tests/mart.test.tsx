@@ -236,6 +236,8 @@ test('acting: Buy and ✕ say what to do; every control is a hit at its place; o
 test('typing: a character, a space or a run of them is typed; special keys and chords are not', () => {
   expect(typedBy({ key: '/' })).toBe('/')
   expect(typedBy({ key: 'P' })).toBe('P')
+  expect(typedBy({ key: 'x', shift: true })).toBe('X')
+  expect(typedBy({ key: 'P', shift: true })).toBe('P')
   expect(typedBy({ key: 'é' })).toBe('é')
   expect(typedBy({ key: 'space' })).toBe(' ')
   expect(typedBy({ key: '/pokemon bag' })).toBe('/pokemon bag')
