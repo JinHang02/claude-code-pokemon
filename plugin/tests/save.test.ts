@@ -337,7 +337,7 @@ test("buying: the price comes off, the Bag fills to 999, and nothing changes whe
   expect(balanceOf(one.save, 0)).toBe(0)
   expect(buy(one.save, 0, stoneItem, 1)).toEqual({
     save: one.save,
-    text: 'Not enough ₽: 3,000 more to go.',
+    text: 'Not enough ₽: ₽3,000 more to go.',
     isError: true,
   })
   for (const qty of [0, -1, 1.5, NaN]) {
@@ -349,7 +349,7 @@ test("buying: the price comes off, the Bag fills to 999, and nothing changes whe
   expect(rich.text).toBe('Bought 998 × Rare Candy!')
   expect(buy(rich.save, 0, itemById('rare-candy')!, 2).text).toBe('Your Bag has room for 1 more.')
   const full = buy(rich.save, 0, itemById('rare-candy')!, 1).save
-  expect(buy(full, 0, itemById('rare-candy')!, 1).text).toBe("Your Bag can't hold more Rare Candy.")
+  expect(buy(full, 0, itemById('rare-candy')!, 1).text).toBe("Your Bag can't hold another Rare Candy (999 already).")
 })
 
 test('the Bag: taking one out removes an emptied item; putting one back stops at 999', () => {
@@ -466,6 +466,6 @@ test('a release: from the party or the PC box, named with its level and place, i
   expect(releaseMember(s, { place: 'party', at: 0 }, 'pikachu')).toBe('Pick a new lead first.')
   const full = loadSave({ party: [pikachu], box: [eevee], bag: { 'fire-stone': 999 } })
   expect(releaseMember(full, { place: 'box', at: 0 }, 'eevee 2')).toBe(
-    "Your Bag can't hold another Fire Stone (999 already). Use one first.",
+    "Your Bag can't hold another Fire Stone (999 already).",
   )
 })

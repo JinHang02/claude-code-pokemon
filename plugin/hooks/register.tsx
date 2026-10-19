@@ -19,6 +19,7 @@ import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
   addTogether,
+  bagFull,
   balanceOf,
   buy,
   displayName,
@@ -42,6 +43,7 @@ import {
   MAX_LEVEL,
   MAX_PARTY,
   MONEY_PER_XP,
+  nameOf,
   newId,
   putInBag,
   recordCaught,
@@ -537,13 +539,13 @@ async function catchOne($: EngineInterface, query: string, command = ''): Promis
   return { id: newId(), species: pick.species, form: pick.form, isShiny, xp: 0, evolutions: 0 }
 }
 
-const same = (a: Member, b: Member) => a.species === b.species && a.form === b.form
-
 const levelNow = (m: Member) => level(m.xp)
+// A stored member's level with the XP the ledgers hold for it.
+const levelWithLedger = (m: Member) => level(m.xp + (extra[m.id] ?? 0))
 // The members `query` names in `places` of `s`, with their levels as the party stands. A spot's `at` is its place in
 // `s` too.
 const find = (s: Save, query: string, places: Place[], command: string) =>
-  findMembers(viewOf(s), query, places, command, levelNow)
+  findMembers(viewOf(s), query, places, command, levelNow, species ?? [])
 // The one member found, or the answer instead: which one (numbered), a suggestion, or who is there.
 function spotOf(found: Found, query: string, command: string): Spot | string {
   if ('spot' in found) return found.spot
@@ -555,7 +557,8 @@ const pickIn = (s: Save, query: string, places: Place[], command: string) =>
 const isNoneIn = (found: Found) => 'error' in found && !isList(found.error)
 
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
-// box comes out; a new one replaces the lead.
+// box comes out; a new one leads, and the old lead goes into the PC box with its level and what it holds. `shiny`
+// names a shiny one: with none of it shiny owned, a new shiny one is caught, however many plain ones there are.
 async function setLead($: EngineInterface, query: string): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
@@ -563,28 +566,15 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
   if (typeof caught === 'string') return caught
   let text = ''
   await mutate($, latest => {
-    // A shiny asked for, and only plain ones of it owned: which one, as for the name without `shiny`.
-    const plain = slug(query)
-      .split('-')
-      .filter(w => w && w !== 'shiny')
-      .join(' ')
-    const owned = find(latest, plain, ['party', 'box'], '')
-    if ('choices' in owned && owned.choices.some(c => same(c.member, caught))) {
-      text = `No shiny ${displayName(caught.species, caught.form)} in your party or PC box. ${formatChoices(owned.choices, plain, '', levelNow)}`
-      return latest
-    }
-    const at = latest.party.findIndex(m => same(m, caught))
-    const member = latest.party[at]
-    if (member) {
-      text = `${displayName(caught.species, caught.form)} leads the party again (Lv ${level(member.xp + (extra[member.id] ?? 0))}).`
-      return { ...latest, party: [member, ...latest.party.filter((_, i) => i !== at)] }
-    }
     const s = recordSeen(latest, caught.species, caught.isShiny, Date.now())
     const gone = s.party[0]
     text = `${caught.isShiny ? '✨ ' : ''}A wild ${displayName(caught.species, caught.form)} appeared! It's your new lead.`
-    if (gone)
-      text += ` ${displayName(gone.species, gone.form)} (Lv ${level(gone.xp + (extra[gone.id] ?? 0))}) went back to the wild.`
-    return { ...s, party: [caught, ...s.party.slice(1)] }
+    if (gone) text += ` ${nameOf(gone)} (Lv ${levelWithLedger(gone)}) went into the PC box.`
+    return {
+      ...s,
+      party: [caught, ...s.party.slice(1)],
+      ...(gone ? { box: [...(s.box ?? []), gone] } : {}),
+    }
   })
   await refreshParty($)
   background($, learnEvolutions($))
@@ -592,6 +582,8 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
 }
 
 async function addMember($: EngineInterface, query: string): Promise<string> {
+  // Another session may have made room since the last sync.
+  await sync($)
   if (save.party.length >= MAX_PARTY)
     return `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
   const fromBox = query.trim() ? await addFromBox($, query) : null
@@ -624,18 +616,18 @@ async function leadOwned($: EngineInterface, query: string): Promise<string | nu
       text = spot
       return s
     }
-    const lv = (p: Member) => level(p.xp + (extra[p.id] ?? 0))
+    const lv = levelWithLedger
     const box = s.box ?? []
     const m = spot.place === 'party' ? s.party[spot.at] : box[spot.at]
     if (!m) return s
     isMoved = true
     if (spot.place === 'party') {
-      text = `${displayName(m.species, m.form)} leads the party again (Lv ${lv(m)}).`
+      text = `${nameOf(m)} leads the party again (Lv ${lv(m)}).`
       return { ...s, party: [m, ...s.party.filter((_, i) => i !== spot.at)] }
     }
     const old = s.party[0]
-    text = `${displayName(m.species, m.form)} (Lv ${lv(m)}) came out of the PC box to lead your party.`
-    if (old) text += ` ${displayName(old.species, old.form)} (Lv ${lv(old)}) went into the PC box.`
+    text = `${nameOf(m)} (Lv ${lv(m)}) came out of the PC box to lead your party.`
+    if (old) text += ` ${nameOf(old)} (Lv ${lv(old)}) went into the PC box.`
     return {
       ...s,
       party: [m, ...s.party.slice(1)],
@@ -666,7 +658,7 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
     const m = box[spot.at]
     if (!m) return s
     isMoved = true
-    text = `${displayName(m.species, m.form)} came out of the PC box and joined your party!`
+    text = `${nameOf(m)} came out of the PC box and joined your party!`
     return { ...s, party: [...s.party, m], box: box.filter((_, i) => i !== spot.at) }
   })
   if (isMoved) {
@@ -685,7 +677,7 @@ async function releaseOne($: EngineInterface, query: string, command: string): P
   let isPartyChanged = false
   await mutate($, s => {
     const spot = pickIn(s, query, ['party', 'box'], `${command} `)
-    const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query, m => level(m.xp + (extra[m.id] ?? 0)))
+    const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query, levelWithLedger)
     if (typeof done === 'string') {
       text = done
       return s
@@ -710,7 +702,7 @@ async function depositMember($: EngineInterface, query: string): Promise<string>
     else if (s.party.length === 1)
       text = 'That would leave your party empty. Pick a new lead with /pokemon <name> instead.'
     else if (m) {
-      text = `${displayName(m.species, m.form)} (Lv ${level(m.xp + (extra[m.id] ?? 0))}) went into the PC box.`
+      text = `${nameOf(m)} (Lv ${levelWithLedger(m)}) went into the PC box.`
       return { ...s, party: s.party.filter((_, i) => i !== at), box: [...(s.box ?? []), m] }
     }
     return s
@@ -768,7 +760,7 @@ async function holdItem($: EngineInterface, query: string, item: Item, command: 
     if (old && old !== 'everstone') {
       const back = putInBag(after, old)
       if (!back) {
-        text = `Your Bag can't hold more ${itemName(old)}: take it back first.`
+        text = bagFull(itemName(old))
         return s
       }
       after = back
@@ -786,21 +778,17 @@ async function holdItem($: EngineInterface, query: string, item: Item, command: 
   return text
 }
 
-// `/pokemon take <name>`: its held item back to the Bag; an Everstone is just dropped. A name only in the PC box
-// reaches the one there (of several, the only one holding an item, if just one is).
-async function takeItem($: EngineInterface, query: string): Promise<string> {
+// `/pokemon take <name>`: its held item back to the Bag; an Everstone is just dropped. Looks in `places` (the party,
+// then the PC box) with one numbering; of several named without a number, the only one holding an item, if just one
+// is, else which one.
+async function takeItem($: EngineInterface, query: string, places: Place[] = ['party', 'box']): Promise<string> {
   if (!query.trim()) return 'Which one? /pokemon take <name>'
   let text = ''
   let isDropped = false
   await mutate($, s => {
-    let found = find(s, query, ['party'], 'take ')
-    if (isNoneIn(found)) {
-      const inBox = find(s, query, ['box'], 'take ')
-      const holders = 'choices' in inBox ? inBox.choices.filter(c => c.member.heldItem) : []
-      if (holders[0] && holders.length === 1) found = { spot: holders[0] }
-      else if (!isNoneIn(inBox)) found = inBox
-    }
-    const spot = spotOf(found, query, 'take ')
+    const found = find(s, query, places, 'take ')
+    const holders = 'choices' in found ? found.choices.filter(c => c.member.heldItem) : []
+    const spot = holders[0] && holders.length === 1 ? holders[0] : spotOf(found, query, 'take ')
     if (typeof spot === 'string') {
       text = spot
       return s
@@ -822,7 +810,7 @@ async function takeItem($: EngineInterface, query: string): Promise<string> {
     } else {
       const back = putInBag(s, heldItem)
       if (!back) {
-        text = `Your Bag can't hold more ${itemName(heldItem)}.`
+        text = bagFull(itemName(heldItem))
         return s
       }
       after = back
@@ -841,7 +829,7 @@ async function toggleEverstone($: EngineInterface, query: string): Promise<strin
   if (!query.trim()) return 'Which one? /pokemon everstone <name>'
   await sync($)
   const spot = pickIn(save, query, ['party'], 'everstone ')
-  if (typeof spot === 'object' && save.party[spot.at]?.heldItem === 'everstone') return takeItem($, query)
+  if (typeof spot === 'object' && save.party[spot.at]?.heldItem === 'everstone') return takeItem($, query, ['party'])
   const everstone = itemById('everstone')
   return everstone ? holdItem($, query, everstone, 'everstone ') : 'Your party is empty.'
 }
@@ -1627,9 +1615,14 @@ async function play($: EngineInterface, args: string): Promise<string> {
   return `Playing ${name}.`
 }
 
+// The `/pokemon` words that take no Pokémon's name.
+const UNNAMED = new Set(['party', 'box', 'size', 'bag', 'mart', 'buy', 'off', 'on'])
+
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
   const tail = rest.join(' ')
+  // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde).
+  if (!UNNAMED.has(head.toLowerCase())) await loadSpecies($).catch(() => null)
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
