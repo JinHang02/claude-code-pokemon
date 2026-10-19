@@ -16,10 +16,12 @@ import {
   formatDex,
   formatParty,
   formatSpan,
+  isBoxFull,
   level,
   loadLedger,
   loadSave,
   loadTogether,
+  MAX_BOX,
   putInBag,
   recordCaught,
   recordSeen,
@@ -234,6 +236,16 @@ test('a catch joins the party while it has room, twin or not, else goes to the P
   expect(twin.save.box).toBeUndefined()
   const three = [pikachu, { ...pikachu, id: 'x', species: 'mew' }, { ...pikachu, id: 'y', species: 'abra' }]
   expect(storeCaught({ ...emptySave(), party: three }, eevee).save.box?.map(m => m.id)).toEqual(['e1'])
+  // A full PC box takes no more: nothing changes. An older save holding more keeps them all.
+  const full = {
+    ...emptySave(),
+    party: three,
+    box: Array.from({ length: MAX_BOX }, (_, i) => ({ ...pikachu, id: `b${i}` })),
+  }
+  expect(storeCaught(full, eevee)).toEqual({ save: full, isInParty: false, isStored: false })
+  expect(isBoxFull({ ...full, box: full.box.slice(1) })).toBe(false)
+  const over = { ...emptySave(), party: [], box: Array.from({ length: 1000 }, (_, i) => ({ ...pikachu, id: `o${i}` })) }
+  expect(loadSave(JSON.parse(JSON.stringify(over))).box).toHaveLength(1000)
   let save = recordSeen(emptySave(), 'eevee', false, 5)
   save = recordCaught(recordCaught(save, 'eevee', 6), 'eevee', 7)
   expect(save.dex.eevee).toEqual({ seen: 1, shiny: 0, first: 5, caught: 2 })
@@ -244,7 +256,7 @@ test('the PC box lists its Pokémon like the party; ◓ marks the ones caught wi
   const boxed: Member = { ...pikachu, id: 'b1', species: 'eevee', xp: 40, isCaught: true }
   const save = { ...emptySave(), party: [{ ...pikachu, isCaught: true as const }], box: [boxed] }
   expect(formatParty(save)).toContain('Lead  Pikachu ◓  Lv 1')
-  expect(formatBox(save)).toBe(['Your PC box:', '  1.  Eevee ◓  Lv 4  (24 xp to Lv 5)'].join('\n'))
+  expect(formatBox(save)).toBe(['Your PC box (1 / 960):', '  1.  Eevee ◓  Lv 4  (24 xp to Lv 5)'].join('\n'))
   expect(formatBox(emptySave())).toBe('Your PC box is empty.')
   expect(withExtra(save, { b1: 24 }).box?.[0]?.xp).toBe(64)
   const names = ['bulbasaur', 'eevee', ...Array.from({ length: 903 }, (_, i) => `mon-${i}`)]
