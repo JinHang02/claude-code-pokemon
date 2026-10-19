@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![827 tests](https://img.shields.io/badge/tests-827_passing-27c93f?style=flat-square)](plugin/tests)
+[![861 tests](https://img.shields.io/badge/tests-861_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
@@ -36,6 +36,8 @@ Start a new session and a wild Pokémon will be waiting above your prompt. Want 
 ```text
 /pokemon pikachu
 ```
+
+One you already own takes the lead. One you don't is caught fresh and leads, and the old lead rests in your PC box with its level and what it holds. Nobody is sent away.
 
 > **Works on** macOS, Linux and Windows. **Needs** Claude Code **2.1.287 or newer** and a terminal with 24-bit color (iTerm2, Ghostty, kitty, WezTerm, Windows Terminal, the VS Code / Cursor terminal...). It's a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview), and mods are on by default from 2.1.287. If your party doesn't show up, run `/plugin`: the line under the tabs should list `pokemon` among the active mods.
 
@@ -130,7 +132,7 @@ Love your Charmander just the way it is? Give it an everstone and it won't evolv
 
 Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustles at the edge, your party jumps and turns to it with a red **!** speech bubble, and Claude Code tells you who it is: _"A wild Bulbasaur appeared!"_. It stops halfway to look around, then moves on.
 
-Who comes depends on **where and when you are**, as in the games. A Pidgey turns up all the time, a Dratini now and then, and a legendary, mythical or Ultra Beast about once in 100 visits. Water types gather at the lake, Ghosts come out at night, and a Pokémon **you've never seen** is 2.5 times as likely to step out of the grass:
+Who comes depends on **where and when you are**, as in the games. On average a Pidgey turns up about once in 190 visits, an Eevee once in 970 and a Dratini once in 1,900: ten Pidgey for every Dratini. Legendaries, mythicals and Ultra Beasts together come about once in 100. Water types gather at the lake, Ghosts come out at night, and a Pokémon **you've never seen** is 2.5 times as likely to step out of the grass:
 
 | Where or when                    | Who's more likely                                  |
 | :------------------------------- | :------------------------------------------------- |
@@ -146,7 +148,7 @@ Who comes depends on **where and when you are**, as in the games. A Pidgey turns
 | Legendary, mythical, Ultra Beast | about 1 in 100                                     |
 | Never seen yet                   | ×2.5                                               |
 
-A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but anyone can still wander anywhere. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only, costume, gift or event form, or a Furfrou trim: those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
+A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but anyone can still wander anywhere. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only, costume, gift or event form, a Furfrou trim, or a form the games hand out through an item (Rotom's appliances, the Therian and Origin formes, Genesect's Drives, Sky Shaymin, Alcremie's sweets...): those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
 
 ```text
 /pokedex
@@ -199,8 +201,8 @@ catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly e
 
 Catches join your party, twin or not, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>`
 brings one out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the
-box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, Eevee (Lv 16, party)!
-It went back to the wild."_ Whatever it held goes back to your Bag.
+box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, ✨ Eevee ♂ (Lv 16,
+PC box)! It went back to the wild."_ A hold item it had goes back to your Bag; a free Everstone goes with it.
 
 Two of a kind? Any command that names one asks which, and you add the number:
 
@@ -208,8 +210,10 @@ Two of a kind? Any command that names one asks which, and you add the number:
 /pokemon release eevee
 Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2
 /pokemon release eevee 2
-Bye bye, Eevee (Lv 3, PC box)! It went back to the wild.
+Bye bye, ✨ Eevee ♂ (Lv 3, PC box)! It went back to the wild.
 ```
+
+A number past the end lists them again, and `shiny` can go anywhere (`release eevee 2 shiny`). A number that belongs to a name stays part of it: `zygarde 10` is Zygarde's 10% form, and `porygon 2` is Porygon2.
 
 ---
 
@@ -253,7 +257,7 @@ Then hand them out. A stone or trade item evolves on the spot and is used up, a 
 In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many (`Max` buys as many as you can afford), `Enter` buys and `x` closes. A buy you can't afford says how much more you need. Good to know:
 
 - **Clicks need Claude Code's fullscreen mode** (`/config`, or `"tui": "fullscreen"` in settings), for the ₽ button and the Mart as for Poké Balls. Without it, `/pokemon mart` shows the Mart and `/pokemon buy` does the shopping.
-- **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives the band the keyboard only on a click.
+- **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives the band the keyboard only on a click. Type anything that isn't a Mart key (`/`, a letter other than `x`, a digit) and the Mart closes and what you typed goes to the prompt. Enter right after a buy asks _"Press Enter again to buy another Fire Stone."_; a click on Buy always buys.
 - **Esc doesn't close it:** Claude Code keeps Escape for the prompt. Use `x` or `✕`.
 - **The mouse wheel doesn't move the list:** Claude Code doesn't pass it to the band. `↑` `↓` or `▲` `▼` do.
 - **Item pictures need a band at least 8 rows tall,** otherwise each item gets a coloured ◆.
@@ -261,26 +265,26 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 
 ## Commands
 
-| Command                                 | What it does                                                                                                                                                                        |
-| :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/pokemon`                              | A random Pokémon becomes your lead                                                                                                                                                  |
-| `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. Close misses get a suggestion                                          |
-| `/pokemon add [name]`                   | Grow your party (up to 3, twins welcome): from your PC box, or a new catch. No name: a random catch                                                                                 |
-| `/pokemon release <name> [n]`           | Set one free, from the party or the PC box (`remove` works too). What it held goes back to your Bag                                                                                 |
-| `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered: add the number to pick, as in `/pokemon give rare candy eevee 2`                                          |
-| `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                             |
-| `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                          |
-| `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                     |
-| `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                         |
-| `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                         |
-| `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices                             |
-| `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                       |
-| `/pokemon give <item> <name>`           | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level                                        |
-| `/pokemon take <name>`                  | Put its held item back in your Bag                                                                                                                                                  |
-| `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                   |
-| `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                              |
-| `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                           |
-| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve`, `wild [name]`; or a time and place: `dusk lake`, `night forest`, `mountains` |
+| Command                                 | What it does                                                                                                                                                                                                                                                                                |
+| :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/pokemon`                              | A random Pokémon becomes your lead; the old lead goes into the PC box                                                                                                                                                                                                                       |
+| `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. An owned one leads; a new one is caught and the old lead goes into the PC box. `shiny <name>` leads a shiny one you own, else catches a new one. Close misses get a suggestion |
+| `/pokemon add [name]`                   | Grow your party (up to 3, twins welcome): from your PC box, or a new catch. No name: a random catch                                                                                                                                                                                         |
+| `/pokemon release <name> [n]`           | Set one free, from the party or the PC box (`remove` works too). A hold item goes back to your Bag, a free Everstone goes with it                                                                                                                                                           |
+| `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered: add the number to pick, as in `/pokemon give rare-candy eevee 2`                                                                                                                                                  |
+| `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                                                                                                                                     |
+| `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                                                                                                                                  |
+| `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                                                                                                                             |
+| `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                                                                                                                                 |
+| `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                                                                                                                                 |
+| `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices                                                                                                                                     |
+| `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                                                                                                                               |
+| `/pokemon give <item> <name>`           | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level                                                                                                                                                |
+| `/pokemon take <name>`                  | Put its held item back in your Bag. Looks in the party, then the PC box; of several, the only holder, else it asks which                                                                                                                                                                    |
+| `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                                                                                                                           |
+| `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                                                                                                                                      |
+| `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                                                                                                                                   |
+| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve`, `wild [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                                                                                         |
 
 ---
 
@@ -402,7 +406,7 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 - **Rendering:** sprites arrive as truecolor ANSI art. They're parsed into a pixel grid, scaled to fit, and painted into a cell grid of `▀` half-blocks, two pixels per cell, 20 times a second.
 - **Reactions:** hooks on `turn.start`, `turn.complete`, `tool.call` and `session.compact` feed a small state machine: moods, roaming with easing and braking, particles, clones following the leader's path.
 - **Saving:** party, XP and Pokédex live in Claude Code's per-plugin store. Each session writes its XP under its own key and party changes re-read the latest save first, so parallel sessions add up rather than undo each other.
-- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` and `hooks/members.ts` (names, and which one you mean), `hooks/encounter.ts` and `hooks/species-data.ts` (who wanders by), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
+- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` and `hooks/members.ts` (names, and which one you mean), `hooks/catch.ts` and `hooks/aim.tsx` (the Poké Ball), `hooks/item-icons.ts` (item pictures), `hooks/encounter.ts` and `hooks/species-data.ts` (who wanders by), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
 
 ## Development
 
@@ -410,7 +414,7 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 git clone https://github.com/JinHang02/claude-code-pokemon
 cd claude-code-pokemon
 claude --plugin-dir plugin       # run it from your clone, reloading as you edit
-claude plugin test plugin        # the whole suite, about a minute
+claude plugin test plugin        # the whole suite, a minute or two
 claude plugin validate plugin/.claude-plugin/plugin.json --strict
 node scripts/evolution-coverage.mjs   # regenerate specs/evolution-coverage.md
 node scripts/evolution-fixture.mjs    # refresh the PokeAPI fixture the evolution tests read

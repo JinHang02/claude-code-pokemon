@@ -8,9 +8,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ### Added: wild Pokémon that fit the place and the hour
 
-- Who wanders by follows the games' odds now, instead of all 905 being equally likely. Each species weighs its catch
-  rate from the games (Pidgey 255, Dratini 45, so a Pidgey comes nearly six times as often), a first stage more than
-  its evolutions, a baby less.
+- Who wanders by follows the games' odds now, instead of all 905 being equally likely. Each species weighs the square
+  root of its catch rate from the games, a first stage more than its evolutions, a baby less. Averaged over the
+  twenty landscapes, a Pidgey turns up about once in 190 visits, an Eevee once in 970 and a Dratini once in 1,900:
+  ten Pidgey for every Dratini.
 - Legendaries, mythicals and Ultra Beasts come about once in 100 visits, a mythical half as often as a legendary.
 - The landscape on screen matters: a Pokémon with a fitting type is 4 times as likely. Water, Ice, Flying and Bug by
   the lake; Rock, Ground, Steel, Ice, Dragon, Fighting and Flying in the mountains; Ground, Normal, Fighting, Fire,
@@ -103,6 +104,11 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   your party. Your Water Stone is still in your Bag." It used to say "Eevee already evolved."
 - An evolution that starts while a sprite is still downloading for another session's change (a release and a catch
   there) plays from the evolving Pokémon's own picture, never the released one's, and never shows it twice.
+
+### Upgrading
+
+- **Restart every open Claude Code window after installing 1.4.0.** A window still running 1.3.0 reads names
+  differently: its `remove` picks one at random, and its "Did you mean" hints release the first of two twins.
 
 ## [1.3.0] - 2026-10-13
 
@@ -444,4 +450,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
+[1.4.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/JinHang02/claude-code-pokemon/releases/tag/v1.0.0
