@@ -113,7 +113,7 @@ Stones and trade items come from the [PokéMart](#welcome-to-the-pokémart). Han
 `/pokemon party` says how each one evolves, what it holds and how long it's been with you:
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/party-1.3.png" width="820" alt="/pokemon party: Vaporeon is a final form; Pikachu evolves with a Thunder Stone and holds a Lucky Egg; Riolu evolves with friendship by day, ♥ 67%, 3h 14m to go, and holds a Soothe Bell; each with its time together">
+<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/party-1.4.png" width="820" alt="/pokemon party: each with its time together, then what it holds, then how it evolves. Vaporeon, together 1d 3h 8m, holds a Soothe Bell and is a final form; Gloom holds a Lucky Egg and evolves with a Leaf Stone or with a Sun Stone; Charmeleon evolves at Lv 36">
 </p>
 
 Love your Charmander just the way it is? Give it an everstone and it won't evolve by itself. A stone or trade item you `/pokemon give` it still works:
