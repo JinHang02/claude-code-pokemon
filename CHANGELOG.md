@@ -4,6 +4,64 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
+## [1.5.0] - 2026-10-19
+
+### Added: the evolution screen
+
+- An evolution gets its own screen, as in the games. The band makes way for an evolution scene with a stage on top
+  and a three-row text box below: _"What? EEVEE is evolving!"_ types out, the old form flashes in silhouette, then
+  swaps with the new one, faster and faster (every 420 ms at first, every 40 ms at the end), a burst of light, and
+  _"Congratulations! Your EEVEE evolved into VAPOREON!"_. About ten seconds, then the band is back with the new form
+  walking where the old one stood. The message is real text in the terminal's font, so it stays crisp.
+- Three styles, from three eras of the games:
+  - `rays` (the default): a dark stage with light rays turning behind and twinkling sparkles (Gen 4–5).
+  - `white`: a plain white screen, the two forms swapping as dark silhouettes (Gen 1–2).
+  - `gradient`: a blue-to-purple glow with sparkles rising (Gen 3).
+- `/pokemon evolution` shows the style you have and the three choices; `/pokemon evolution <rays|white|gradient>`
+  picks one. It's saved, so every window uses it. A word it doesn't know answers with the choices, and a near miss
+  gets a "Did you mean gradient?".
+- `/pokemon-play evolve [style]` shows your lead's evolution on the screen you have, or on the style you name, once.
+  Nothing is saved: the style stays as it was, and the lead changes back when the screen ends.
+- Every real evolution gets the screen: by level, stone, trade item or Linking Cord, friendship, time of day, Rare
+  Candy. When Nincada evolves, its screen shows Ninjask, and Shedinja joins when it ends, in the toast.
+- The sprites are scaled down to fit the stage when they're taller, nearest-neighbour so the pixels stay sharp. A
+  narrow band cuts the message with "…".
+
+### Changed
+
+- When the screen plays, the command's reply is _"What? Eevee is evolving!"_, and the _"What? Eevee evolved into
+  Vaporeon!"_ toast comes when the screen ends, so the screen keeps the surprise. Without the screen, the reply is
+  _"Eevee evolved into Vaporeon!"_ and the toast comes with it, as before.
+- The evolution itself is saved at once, as before. Only its screen can wait:
+  - A wild Pokémon out (or a ball in flight): the screen waits until it has gone, caught, fled or let go. No new
+    visitor comes while a screen plays; one that was due comes right after.
+  - The PokéMart open: it closes when the screen starts, and stays shut until the screen ends ("An evolution is on
+    screen: the PokéMart opens once it ends.").
+  - Several evolutions at once (twins, a Rare Candy chain): one screen after another, never two at once.
+- An evolution in another Claude Code window plays its screen here too, if it's less than 30 seconds old. A window
+  opened later doesn't replay old evolutions. Each evolution now saves when it happened (`evolvedAt`) for this.
+- A band under 8 rows tall keeps the in-place animation from 1.4.0: the Pokémon flashes between white silhouettes
+  where it stands.
+- With the party off (`/pokemon off`) or no band drawn, an evolution happens with its toast, and no screen shows
+  later. Putting the party away while a screen plays or waits ends it, with its toast.
+- There is no cancelling: a screen always finishes. An Everstone is still the way to stop a Pokémon evolving by
+  itself.
+- The screen takes no keys or clicks: the prompt and commands work while it plays. A click on it does nothing. A
+  screen already playing finishes after a `/clear`; a reload or restart mid-screen doesn't bring it back (the
+  evolution is saved either way).
+- Releasing or depositing the evolving Pokémon mid-screen lets the screen finish; nothing is written back for it.
+
+### Known limitations
+
+- `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save
+  has it from the start.
+
+### Upgrading
+
+- **Restart every open Claude Code window after installing 1.5.0.** A window still running 1.4.0 drops the new save
+  fields when it writes the save: your chosen style (`evolutionStyle`, back to `rays`) and `evolvedAt` (that
+  evolution's screen then doesn't play in other windows).
+
 ## [1.4.0] - 2026-10-14
 
 ### Added: wild Pokémon that fit the place and the hour

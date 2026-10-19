@@ -720,9 +720,12 @@
           </div>
           <div>
             <img
-              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve.gif"
-              alt="Charmander evolving into Charmeleon in flashing white silhouettes"
+              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve-rays.png"
+              width="820"
+              height="278"
+              alt="The evolution screen: Vaporeon on a dark stage with light rays and sparkles, and a text box saying Congratulations! Your EEVEE evolved into VAPOREON!"
               loading="lazy"
+              style="border-radius: 10px; image-rendering: auto"
             />
             <p style="margin-top: 1.25rem">
               <i>What? Charmander is evolving!</i> They evolve the way they do in the games:
@@ -737,6 +740,12 @@
             <p>
               Stones and trade items come from the <a href="#mart">PokéMart</a>. Regional forms evolve the way their
               region does, and gender matters where it does in the games.
+            </p>
+            <p>
+              Each evolution gets its own screen, as in the games: the old and new forms swap in silhouette, faster and
+              faster, a burst of light, and <i>Congratulations!</i> Pick the one you grew up with:
+              <code>/pokemon evolution rays</code> (the default, Gen 4–5), <code>white</code> (Gen 1–2) or
+              <code>gradient</code> (Gen 3).
             </p>
             <p>905 Pokémon, 424 alternate forms, and a 1 in 32 chance of a shiny on every catch.</p>
           </div>
@@ -804,15 +813,16 @@
           </div>
           <figure class="clip">
             <img
-              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/give.gif"
+              src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve-1.5.gif"
               width="820"
-              height="342"
-              alt="Typing /pokemon give water stone eevee: a toast says What? Eevee evolved into Vaporeon!, Eevee flashes between white silhouettes in the band and comes out a Vaporeon"
+              height="422"
+              alt="Typing /pokemon give water stone eevee: the reply says What? Eevee is evolving!, the band becomes a dark stage with light rays, Eevee flashes and swaps with Vaporeon in white silhouettes, a burst of light, the text box says Congratulations! Your EEVEE evolved into VAPOREON!, then the meadow is back with Vaporeon and a toast says What? Eevee evolved into Vaporeon!"
               loading="lazy"
             />
             <figcaption class="dialog">
-              <b>What? Eevee evolved into Vaporeon!</b><code>/pokemon give</code> a stone or trade item and it works at
-              once. A hold item is held, one per Pokémon, and <code>/pokemon bag</code> shows who holds what.
+              <b>What? Eevee is evolving!</b><code>/pokemon give</code> a stone or trade item and it works at once, on
+              its own evolution screen. A hold item is held, one per Pokémon, and <code>/pokemon bag</code> shows who
+              holds what.
             </figcaption>
           </figure>
         </div>
@@ -900,6 +910,10 @@
               <code>/pokemon deposit &lt;name&gt;</code><span>Move a party member into the box, level and all</span>
             </li>
             <li><code>/pokemon everstone &lt;name&gt;</code><span>Give a free Everstone, or take it back</span></li>
+            <li>
+              <code>/pokemon evolution [style]</code
+              ><span>The evolution screen: <code>rays</code>, <code>white</code> or <code>gradient</code></span>
+            </li>
             <li><code>/pokemon mart</code><span>Open the PokéMart, or click 🛒 ₽ in the band</span></li>
             <li>
               <code>/pokemon buy &lt;item&gt; [count]</code
@@ -917,7 +931,10 @@
             <li><code>/pokedex</code><span>Everything you've seen, per generation, plus your shinies</span></li>
             <li>
               <code>/pokemon-play &lt;animation&gt;</code
-              ><span>Watch any animation now: <code>evolve</code>, <code>wild</code>, <code>dusk lake</code>…</span>
+              ><span
+                >Watch any animation now: <code>evolve</code> (or <code>evolve white</code> to try a screen),
+                <code>wild</code>, <code>dusk lake</code>…</span
+              >
             </li>
             <li>
               <code>/pokemon off</code

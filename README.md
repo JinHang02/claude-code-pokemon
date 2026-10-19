@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![877 tests](https://img.shields.io/badge/tests-877_passing-27c93f?style=flat-square)](plugin/tests)
+[![913 tests](https://img.shields.io/badge/tests-913_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
@@ -90,8 +90,6 @@ Every Pokémon in your party earns experience from the work you and Claude get d
 
 A Pokémon holding a Lucky Egg earns half as much again.
 
-<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve.gif" width="280" align="right" alt="Charmander evolving into Charmeleon in flashing white silhouettes">
-
 _What? Charmander is evolving!_ They evolve **the way they do in the games**:
 
 - **Level up:** Charmander at Lv 16, Charmeleon at Lv 36.
@@ -100,15 +98,43 @@ _What? Charmander is evolving!_ They evolve **the way they do in the games**:
 - **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open. A Soothe Bell makes the time count one and a half times.
 - **Time of day:** Riolu only by day, Rockruff into Midnight Lycanroc at night, Eevee into Espeon by day or Umbreon by night.
 
-Regional forms evolve the way their region does, and a Pokémon that can branch always takes the same branch, decided by that Pokémon, as in the games. Then the classic flashing silhouettes and a little _"What? Charmander evolved into Charmeleon!"_.
+Regional forms evolve the way their region does, and a Pokémon that can branch always takes the same branch, decided by that Pokémon, as in the games.
 
-<br clear="right">
-
-Stones and trade items come from the [PokéMart](#welcome-to-the-pokémart). Hand one over and it works at once:
+Then **evolution gets its own screen**, as in the games. The band makes way for an evolution scene: _"What? EEVEE is evolving!"_, the old and new forms swapping in silhouette, faster and faster, a burst of light, and _"Congratulations! Your EEVEE evolved into VAPOREON!"_. About ten seconds later the band is back, with Vaporeon walking where Eevee stood. Stones and trade items come from the [PokéMart](#welcome-to-the-pokémart). Hand one over and it works at once:
 
 <p align="center">
-<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/give.gif" width="820" alt="Typing /pokemon give water stone eevee: a toast says What? Eevee evolved into Vaporeon!, Eevee flashes between white silhouettes in the band and comes out a Vaporeon">
+<img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve-1.5.gif" width="820" alt="Typing /pokemon give water stone eevee: the reply says What? Eevee is evolving!, the band becomes a dark stage with light rays, Eevee flashes and swaps with Vaporeon in white silhouettes, a burst of light, the text box says Congratulations! Your EEVEE evolved into VAPOREON!, then the meadow is back with Vaporeon and a toast says What? Eevee evolved into Vaporeon!">
 </p>
+
+Pick the screen you grew up with. It's saved, so every window uses it:
+
+| Style                | What you see                                                                 |
+| :------------------- | :--------------------------------------------------------------------------- |
+| `rays` (the default) | A dark stage with light rays turning behind and twinkling sparkles (Gen 4–5) |
+| `white`              | A plain white screen, the two forms swapping as dark silhouettes (Gen 1–2)   |
+| `gradient`           | A blue-to-purple glow with sparkles rising (Gen 3)                           |
+
+<table>
+<tr>
+<td align="center" width="50%"><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve-white.png" width="400" alt="The white evolution screen: Eevee as a dark silhouette on a plain off-white stage, What? EEVEE is evolving! in the text box"><br><code>white</code></td>
+<td align="center" width="50%"><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/evolve-gradient.png" width="400" alt="The gradient evolution screen: a white silhouette on a blue-to-purple glow with sparkles, What? EEVEE is evolving! in the text box"><br><code>gradient</code></td>
+</tr>
+</table>
+
+```text
+/pokemon evolution              which screen you have, and the three to choose from
+/pokemon evolution white        switch to the white screen
+/pokemon-play evolve gradient   watch your lead evolve on the gradient screen once; nothing is saved
+```
+
+Good to know:
+
+- **It always finishes.** There's no cancelling an evolution once it starts; an Everstone is still how to keep a Pokémon from evolving by itself.
+- **The reply says _"What? Eevee is evolving!"_**, and the _"What? Eevee evolved into Vaporeon!"_ toast comes when the screen ends.
+- **It waits for a wild visitor to leave** (caught, fled or let go), and the evolution is saved at once all the same. An open PokéMart closes for it. Several evolutions at once (twins, a Rare Candy chain) play one after another.
+- **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`.
+- **It needs a band at least 8 rows tall.** Below that, the Pokémon flashes between white silhouettes in place, as before 1.5.0.
+- **An evolution in another Claude Code window plays here too** if it's less than 30 seconds old. A window you open later doesn't replay it.
 
 `/pokemon party` says how long each one has been with you, what it holds and how it evolves:
 
@@ -249,7 +275,7 @@ Every item has its picture and its description from the games, and a _"Your part
 Then hand them out. A stone or trade item evolves on the spot and is used up, a Rare Candy is one level, and a hold item is held: one per Pokémon, as in the games, so giving another puts the old one back in your Bag. An item that would do nothing is refused, and nothing is used up.
 
 ```text
-/pokemon give water stone eevee     Eevee evolved into Vaporeon!
+/pokemon give water stone eevee     What? Eevee is evolving!
 /pokemon give lucky egg pikachu     Pikachu is now holding a Lucky Egg.
 /pokemon take pikachu               the Lucky Egg goes back in the Bag
 /pokemon bag                        what you have, your ₽, and who holds what
@@ -280,6 +306,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon box`                          | Your PC box, up to 960: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                                                                                                                       |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                                                                                                                             |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                                                                                                                                 |
+| `/pokemon evolution [style]`            | The evolution screen: `rays` (the default), `white` or `gradient`. No style: which one you have, and the three to choose from                                                                                                                                                               |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                                                                                                                                 |
 | `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices                                                                                                                                     |
 | `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                                                                                                                               |
@@ -288,7 +315,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                                                                                                                           |
 | `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                                                                                                                                      |
 | `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                                                                                                                                   |
-| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve`, `wild [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                                                                                         |
+| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve [style]` (your lead's evolution on that screen, nothing saved), `wild [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                           |
 
 ---
 
@@ -410,7 +437,7 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 - **Rendering:** sprites arrive as truecolor ANSI art. They're parsed into a pixel grid, scaled to fit, and painted into a cell grid of `▀` half-blocks, two pixels per cell, 20 times a second.
 - **Reactions:** hooks on `turn.start`, `turn.complete`, `tool.call` and `session.compact` feed a small state machine: moods, roaming with easing and braking, particles, clones following the leader's path.
 - **Saving:** party, XP and Pokédex live in Claude Code's per-plugin store. Each session writes its XP under its own key and party changes re-read the latest save first, so parallel sessions add up rather than undo each other.
-- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` and `hooks/members.ts` (names, and which one you mean), `hooks/catch.ts` and `hooks/aim.tsx` (the Poké Ball), `hooks/item-icons.ts` (item pictures), `hooks/encounter.ts` and `hooks/species-data.ts` (who wanders by), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
+- **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/evolution-screen.ts` and `hooks/evolution-style.ts` (the evolution screen), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` and `hooks/members.ts` (names, and which one you mean), `hooks/catch.ts` and `hooks/aim.tsx` (the Poké Ball), `hooks/item-icons.ts` (item pictures), `hooks/encounter.ts` and `hooks/species-data.ts` (who wanders by), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
 
 ## Development
 
