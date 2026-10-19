@@ -15,8 +15,9 @@ const colorsIn = (cells: string) => {
   }
   return colors
 }
-const solid = (rgb: string, size: number) =>
-  Array.from({ length: size }, () => `\x1b[38;2;${rgb}m\x1b[48;2;${rgb}m▀\x1b[0m`.repeat(size)).join('\n')
+// `size` rows of `width` columns.
+const solid = (rgb: string, size: number, width = size) =>
+  Array.from({ length: size }, () => `\x1b[38;2;${rgb}m\x1b[48;2;${rgb}m▀\x1b[0m`.repeat(width)).join('\n')
 type Band = { drawn: () => Promise<unknown>; redraw: () => Promise<void> }
 type Node = { type?: string; props?: Record<string, unknown> }
 // The band's scene as drawn afresh.
@@ -45,7 +46,8 @@ test(
       isOnline: true,
       list: JSON.stringify(LIST),
       now: hourAt(12),
-      sprites: { eevee: solid('1;2;3', 6), vaporeon: solid('7;8;9', 6) },
+      // Vaporeon narrower than Eevee: the lead, drawn in front of a still party, can't hide the second one whole.
+      sprites: { eevee: solid('1;2;3', 6), vaporeon: solid('7;8;9', 6, 4) },
     }
     const w = await begin(
       $,
@@ -77,9 +79,15 @@ test(
     for (let i = 0; i < 100 && !said; i++) await w.clock.advance(100)
     await second
     expect(said).toBe('Eevee evolved into Vaporeon!')
-    // The second one has its own whole animation: a white silhouette, then both stand as Vaporeon.
+    // The second one has its own whole animation: a white silhouette, then both stand as Vaporeon. The silhouette
+    // swaps between the two forms; at least the Eevee one shows past the lead.
     await w.clock.advance(1500)
-    expect((await sceneOf(band)).has(WHITE)).toBe(true)
+    let isWhite = false
+    for (let i = 0; i < 20 && !isWhite; i++) {
+      isWhite = (await sceneOf(band)).has(WHITE)
+      if (!isWhite) await w.clock.advance(50)
+    }
+    expect(isWhite).toBe(true)
     for (let i = 0; i < 10; i++) await w.clock.advance(500)
     expect(w.saveNow().party.map(m => [m.id, m.species])).toEqual([
       ['e1', 'vaporeon'],
