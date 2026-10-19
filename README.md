@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![861 tests](https://img.shields.io/badge/tests-861_passing-27c93f?style=flat-square)](plugin/tests)
+[![862 tests](https://img.shields.io/badge/tests-862_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
@@ -213,7 +213,7 @@ Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — ad
 Bye bye, ✨ Eevee ♂ (Lv 3, PC box)! It went back to the wild.
 ```
 
-A number past the end lists them again, and `shiny` can go anywhere (`release eevee 2 shiny`). A number that belongs to a name stays part of it: `zygarde 10` is Zygarde's 10% form, and `porygon 2` is Porygon2.
+A number past the end lists them again, and `shiny` can go anywhere (`release eevee 2 shiny`). A number that belongs to a name stays part of it: `zygarde 10` is Zygarde's 10% form, and `porygon 2` is Porygon2 (unless you have two Porygon: then it's the second one).
 
 ---
 
