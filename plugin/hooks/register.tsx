@@ -1261,9 +1261,17 @@ async function evolveNow(
       // Not drawn yet: it simply comes out in its new form.
       if (isInPlace) status = evolve(status, drawnAt)
     }
+    if (isPreview && shows) {
+      // A screen leaves the lead as it is; it only waits, like any screen, for a visitor to go.
+      const what = `${name} evolving into ${newName} in the ${shows.style} style`
+      const isWaiting = isVisited()
+      queueScreen($, shows)
+      return isWaiting
+        ? `A wild ${wild?.mon.name ?? 'Pokémon'} is out: ${what} plays once it has gone.`
+        : `Previewing ${what}.`
+    }
     if (isPreview) {
-      if (shows) queueScreen($, shows)
-      else $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
+      $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
       return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
     }
     // Shedinja comes along when Nincada evolves by level, with Nincada's level and shininess, and counts as caught.

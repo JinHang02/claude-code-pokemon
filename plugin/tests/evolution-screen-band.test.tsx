@@ -212,7 +212,10 @@ test('/pokemon-play evolve gradient previews that style once, saving nothing', S
   const band = await mount($)
   await w.clock.advance(500)
   const before = JSON.stringify(w.saveNow())
-  expect(await cmd($, 'pokemon-play', 'evolve gradient')).toMatch(/^Previewing Eevee evolving into \w+; /)
+  // The lead doesn't change on the screen: the reply says what plays, nothing about changing back.
+  expect(await cmd($, 'pokemon-play', 'evolve gradient')).toMatch(
+    /^Previewing Eevee evolving into \w+ in the gradient style\.$/,
+  )
   await w.clock.advance(800)
   const l = await look(band)
   expect(l.kind).toBe('screen')
@@ -223,7 +226,7 @@ test('/pokemon-play evolve gradient previews that style once, saving nothing', S
   expect(after.colors.has(EEVEE)).toBe(true)
   expect(JSON.stringify(w.saveNow())).toBe(before)
   // The next preview is in the saved style again.
-  await cmd($, 'pokemon-play', 'evolve')
+  expect(await cmd($, 'pokemon-play', 'evolve')).toMatch(/ in the rays style\.$/)
   await w.clock.advance(800)
   const next = await look(band)
   expect(next.kind).toBe('screen')
@@ -262,6 +265,24 @@ test(
     expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
   },
 )
+
+test('/pokemon-play evolve with a wild Pokémon out says the preview plays once it has gone', SLOW, async ($, on) => {
+  const w = await stoneWorld($ as never, on as never)
+  const band = await mount($)
+  await w.clock.advance(500)
+  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
+  expect(await cmd($, 'pokemon-play', 'evolve')).toMatch(
+    /^A wild Caterpie is out: Eevee evolving into \w+ in the rays style plays once it has gone\.$/,
+  )
+  const seen: Look[] = []
+  for (let i = 0; i < 1200 && !seen.some(l => l.kind === 'screen'); i++) {
+    await w.clock.advance(100)
+    seen.push(await look(band))
+  }
+  const first = seen.findIndex(l => l.kind === 'screen')
+  expect(first).toBeGreaterThan(20)
+  expect(seen.slice(0, first).some(l => l.kind === 'aim' || l.colors.has(CATERPIE))).toBe(true)
+})
 
 test("the timer's visitor due while a screen plays comes as soon as it has ended", SLOW, async ($, on) => {
   const w = await stoneWorld($ as never, on as never)

@@ -20,8 +20,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokemon evolution` shows the style you have and the three choices; `/pokemon evolution <rays|white|gradient>`
   picks one. It's saved, so every window uses it. A word it doesn't know answers with the choices, and a near miss
   gets a "Did you mean gradient?".
-- `/pokemon-play evolve [style]` shows your lead's evolution on the screen you have, or on the style you name, once.
-  Nothing is saved: the style stays as it was, and the lead changes back when the screen ends.
+- `/pokemon-play evolve [style]` shows your lead's evolution on the screen you have, or on the style you name, once:
+  _"Previewing Eevee evolving into Espeon in the rays style."_ Nothing is saved: the style stays as it was, and the
+  lead walks on unchanged when the screen ends. With a wild Pokémon out, the reply says the preview plays once it has
+  gone.
 - Every real evolution gets the screen: by level, stone, trade item or Linking Cord, friendship, time of day, Rare
   Candy. When Nincada evolves, its screen shows Ninjask, and Shedinja joins when it ends, in the toast.
 - The sprites are scaled down to fit the stage when they're taller, nearest-neighbour so the pixels stay sharp. A
