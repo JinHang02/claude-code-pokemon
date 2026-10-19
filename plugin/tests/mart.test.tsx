@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START } from '../hooks/mart'
+import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START, typedBy } from '../hooks/mart'
 import type { Act, MartProps, MartState } from '../hooks/mart'
 import { BAG, ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
@@ -223,12 +223,27 @@ test('acting: Buy and ✕ say what to do; every control is a hit at its place; o
     '-': 'less',
     '+': 'more',
     '=': 'more',
-    return: 'buy',
+    return: 'enter',
     x: 'close',
   })
-  for (const good of ['buy', 'close', { tab: 1 }, { pick: 0 }]) expect(isAct(good)).toBe(true)
+  // Enter buys as the button does; the hooks module decides when it asks first.
+  expect(act(p, s, 'enter')).toEqual(act(p, s, 'buy'))
+  for (const good of ['buy', 'enter', 'close', { tab: 1 }, { pick: 0 }]) expect(isAct(good)).toBe(true)
   for (const bad of ['teleport', { pick: -1 }, { pick: 1.5 }, { tab: '2' }, { wheel: 1 }, { buy: 'x' }, null, 7])
     expect(isAct(bad)).toBe(false)
+})
+
+test('typing: a character, a space or a run of them is typed; special keys and chords are not', () => {
+  expect(typedBy({ key: '/' })).toBe('/')
+  expect(typedBy({ key: 'P' })).toBe('P')
+  expect(typedBy({ key: 'é' })).toBe('é')
+  expect(typedBy({ key: 'space' })).toBe(' ')
+  expect(typedBy({ key: '/pokemon bag' })).toBe('/pokemon bag')
+  expect(typedBy({ key: '/pokemon bag\r' })).toBe('/pokemon bag')
+  for (const key of ['up', 'return', 'tab', 'backspace', 'delete', 'pageup', 'home', 'end', 'f5', '\r'])
+    expect(typedBy({ key })).toBeNull()
+  expect(typedBy({ key: 'a', ctrl: true })).toBeNull()
+  expect(typedBy({ key: 'v', meta: true })).toBeNull()
 })
 
 test('a short band (small sprites) still fits: fewer list rows, the actions on the last row', () => {

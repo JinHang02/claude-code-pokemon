@@ -11,7 +11,7 @@ import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
-import type { Act, MartProps } from './mart'
+import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, isList } from './members'
 import type { Found, Place, Spot } from './members'
 import { guessItem, isSpacedOut, lookup, randomPick, slug, spell } from './lookup'
@@ -166,8 +166,28 @@ let wildRate: number | null = DEFAULT_RATE
 let pitch: Throw | null = null
 // The ₽ button's corner: the band's right this many columns, landscape only, the button's label laid over its top.
 const BUTTON_COLUMNS = 13
-// The PokéMart: open in the band, the last thing it said, and what is selected in it.
-let mart = { isOpen: false, message: '', isError: false, view: START }
+// The PokéMart: open in the band, the last thing it said, and what is selected in it. `isBought`: the last thing done
+// in it was a buy, so Enter asks before buying again (`isAsked` once it has). `typed`: how much of what the person typed
+// into it has gone to the prompt.
+type MartOpen = {
+  isOpen: boolean
+  message: string
+  isError: boolean
+  view: MartState
+  isBought: boolean
+  isAsked: boolean
+  typed: number
+}
+const shut = (): MartOpen => ({
+  isOpen: false,
+  message: '',
+  isError: false,
+  view: START,
+  isBought: false,
+  isAsked: false,
+  typed: 0,
+})
+let mart = shut()
 // While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a full-band click layer over
 // pixel art stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
 const AIM_EVERY = 2
@@ -374,6 +394,8 @@ function mutate($: EngineInterface, change: (s: Save) => Save) {
   // In the background: a stalled download never holds up the command.
   return run.then(() => {
     if (isRedrawn) background($, refreshParty($))
+    // The open Mart shows the Bag, the wallet and the party's evolutions: any change to the save may move them.
+    if (mart.isOpen) $.ui.invalidate('ui.render')
   })
 }
 
@@ -385,7 +407,11 @@ async function sync($: EngineInterface) {
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     isNewParty = isOtherParty(latest, save)
-    isNewLook = latest.size !== save.size || latest.isOff !== save.isOff
+    isNewLook =
+      latest.size !== save.size ||
+      latest.isOff !== save.isOff ||
+      (mart.isOpen &&
+        JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== JSON.stringify([save.bag, balanceOf(save, cash)]))
     save = latest
     countLedgers(await readLedgers($))
     times = loadTogether(await $.store.get(TOGETHER)).ms
@@ -712,7 +738,7 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   const spot = pickIn(save, who, ['party'], `give ${item.id} `)
   if (typeof spot === 'string') return spot
   // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
-  return evolveMember($, spot.at, false, item.id)
+  return evolveMember($, spot.member.id, false, item.id)
 }
 
 // The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
@@ -1030,13 +1056,36 @@ async function checkEvolutions($: EngineInterface) {
   const isDue = (id: string) => view().party.some(m => m.id === id && dueFor(m, context).length > 0)
   for (const { id } of save.party) {
     if (save.isOff || !isDue(id)) continue
-    // The one before finishes its animation first; nothing to wait for when no band is drawn.
-    for (let wait = 0; band && status.mood?.kind === 'evolve' && wait < EVOLVE + ticks(2000); wait += 5)
-      await $.clock.sleep(TICK_MS * 5)
-    // The party may have changed during the wait: it is looked up again by id.
-    const at = save.party.findIndex(m => m.id === id)
-    if (!save.isOff && isDue(id)) await evolveMember($, at)
+    // The one before finishes its animation first. The party may have changed during the wait: due is asked again.
+    await animationDone($)
+    if (!save.isOff && isDue(id)) await evolveMember($, id)
   }
+}
+
+// Waits out an evolution animation still playing; nothing to wait for when no band is drawn.
+async function animationDone($: EngineInterface) {
+  for (let wait = 0; band && status.mood?.kind === 'evolve' && wait < EVOLVE + ticks(2000); wait += 5)
+    await $.clock.sleep(TICK_MS * 5)
+}
+
+// Evolutions run one at a time, by a level, a stone, a dropped everstone or a preview alike: each waits for the one
+// before to finish, its animation too, so no animation is cut short.
+let evolutions: Promise<unknown> = Promise.resolve()
+function evolveMember($: EngineInterface, id: string, isPreview = false, given?: string): Promise<string> {
+  // As it is now, to name it if it has gone by its turn.
+  const asked = save.party.find(m => m.id === id)
+  const run = evolutions.catch(() => {}).then(() => evolveNow($, id, asked, isPreview, given))
+  evolutions = run
+  return run
+}
+
+// Why `m` isn't there to evolve: it evolved in another session, or it left the party (released or put in the PC box,
+// here while it waited its turn or in another session). An item given for it stays in the Bag.
+function goneText(s: Save, m: Member, given?: string) {
+  const name = displayName(m.species, m.form)
+  return s.party.some(p => p.id === m.id)
+    ? `${name} already evolved.`
+    : `${name} is no longer in your party.${given ? ` Your ${itemName(given)} is still in your Bag.` : ''}`
 }
 
 // A member's gender, rolled from its species' ratio and saved when it has none yet (kept through evolutions when the
@@ -1054,13 +1103,20 @@ async function settleGender($: EngineInterface, member: Member): Promise<Gender>
   return gender
 }
 
-// Evolves party member `at` into a form it can reach now: by itself, or by the item `given` from the Bag (used up
-// in the same write). The animation plays from its current sprite. A preview plays it and puts the old form back
-// afterwards; a real one saves the new form and tells the person.
-async function evolveMember($: EngineInterface, at: number, isPreview = false, given?: string): Promise<string> {
-  const member = save.party[at]
-  if (!member) return 'Your party is empty.'
+// Evolves party member `id` into a form it can reach now: by itself, or by the item `given` from the Bag (used up
+// in the same write). The animation plays from its current sprite, once any other has finished. A preview plays it
+// and puts the old form back afterwards; a real one saves the new form and tells the person.
+async function evolveNow(
+  $: EngineInterface,
+  id: string,
+  asked: Member | undefined,
+  isPreview = false,
+  given?: string,
+): Promise<string> {
+  const member = save.party.find(m => m.id === id)
+  if (!member) return asked ? goneText(save, asked, given) : 'Your party is empty.'
   const name = displayName(member.species, member.form)
+  const gone = (s: Save) => goneText(s, member, given)
   // Before any download or animation; the save write checks again.
   if (given && !isPreview && !save.bag?.[given]) return noItem(itemName(given))
   try {
@@ -1097,19 +1153,23 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
     const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
     const form = evolvedForm(next, member.form, forms)
     const { art, isShiny } = await fetchArt($, fileOf({ species: next.species, form }), member.isShiny)
-    // It may have moved, left, or been given an everstone during the downloads.
-    const slot = isPreview ? at : save.party.findIndex(m => m.id === member.id && m.species === member.species)
-    const now = save.party[slot]
-    if (!now) return `${name} already evolved.`
+    await animationDone($)
+    // It may have moved, left, or been given an everstone during the downloads and the wait.
+    const now = save.party.find(m => m.id === member.id && m.species === member.species)
+    if (!now) return gone(save)
     if (!isPreview && !given && now.heldItem === 'everstone') return `${name} holds an everstone: it won't evolve.`
-    evolveFrom = fitted?.lefts[slot] ?? null
     const { next: _, ...rest } = member
     const evolved: Member = { ...rest, species: next.species, form, isShiny, evolutions: member.evolutions + 1 }
     const newName = displayName(next.species, form)
     const mon: Mon = { key: keyOf(evolved), name: newName, isShiny, ...parseAnsi(art) }
-    await update($, party, list => list.map((m, i) => (i === slot ? mon : m)))
+    // Found by key in the party as drawn, which can lag the save (a download for another session's catch): its own
+    // picture to start from, and never a second walker with its key.
+    const drawnAt = fitted?.keys.indexOf(member.id) ?? -1
+    evolveFrom = (drawnAt >= 0 && fitted?.lefts[drawnAt]) || null
+    await update($, party, list => list.map(m => (m.key === member.id ? mon : m)))
     evolving = member.id
-    status = evolve(status, slot)
+    // Not drawn yet: it simply comes out in its new form.
+    if (drawnAt >= 0) status = evolve(status, drawnAt)
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
       return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
@@ -1118,11 +1178,14 @@ async function evolveMember($: EngineInterface, at: number, isPreview = false, g
     const shed = next.way.kind === 'level' ? stages.find(s => s.way.kind === 'shed') : undefined
     let shedText = ''
     // Another session may have evolved it first: then that evolution stands.
-    let outcome = `${name} already evolved.`
+    let outcome = ''
     await mutate($, s => {
       const i = s.party.findIndex(m => m.id === member.id && m.species === member.species)
       const latest = s.party[i]
-      if (!latest) return s
+      if (!latest) {
+        outcome = gone(s)
+        return s
+      }
       if (!given && latest.heldItem === 'everstone') {
         outcome = `${name} holds an everstone: it won't evolve.`
         return s
@@ -1323,7 +1386,7 @@ function afterThrow($: EngineInterface, event: ThrowEvent) {
 }
 
 function openMart($: EngineInterface) {
-  mart = { isOpen: true, message: '', isError: false, view: START }
+  mart = { ...shut(), isOpen: true }
   $.ui.invalidate('ui.render')
 }
 
@@ -1375,10 +1438,25 @@ const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
 // next props while it stays open.
 async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps } | null> {
   const was = mart.view
-  const done = act(martProps(), was, a)
+  const p = martProps()
+  // Enter straight after a buy asks first: Enter ends every line typed, and the Mart keeps the keys after a click.
+  if (a === 'enter' && mart.isBought && !mart.isAsked) {
+    const item = p.items.filter(i => i.tab === p.tabs[was.tab])[was.sel]
+    if (item) {
+      mart = { ...mart, isAsked: true, message: `Press Enter again to buy another ${item.name}.`, isError: false }
+      return { props: martProps() }
+    }
+  }
+  const done = act(p, was, a)
   // Another item, tab or quantity: the last message was about the one before.
   const isMoved = done.state.tab !== was.tab || done.state.sel !== was.sel || done.state.qty !== was.qty
-  mart = { ...mart, view: done.state, ...(isMoved ? { message: '', isError: false } : {}) }
+  mart = {
+    ...mart,
+    view: done.state,
+    isBought: false,
+    isAsked: false,
+    ...(isMoved ? { message: '', isError: false } : {}),
+  }
   if (done.refusal) mart = { ...mart, message: done.refusal, isError: true }
   if (done.post && 'close' in done.post) {
     closeMart($)
@@ -1388,7 +1466,13 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
     try {
       const { text, isError } = await buyItem($, done.post.buy.id, done.post.buy.qty)
       // Bought: back to one. Refused: the quantity stays, to change and try again.
-      mart = { ...mart, message: text, isError, view: isError ? mart.view : { ...mart.view, qty: 1 } }
+      mart = {
+        ...mart,
+        message: text,
+        isError,
+        view: isError ? mart.view : { ...mart.view, qty: 1 },
+        isBought: !isError,
+      }
     } catch (err) {
       // The store refused: said in the Mart's own line, and reported.
       mart = {
@@ -1400,6 +1484,21 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
     }
   }
   return { props: martProps() }
+}
+
+// The person typed into the Mart (`typed`, all of it since it was drawn): it closes, the keyboard goes back to the
+// prompt, and the part not yet sent there follows. Claude Code gives a band the keys back only once what holds them
+// is gone, and has no way to hand them back otherwise.
+async function typedInMart($: EngineInterface, typed: string) {
+  const more = typed.slice(mart.typed)
+  if (!more) return
+  mart = { ...mart, typed: typed.length }
+  closeMart($)
+  try {
+    await $.prompt.fill({ text: more, mode: 'insert' })
+  } catch (err) {
+    await report($, err)
+  }
 }
 
 // Why the Mart can't open now, or null when it can.
@@ -1517,7 +1616,7 @@ async function play($: EngineInterface, args: string): Promise<string> {
       demoAgents = 0
       countAgents()
     })
-  } else if (name === 'evolve') return evolveMember($, 0, true)
+  } else if (name === 'evolve') return evolveMember($, save.party[0]?.id ?? '', true)
   else if (words[0] === 'wild') {
     // One visitor at a time: a second call doesn't bring (or claim) another.
     if (wild && status.wild) return `${wild.mon.name} is still here.`
@@ -1803,6 +1902,12 @@ export const register: Register = on => {
     if (click) throwAt(click)
     // A click on a button drawn before a visitor came opens nothing.
     if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
+    const typed = e.element === 'mart' ? (e.data as { typed?: unknown } | null)?.typed : undefined
+    // Typing that went on after the first key closed the Mart still goes to the prompt.
+    if (typeof typed === 'string') {
+      await typedInMart($, typed)
+      return {}
+    }
     const posted = e.element === 'mart' && mart.isOpen ? (e.data as { act?: unknown } | null)?.act : undefined
     if (isAct(posted)) {
       const answer = await martAct($, posted)

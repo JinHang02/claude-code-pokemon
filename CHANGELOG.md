@@ -73,6 +73,20 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   instead of switching the scene to dusk. Asking again while a visitor is out answers "<Name> is still here."
 - A wild Pokémon can be aimed at at once, offline too: its catch rate comes from the shipped table, not a download.
 
+### Fixed
+
+- After a click in the PokéMart, typing a command no longer vanishes with every Enter a buy. Any key the Mart doesn't
+  use (`/`, a letter other than `x`, a digit, a space) closes it, and what you type goes to the prompt. Enter right
+  after a buy asks "Press Enter again to buy another Fire Stone." instead of buying again; a click on Buy still buys.
+- The open Mart's "in bag" counts follow every Bag change at once: a release or `take` from the PC box, a `give`, a
+  `/pokemon buy`, another session's change.
+- Two stones given one after the other no longer cut the first evolution short. Evolutions go one at a time, each with
+  its whole animation: the second command answers once its own evolution has started.
+- A stone given to a Pokémon that another session has just released or put in the PC box says "Eevee is no longer in
+  your party. Your Water Stone is still in your Bag." It used to say "Eevee already evolved."
+- An evolution that starts while a sprite is still downloading for another session's change (a release and a catch
+  there) plays from the evolving Pokémon's own picture, never the released one's, and never shows it twice.
+
 ## [1.3.0] - 2026-10-13
 
 ### Added: the PokéMart and Pokédollars
