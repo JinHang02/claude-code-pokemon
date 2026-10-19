@@ -62,10 +62,13 @@ import {
   withExtra,
   withTime,
   withTogether,
+  styleOf,
   XP,
   xpForLevel,
 } from './save'
 import type { Ledger, Member, Save, Size } from './save'
+import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
+import type { EvolutionStyle } from './evolution-style'
 import {
   CALM_EVERY,
   carryActors,
@@ -206,6 +209,8 @@ const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
 let evolveFrom: Pixels | null = null
+// The style `/pokemon-play evolve <style>` asked for, for the preview to show once without saving it.
+let previewStyle: EvolutionStyle | null = null
 // The member the evolution animation plays on: it follows it when the party changes under it.
 let evolving = ''
 let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
@@ -969,6 +974,45 @@ async function setSize($: EngineInterface, size: string): Promise<string> {
   return `Pokémon size: ${size}.`
 }
 
+const STYLE_TEXT: Record<EvolutionStyle, string> = {
+  rays: 'a dark stage with light rays turning behind (Gen 4–5)',
+  white: 'a plain white screen, like the Game Boy games (Gen 1–2)',
+  gradient: 'a blue-to-purple glow with rising sparkles (Gen 3)',
+}
+
+// The evolution screen styles, one line each, with the one in use marked.
+function styleChoices(current: EvolutionStyle): string {
+  return EVOLUTION_STYLES.map(s => `  ${s}: ${STYLE_TEXT[s]}${s === current ? ' (current)' : ''}`).join('\n')
+}
+
+// Letters to change, add or drop to turn `a` into `b`.
+function editDistance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i]
+    for (let j = 1; j <= b.length; j++)
+      next[j] = Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, (row[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1))
+    row = next
+  }
+  return row[b.length] ?? 0
+}
+
+// What to answer a word that isn't a style: the choices, led by a guess when it is a near typo.
+function unknownStyle(word: string, current: EvolutionStyle): string {
+  const guess = EVOLUTION_STYLES.find(s => editDistance(word, s) <= 2)
+  return `${guess ? `Did you mean ${guess}? ` : ''}Evolution screen styles:\n${styleChoices(current)}`
+}
+
+async function setEvolutionStyle($: EngineInterface, word: string): Promise<string> {
+  if (!word) {
+    await sync($)
+    return `Evolution screen: ${styleOf(save)}.\n${styleChoices(styleOf(save))}`
+  }
+  if (!isEvolutionStyle(word)) return unknownStyle(word, styleOf(save))
+  await mutate($, s => ({ ...s, evolutionStyle: word }))
+  return `Evolution screen: ${word} (${STYLE_TEXT[word]}).`
+}
+
 // What `member` can evolve into and how, as in the games (empty at a final stage), and its species' gender ratio.
 async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stages: Stage[]; genderRate: unknown }> {
   const list = await loadSpecies($)
@@ -1661,8 +1705,12 @@ async function play($: EngineInterface, args: string): Promise<string> {
       demoAgents = 0
       countAgents()
     })
-  } else if (name === 'evolve') return evolveMember($, save.party[0]?.id ?? '', true)
-  else if (words[0] === 'wild') {
+  } else if (words[0] === 'evolve') {
+    if (words.length > 2 || (words[1] && !isEvolutionStyle(words[1])))
+      return unknownStyle(words[1] ?? '', styleOf(save))
+    previewStyle = words[1] && isEvolutionStyle(words[1]) ? words[1] : null
+    return evolveMember($, save.party[0]?.id ?? '', true)
+  } else if (words[0] === 'wild') {
     // One visitor at a time: a second call doesn't bring (or claim) another.
     if (wild && status.wild) return `${wild.mon.name} is still here.`
     const said = await spawnWild($, words.slice(1).join(' '))
@@ -1675,7 +1723,7 @@ async function play($: EngineInterface, args: string): Promise<string> {
 // How long a naming command waits for a species list still downloading.
 const SPECIES_WAIT_MS = 2000
 // The `/pokemon` words that take no Pokémon's name.
-const UNNAMED = new Set(['party', 'box', 'size', 'bag', 'mart', 'buy', 'off', 'on'])
+const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on'])
 
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
@@ -1701,6 +1749,8 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return releaseOne($, tail, head.toLowerCase())
     case 'size':
       return setSize($, tail.toLowerCase())
+    case 'evolution':
+      return setEvolutionStyle($, tail.toLowerCase())
     case 'everstone':
       return toggleEverstone($, tail)
     case 'bag':
@@ -1814,7 +1864,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release <name> [n] from your party or PC box · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release <name> [n] from your party or PC box · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone · on/off',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({

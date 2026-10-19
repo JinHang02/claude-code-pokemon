@@ -27,6 +27,7 @@ import {
   recordSeen,
   releaseMember,
   spriteBudget,
+  styleOf,
   STARTING_MONEY,
   storeCaught,
   takeFromBag,
@@ -498,4 +499,16 @@ test('a release: from the party or the PC box, named with its level and place, i
   expect(releaseMember(full, { place: 'box', at: 0 }, 'eevee 2')).toBe(
     "Your Bag can't hold another Fire Stone (999 already).",
   )
+})
+
+test('evolutionStyle: absent loads as rays, a valid one is kept, an invalid one is dropped, and it round-trips', () => {
+  const old = { party: [pikachu], size: 'auto', dex: {}, recent: [] }
+  expect(styleOf(loadSave(old))).toBe('rays')
+  expect(loadSave(old)).not.toHaveProperty('evolutionStyle')
+  expect(loadSave({ ...old, evolutionStyle: 'white' }).evolutionStyle).toBe('white')
+  const bad = loadSave({ ...old, evolutionStyle: 'sparkly' })
+  expect(bad).not.toHaveProperty('evolutionStyle')
+  expect(styleOf(bad)).toBe('rays')
+  const written = JSON.parse(JSON.stringify({ ...loadSave(old), evolutionStyle: 'gradient' }))
+  expect(loadSave(written).evolutionStyle).toBe('gradient')
 })
