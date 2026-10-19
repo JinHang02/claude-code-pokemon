@@ -371,6 +371,9 @@ export function putInBag(save: Save, id: string): Save | null {
   return have >= MAX_BAG ? null : { ...save, bag: { ...save.bag, [id]: have + 1 } }
 }
 
+// Why one more of an item can't go in the Bag, in every command: a release, a give, a take, a buy.
+export const bagFull = (name: string) => `Your Bag can't hold another ${name} (${MAX_BAG} already).`
+
 // The member at `spot` gone back to the wild, its held item back in the Bag, or why not (`query`: how it was named).
 // The text names its level (`levelOf`, as the party stands) and where it was, so a misfire shows at once. An Everstone
 // is free and never kept in the Bag: it is dropped, as a take drops it. The Pokédex keeps the member; its time
@@ -387,13 +390,13 @@ export function releaseMember(
   if (isParty && save.party.length === 1) return 'Pick a new lead first.'
   const item = m.heldItem === 'everstone' ? undefined : m.heldItem
   const held = item ? putInBag(save, item) : save
-  if (!held) return `Your Bag can't hold another ${itemName(item ?? '')} (${MAX_BAG} already). Use one first.`
+  if (!held) return bagFull(itemName(item ?? ''))
   const box = (save.box ?? []).filter((_, i) => isParty || i !== spot.at)
   const { box: _, ...rest } = held
   const back = item ? ` Its ${itemName(item)} went back to the Bag.` : ''
   return {
     save: { ...rest, party: save.party.filter((_, i) => !isParty || i !== spot.at), ...(box.length ? { box } : {}) },
-    text: `Bye bye, ${displayName(m.species, m.form)} (Lv ${levelOf(m)}, ${isParty ? 'party' : 'PC box'})! It went back to the wild.${back}`,
+    text: `Bye bye, ${nameOf(m)} (Lv ${levelOf(m)}, ${isParty ? 'party' : 'PC box'})! It went back to the wild.${back}`,
   }
 }
 
@@ -404,10 +407,9 @@ export function buy(save: Save, cash: number, item: Item, qty: number): { save: 
   const room = MAX_BAG - have
   const cost = item.price * qty
   const left = balanceOf(save, cash)
-  if (!room) return { save, text: `Your Bag can't hold more ${item.name}.`, isError: true }
+  if (!room) return { save, text: bagFull(item.name), isError: true }
   if (qty > room) return { save, text: `Your Bag has room for ${room} more.`, isError: true }
-  if (left < cost)
-    return { save, text: `Not enough ₽: ${(cost - left).toLocaleString('en-US')} more to go.`, isError: true }
+  if (left < cost) return { save, text: `Not enough ₽: ${formatMoney(cost - left)} more to go.`, isError: true }
   return {
     save: { ...save, spent: (save.spent ?? 0) + cost, bag: { ...save.bag, [item.id]: have + qty } },
     text: qty === 1 ? `Bought ${withArticle(item.name)}!` : `Bought ${qty} × ${item.name}!`,
@@ -469,6 +471,11 @@ export const titleCase = (name: string) =>
 
 export const displayName = (species: string, form = 'regular') =>
   titleCase(species) + (form === 'regular' ? '' : ` (${titleCase(form)})`)
+
+// A member as its line in a numbered list names it, so an answer says which one went: "✨ Eevee ♂". The sign is
+// left out while its gender is unknown (a member saved before genders, or not looked up yet).
+export const nameOf = (m: Member) =>
+  `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''}`
 
 const bar = (done: number, total: number, width = 10) => {
   const full = Math.round((done / total) * width)
