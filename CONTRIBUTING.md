@@ -34,17 +34,28 @@ CI runs validation, the tests and the formatting check on every push and pull re
 
 ## Where things live
 
-| File                        | What it does                                                                        |
-| :-------------------------- | :---------------------------------------------------------------------------------- |
-| `plugin/hooks/register.tsx` | Wires Claude Code events to the scene: commands, reactions, saving, the frame timer |
-| `plugin/hooks/scene.ts`     | The animation: roaming, moods, particles, clones, wild visitors, day and night      |
-| `plugin/hooks/sprite.ts`    | Parses the ANSI sprites, scales them and turns pixels into terminal cells           |
-| `plugin/hooks/save.ts`      | Party, levels, XP, the Pokédex and the saved settings                               |
-| `plugin/hooks/reactions.ts` | Decides what counts as a passing test, a failure or a commit                        |
-| `plugin/hooks/evolution.ts` | Reads evolution levels from PokeAPI's evolution chains                              |
-| `plugin/hooks/lookup.ts`    | Finds a Pokémon and form from what you typed                                        |
-| `plugin/hooks/backdrop.ts`  | The 20 landscapes and which one shows each hour                                     |
-| `plugin/hooks/spinner.ts`   | The Pokémon spinner words and the closing line                                      |
+| File                           | What it does                                                                                               |
+| :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| `plugin/hooks/register.tsx`    | Wires Claude Code events to the scene: commands, reactions, saving, the frame timer                        |
+| `plugin/hooks/scene.ts`        | The animation: roaming, moods, particles, clones, wild visitors, day and night                             |
+| `plugin/hooks/sprite.ts`       | Parses the ANSI sprites, scales them and turns pixels into terminal cells                                  |
+| `plugin/hooks/save.ts`         | Party, levels, XP, the Pokédex, the Bag and the saved settings; the text of `/pokemon party`, `box`, `bag` |
+| `plugin/hooks/members.ts`      | Finds the party and PC box members a name fits, and the numbered pick among several                        |
+| `plugin/hooks/lookup.ts`       | Finds a Pokémon and form from what you typed                                                               |
+| `plugin/hooks/evolution.ts`    | Reads evolution levels from PokeAPI's evolution chains                                                     |
+| `plugin/hooks/reactions.ts`    | Decides what counts as a passing test, a failure or a commit                                               |
+| `plugin/hooks/backdrop.ts`     | The 20 landscapes and which one shows each hour                                                            |
+| `plugin/hooks/encounter.ts`    | Which wild Pokémon steps out: catch-rate odds, then landscape, hour and Pokédex weights                    |
+| `plugin/hooks/catch.ts`        | Throwing a Poké Ball: the arc, hit test, wobbles and the catch odds                                        |
+| `plugin/hooks/aim.tsx`         | The band drawn as clickable text while a wild Pokémon can be aimed at                                      |
+| `plugin/hooks/items.ts`        | The PokéMart's stock: item names, prices, descriptions and what each does                                  |
+| `plugin/hooks/item-icons.ts`   | Generated item pictures (`node scripts/item-icons.mjs`); don't edit by hand                                |
+| `plugin/hooks/mart.tsx`        | The PokéMart drawn in the band, its clicks and keys                                                        |
+| `plugin/hooks/shop.tsx`        | The band's corner wallet button that opens the PokéMart                                                    |
+| `plugin/hooks/spinner.ts`      | The Pokémon spinner words and the closing line                                                             |
+| `plugin/hooks/species-data.ts` | Generated catch rates, stages and types per species (`node scripts/species-data.mjs`); don't edit by hand  |
+| `plugin/hooks/hooks.json`      | Lists the hooks module, `register.tsx`                                                                     |
+| `scripts/*.mjs`                | Maintainer tools: regenerate the item pictures, species data, evolution fixture and coverage list          |
 
 ## Guidelines
 
