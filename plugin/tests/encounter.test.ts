@@ -86,7 +86,9 @@ test('rarity, stage, place, time and novelty multiply', () => {
   expect(Math.abs(weightOf('pidgey', 'regular', seen) - 1 * 4 * 2) < 1e-9).toBe(true)
   // Vulpix keeps 7/8 for its regular form, Alolan Vulpix (Ice) gets the other 1/8 and fits the mountains.
   const mountainsDay = at('mountains', 'day')
-  expect(Math.abs(weightOf('vulpix', 'alola', mountainsDay) - (190 / 255) * (1 / 8) * 4 * 2.5) < 1e-9).toBe(true)
+  expect(Math.abs(weightOf('vulpix', 'alola', mountainsDay) - Math.sqrt(190 / 255) * (1 / 8) * 4 * 2.5) < 1e-9).toBe(
+    true,
+  )
   expect(weightOf('charizard', 'mega-x', meadowDay)).toBe(0)
 })
 
@@ -101,16 +103,16 @@ test('stage, baby, dusk Ghost, mythical and form-share weights, each on its own'
   const lakeDusk = at('lake', 'dusk', everSeen)
   const lakeDay = at('lake', 'day', everSeen)
   const near = (a: number, b: number) => expect(Math.abs(a - b) < 1e-9, `${a} vs ${b}`).toBe(true)
-  near(weightOf('ivysaur', 'regular', lakeDusk), (45 / 255) * 0.6)
-  near(weightOf('venusaur', 'regular', lakeDusk), (45 / 255) * 0.35)
-  near(weightOf('tyrogue', 'regular', lakeDusk), (75 / 255) * 0.3)
-  near(weightOf('gastly', 'regular', lakeDusk), (190 / 255) * 1.5)
-  near(weightOf('gastly', 'regular', lakeDay), 190 / 255)
+  near(weightOf('ivysaur', 'regular', lakeDusk), Math.sqrt(45 / 255) * 0.75)
+  near(weightOf('venusaur', 'regular', lakeDusk), Math.sqrt(45 / 255) * 0.55)
+  near(weightOf('tyrogue', 'regular', lakeDusk), Math.sqrt(75 / 255) * 0.4)
+  near(weightOf('gastly', 'regular', lakeDusk), Math.sqrt(190 / 255) * 1.5)
+  near(weightOf('gastly', 'regular', lakeDay), Math.sqrt(190 / 255))
   // Inside the rare pool a mythical counts half a legendary.
   near(weightOf('mew', 'regular', lakeDay), 0.5)
   near(weightOf('mewtwo', 'regular', lakeDay), 1)
   // A species with an eligible alternate form keeps 7/8 for its regular one.
-  near(weightOf('vulpix', 'regular', lakeDusk), (190 / 255) * (7 / 8))
+  near(weightOf('vulpix', 'regular', lakeDusk), Math.sqrt(190 / 255) * (7 / 8))
 })
 
 test('a form the species list does not offer has no weight, and the regular form then keeps the whole share', () => {
@@ -120,7 +122,7 @@ test('a form the species list does not offer has no weight, and the regular form
   const alone = weightOf('vulpix', 'regular', at('lake', 'dusk', { vulpix: { seen: 1, shiny: 0, first: 0 } }), [
     'regular',
   ])
-  expect(Math.abs(alone - 190 / 255) < 1e-9).toBe(true)
+  expect(Math.abs(alone - Math.sqrt(190 / 255)) < 1e-9).toBe(true)
 })
 
 test('about 1% of wild Pokémon are legendary, mythical or Ultra Beasts', { timeoutMs: 60_000 }, () => {
@@ -193,4 +195,53 @@ test("a species or form the table doesn't know still works", () => {
   expect(weightOf('newmon', 'regular', at('meadow', 'day'))).toBeGreaterThan(0)
   expect(weightOf('newmon', 'mega', at('meadow', 'day'))).toBe(0)
   expect(() => drawWild(list, at('meadow', 'day'), seeded(6))).not.toThrow()
+})
+
+test('on average over the 20 place and time pairs a Pidgey is 1 in 189, an Eevee 1 in 966, a Dratini 1 in 1,893', () => {
+  // Exact chance per visit from the weights (nothing met yet, so the 2.5x cancels): the common pool gets 99% of visits.
+  const places = ['meadow', 'hills', 'mountains', 'lake', 'forest'] as const
+  const times = ['dawn', 'day', 'dusk', 'night'] as const
+  const sum: Record<string, number> = { pidgey: 0, eevee: 0, dratini: 0 }
+  for (const place of places)
+    for (const time of times) {
+      const where = at(place, time)
+      let total = 0
+      const own: Record<string, number> = { pidgey: 0, eevee: 0, dratini: 0 }
+      for (const { name, forms } of LIST) {
+        if (SPECIES[name]?.tier !== 'common') continue
+        for (const form of forms) {
+          const w = weightOf(name, form, where, forms)
+          total += w
+          if (name in own) own[name] = (own[name] ?? 0) + w
+        }
+      }
+      for (const n of Object.keys(sum)) sum[n] = (sum[n] ?? 0) + (0.99 * (own[n] ?? 0)) / total
+    }
+  const oneIn = (n: string) => 20 / (sum[n] ?? 0)
+  console.log('one in', Math.round(oneIn('pidgey')), Math.round(oneIn('eevee')), Math.round(oneIn('dratini')))
+  for (const [n, want] of [
+    ['pidgey', 189],
+    ['eevee', 966],
+    ['dratini', 1893],
+  ] as const)
+    expect(Math.abs(oneIn(n) / want - 1) < 0.15, `${n}: 1 in ${oneIn(n)}`).toBe(true)
+})
+
+test('item and event dependent forms are not wild, Wormadam cloaks are', () => {
+  const wild = (n: string, f: string) => SPECIES[n]?.forms[f]?.isWild
+  for (const f of ['heat', 'wash', 'frost', 'fan', 'mow']) expect([f, wild('rotom', f)]).toEqual([f, false])
+  for (const f of ['attack', 'defense', 'speed']) expect([f, wild('deoxys', f)]).toEqual([f, false])
+  for (const n of ['tornadus', 'thundurus', 'landorus', 'enamorus']) expect([n, wild(n, 'therian')]).toEqual([n, false])
+  for (const n of ['giratina', 'dialga', 'palkia']) expect([n, wild(n, 'origin')]).toEqual([n, false])
+  for (const f of ['burn', 'chill', 'douse', 'shock']) expect([f, wild('genesect', f)]).toEqual([f, false])
+  expect(wild('shaymin', 'sky')).toBe(false)
+  expect(wild('keldeo', 'resolute')).toBe(false)
+  const sweets = Object.entries(SPECIES.alcremie?.forms ?? {})
+  expect(sweets).toHaveLength(73) // 72 sweets and Gigantamax
+  expect(sweets.filter(([, v]) => v.isWild)).toEqual([])
+  expect(wild('wormadam', 'sandy')).toBe(true)
+  expect(wild('wormadam', 'trash')).toBe(true)
+  // Never drawn, even if a newer sprite list offers them.
+  expect(isWildForm('landorus', 'therian')).toBe(false)
+  expect(isWildForm('newmon', 'origin')).toBe(false)
 })
