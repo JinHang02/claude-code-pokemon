@@ -96,6 +96,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   click on a wild Pokémon throws no ball and says so; it stays out to catch once you release one. A catch whose box
   another session fills while the ball wobbles breaks free. Nincada still evolves, but Shedinja needs the room. An
   older save holding more keeps them all.
+- `/pokemon party` and `box` put "together …" and "holds …" before "evolves …", and the evolves text, which can run
+  long for a branching line, comes last. One long cell no longer pushes everyone else's columns off to the right.
 
 ### Fixed
 
@@ -292,7 +294,7 @@ pytest` and `echo "now: $(date)"; git commit -m x` react again.
   Caterpie always comes quietly, Pikachu 3 times in 4 and a legendary about 1 time in 100. When PokeAPI can't be
   reached a rate of 45 is used (about 1 in 6).
 - Caught: three wobbles, a click with sparkles, `Gotcha! Caterpie was caught!` and your party cheers. It joins
-  your party, or the PC box when your party is full or already has one of it. It starts at Lv 1.
+  your party, or the PC box when your party is full or already has one of it. It starts at Lv 1. _(Changed in 1.4.0: twins are welcome, so only a full party sends a catch to the PC box.)_
 - Broke free: up to two wobbles (more when it was close), then the ball bursts open and the Pokémon pops out with
   a hop. 1 time in 10 it then flees, dashing to the nearest edge and leaving a puff of dust; otherwise you can
   throw again, as often as you like while it's in view.
@@ -303,7 +305,7 @@ pytest` and `echo "now: $(date)"; git commit -m x` react again.
 
 - `/pokemon box` lists the Pokémon in your PC box, with levels, as `/pokemon party` does.
 - `/pokemon <name>` brings a Pokémon out of the box to lead; your old lead goes into the box. A name in both your
-  party and the box picks the party one.
+  party and the box picks the party one. _(Changed in 1.4.0: when a name fits both, the command lists them, numbered, and you pick.)_
 - `/pokemon add <name>` brings a Pokémon out of the box into your party when there's room.
 - Pokémon in the box don't earn XP.
 - `◓` after a name in `/pokemon party` and `/pokemon box` marks a Pokémon caught with a ball.
@@ -331,8 +333,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - A party of up to three Pokémon living in a pixel world in the band above the Claude Code prompt, each roaming on its own, the lead drawn in front.
 - 905 Pokémon (Bulbasaur to Enamorus) and 424 alternate forms (Mega, Gigantamax, Alolan, Galarian, Hisuian and more); a random roll uses an alternate form 1 time in 8.
 - Shinies: 1 in 32 on any catch, or forced with `shiny` (`/pokemon shiny pikachu`).
-- `/pokemon <name>` picks your lead. A Pokémon already in your party moves up with its level (no new sighting is recorded); a new one replaces the lead and the reply says who went back to the wild.
-- `/pokemon add [name]` and `/pokemon remove [name]` (or `release`). With no name, `add` catches a random Pokémon and `remove` releases a random member, never the lead. The party can't be emptied. `remove vulpix` means the plain Vulpix when an Alolan one is in the party too (`remove alolan vulpix` for that one).
+- `/pokemon <name>` picks your lead. A Pokémon already in your party moves up with its level (no new sighting is recorded); a new one replaces the lead and the reply says who went back to the wild. _(Changed in 1.4.0: the old lead goes into the PC box instead of back to the wild.)_
+- `/pokemon add [name]` and `/pokemon remove [name]` (or `release`). With no name, `add` catches a random Pokémon and `remove` releases a random member, never the lead. The party can't be emptied. `remove vulpix` means the plain Vulpix when an Alolan one is in the party too (`remove alolan vulpix` for that one). _(Changed in 1.4.0: a bare `remove` asks "Which one?", and a name fitting several of yours lists them, numbered.)_
 - Exact names only: a name, typo or partial form that isn't spelled right catches nothing and replies with a suggestion, for example `Did you mean Duskull? Run /pokemon duskull`. Correct spellings may put forms in any order (`mega charizard x`), use regional adjectives (`alolan vulpix`) and any capitals, accents or punctuation (`Mr. Mime`, `Flabébé`, `Nidoran♀`). A name made only of symbols or another script (`✨`, `ピカチュウ`) catches nothing.
 - `/pokemon party` lists each member's level, XP to the next level and when it evolves, in lined-up columns (`evolves at Lv 16`, `final form`, `everstone`).
 
