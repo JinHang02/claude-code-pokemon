@@ -211,9 +211,10 @@ const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
 let wildDue = WILD_EVERY[0]
 let evolveFrom: Pixels | null = null
-// An evolution shown on its own screen over the whole band, `from` and `to` at their downloaded size. `rows`: the
+// An evolution shown on its own screen over the whole band, `from` and `to` at their downloaded size. `said`: the
+// toast telling what it became, held back until the screen has shown it (or plays none after all). `rows`: the
 // band's height when it started, kept while it plays.
-type Screen = { key: string; from: Mon; to: Mon; style: EvolutionStyle; isPreview: boolean }
+type Screen = { key: string; from: Mon; to: Mon; style: EvolutionStyle; isPreview: boolean; said?: string }
 let screen: (Screen & { rows: number }) | null = null
 // Screens waiting their turn: one at a time, and none while a wild Pokémon is out.
 let screensDue: Screen[] = []
@@ -274,6 +275,8 @@ const fileOf = (m: { species: string; form: string }) => (m.form === 'regular' ?
 const keyOf = (m: Member) => m.id
 // What a member looks like on screen: the party is drawn again when any of these change.
 const lookOf = (m: Member) => `${m.id}|${m.species}|${m.form}|${m.isShiny}`
+// The party as drawn: it is laid out again when this changes.
+const looksOf = (mons: Mon[]) => mons.map(m => `${m.key}|${m.name}|${m.isShiny}`).join()
 // Whether a save about to be adopted shows another party than `was` (another session evolved, added or moved one).
 // Every place that adopts a save checks, or the band keeps drawing the old one.
 const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !== was.party.map(lookOf).join()
@@ -531,8 +534,9 @@ async function refreshParty($: EngineInterface) {
     }
     if (mine !== refreshes) return
     const was = await read($, party)
-    await update($, party, () => mons)
     noticeEvolutions($, was, mons, await $.clock.now())
+    // One whose screen hasn't played yet keeps its old form until then.
+    await update($, party, () => mons.map(heldBack))
     isPartyStale = false
     await clearError($)
   } catch (err) {
@@ -1247,11 +1251,13 @@ async function evolveNow(
     const shows: Screen | null =
       drawn && canScreen() ? { key: member.id, from: drawn, to: mon, style: style ?? styleOf(save), isPreview } : null
     if (!shows) {
-      evolveFrom = (drawnAt >= 0 && fitted?.lefts[drawnAt]) || null
+      // Another's screen still to finish (its band gone for now): this one simply changes, the screen plays on.
+      const isInPlace = drawnAt >= 0 && !screen
+      evolveFrom = (isInPlace && fitted?.lefts[drawnAt]) || null
       await update($, party, list => list.map(m => (m.key === member.id ? mon : m)))
       evolving = member.id
       // Not drawn yet: it simply comes out in its new form.
-      if (drawnAt >= 0) status = evolve(status, drawnAt)
+      if (isInPlace) status = evolve(status, drawnAt)
     }
     if (isPreview) {
       if (shows) queueScreen($, shows)
@@ -1316,14 +1322,17 @@ async function evolveNow(
       shedText = stored.isInParty ? ` ${shedName} joined your party!` : ` ${shedName} went to the PC box.`
       return stored.save
     })
-    if (!outcome) $.ui.toast(`What? ${name} evolved into ${newName}!${shedText}`)
-    // The screen draws the party again when it ends.
-    if (shows && !outcome) queueScreen($, shows)
-    // Also redraws over any refresh that was already under way with the old sprite.
-    else await refreshParty($)
+    const said = `What? ${name} evolved into ${newName}!${shedText}`
+    // The screen tells what it became, and draws the party again, when it ends.
+    if (shows && !outcome) queueScreen($, { ...shows, said })
+    else {
+      if (!outcome) $.ui.toast(said)
+      // Also redraws over any refresh that was already under way with the old sprite.
+      await refreshParty($)
+    }
     if (outcome) return outcome
     background($, learnEvolutions($))
-    return `${name} evolved into ${newName}!${shedText}`
+    return shows ? `What? ${name} is evolving!` : `${name} evolved into ${newName}!${shedText}`
   } catch (err) {
     if (!isPreview) await report($, err)
     return `${name} couldn't evolve right now: ${err instanceof Error ? err.message : String(err)}`
@@ -1683,14 +1692,19 @@ function queueScreen($: EngineInterface, next: Screen) {
   startScreen($)
 }
 
+// What a member looks like while its screen waits or plays: its old form.
+const heldBack = (m: Mon) => [screen, ...screensDue].find(d => d && !d.isPreview && d.key === m.key)?.from ?? m
+
 // The next screen, once nothing else holds the band: no other evolution playing, no wild Pokémon out. The Mart
-// closes for it. A band too short for it by now plays none: the party is simply drawn evolved.
+// closes for it. With no band tall enough by now, or the Pokémon gone from the party, it plays none: the evolution
+// is told and the party drawn evolved.
 function startScreen($: EngineInterface) {
-  while (!screen && screensDue.length && band && fitted && !isVisited() && status.mood?.kind !== 'evolve') {
+  while (!screen && screensDue.length) {
+    if (band && (isVisited() || status.mood?.kind === 'evolve')) return
     const next = screensDue.shift()
     if (!next) return
-    if (!canScreen()) {
-      background($, refreshParty($))
+    if (!band || !fitted || !canScreen() || !save.party.some(m => m.id === next.key)) {
+      skipScreen($, next)
       continue
     }
     closeMart($)
@@ -1708,15 +1722,35 @@ async function endScreen($: EngineInterface) {
   if (!done) return
   screen = null
   lastCells = ''
-  if (!done.isPreview) await update($, party, list => list.map(m => (m.key === done.key ? done.to : m)))
+  if (!done.isPreview) {
+    const list = await update($, party, all => all.map(m => (m.key === done.key ? done.to : m)))
+    // Drawn in its new form from this very frame, not only once the band is next laid out.
+    const at = fitted?.keys.indexOf(done.key) ?? -1
+    if (fitted && at >= 0) {
+      const { budget, keys } = fitted
+      fitted = {
+        ...fitted,
+        lefts: fitted.lefts.map((l, i) => (i === at ? fit(done.to, budget) : l)),
+        ...(list.map(m => m.key).join() === keys.join() ? { looks: looksOf(list) } : {}),
+      }
+    }
+  }
+  if (done.said) $.ui.toast(done.said)
   $.ui.invalidate('ui.render')
   background($, refreshParty($))
   startScreen($)
 }
 
-// The party went off: no screen plays now or later; the evolutions stay saved.
+// A screen that won't play: the evolution is told now, and the party drawn evolved.
+function skipScreen($: EngineInterface, s: Screen) {
+  if (s.said) $.ui.toast(s.said)
+  background($, refreshParty($))
+}
+
+// The party went off: no screen plays now or later; the evolutions stay saved, and are told now.
 function dropScreens($: EngineInterface) {
   if (!screen && !screensDue.length) return
+  for (const s of [screen, ...screensDue]) if (s?.said) $.ui.toast(s.said)
   screensDue = []
   screen = null
   if (status.mood?.isScreen) status = { ...status, mood: null }
@@ -2165,7 +2199,7 @@ export const register: Register = on => {
     const columns = total - button
     const budget = spriteBudget(save.size, e.props.maxRows, Math.ceil(HEADROOM / 2))
     const keys = mons.map(m => m.key)
-    const looks = mons.map(m => `${m.key}|${m.name}|${m.isShiny}`).join()
+    const looks = looksOf(mons)
     if (!fitted || fitted.budget !== budget || looks !== fitted.looks) {
       const lefts = mons.map(m => fit(m, budget))
       status = {

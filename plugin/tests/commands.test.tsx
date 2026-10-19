@@ -1704,7 +1704,8 @@ test('a slow party refresh in flight never draws over an evolution', async ($, o
   await $.tool.call(bash('git commit -m x') as never)
   for (let i = 0; i < 20 && w.saveNow().party[0]?.species !== 'raichu'; i++) await w.clock.advance(100)
   expect(w.saveNow().party.map(m => m.species)).toEqual(['raichu', 'eevee'])
-  // The toast doesn't wait for the stalled download.
+  // The toast doesn't wait for the stalled download, only for the evolution's screen to end.
+  for (let i = 0; i < 120 && !w.toasts.includes('What? Pikachu evolved into Raichu!'); i++) await w.clock.advance(100)
   expect(w.toasts).toContain('What? Pikachu evolved into Raichu!')
   net.stall = undefined
   release()

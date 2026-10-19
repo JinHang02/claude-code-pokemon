@@ -47,7 +47,8 @@ test(
       list: JSON.stringify(LIST),
       now: hourAt(12),
       // Vaporeon narrower than Eevee: the lead, drawn in front of a still party, can't hide the second one whole.
-      sprites: { eevee: solid('1;2;3', 6), vaporeon: solid('7;8;9', 6, 4) },
+      // A band of 7 rows: both evolutions play in place.
+      sprites: { eevee: solid('1;2;3', 4), vaporeon: solid('7;8;9', 4, 3) },
     }
     const w = await begin(
       $,

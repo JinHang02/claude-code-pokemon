@@ -13,6 +13,8 @@ const COLUMNS = 80
 const DEFAULT = 0x01000000
 const EEVEE = 0x010203
 const VAPOREON = 0x070809
+const CHARMANDER = EEVEE
+const CHARMELEON = VAPOREON
 const CATERPIE = 0x00ffff
 const WHITE = 0xffffff
 const RAYS = [0x0d0e1c, 0x161834, 0x1d2047, 0x2a2e5a, 0xffffff, 0x9fb3ff]
@@ -73,12 +75,24 @@ async function look(band: Band): Promise<Look> {
   const raster = findNode(tree, n => n.type === 'Raster' && n.props?.key === 'scene')
   const none = { words: [], rows: 0, text: '', colors: new Set<number>(), hasShop }
   if (!raster) {
-    if (findNode(tree, n => n.type === 'Client' && n.props?.key === 'aim')) return { kind: 'aim', ...none }
+    const aim = findNode(tree, n => n.type === 'Client' && n.props?.key === 'aim')
+    if (aim) {
+      // The click layer draws the band as coloured text: its colours are the band's.
+      const lines = (aim.props?.props as { lines?: [string, string, string][][] } | undefined)?.lines ?? []
+      const colors = new Set(
+        lines.flat().flatMap(([, fg, bg]) => [fg, bg].filter(Boolean).map(h => parseInt(h.slice(1), 16))),
+      )
+      return { kind: 'aim', ...none, colors }
+    }
     if (findNode(tree, n => n.type === 'Client' && n.props?.key === 'mart')) return { kind: 'mart', ...none }
     return { kind: 'none', ...none }
   }
-  const words = decode(String(raster.props?.cells ?? ''))
-  const rows = Number(raster.props?.rows)
+  return { ...parse(String(raster.props?.cells ?? '')), hasShop }
+}
+// A picture of the band's cells, as drawn or as blitted.
+function parse(cells: string): Omit<Look, 'hasShop'> {
+  const words = decode(cells)
+  const rows = words.length / 3 / COLUMNS
   const colors = new Set<number>()
   for (let i = 0; i < words.length; i += 3) colors.add(words[i + 1] ?? 0).add(words[i + 2] ?? 0)
   const cell = (x: number, y: number) => words.slice((y * COLUMNS + x) * 3, (y * COLUMNS + x) * 3 + 3)
@@ -87,8 +101,9 @@ async function look(band: Band): Promise<Look> {
   const text = isScreen
     ? String.fromCodePoint(...Array.from({ length: COLUMNS }, (_, x) => cell(x, rows - 2)[0] ?? 0x20)).trim()
     : ''
-  return { kind: isScreen ? 'screen' : 'band', words, rows, text, colors, hasShop }
+  return { kind: isScreen ? 'screen' : 'band', words, rows, text, colors }
 }
+const evolvedToasts = (toasts: string[]) => toasts.filter(t => t.includes(' evolved into '))
 const mount = ($: { ui: { mount: (t: never) => Promise<unknown> } }, maxRows = 30) =>
   $.ui.mount({
     plugin: 'pokemon',
@@ -137,11 +152,20 @@ test(
     const band = await mount($)
     await w.clock.advance(500)
     expect((await look(band)).kind).toBe('band')
-    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('Eevee evolved into Vaporeon!')
-    // Saved before the screen plays, and announced as before.
+    // Saved before the screen plays; what it became is told only once the screen has shown it.
+    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
     expect(w.saveNow().party[0]?.species).toBe('vaporeon')
-    expect(w.toasts).toContain('What? Eevee evolved into Vaporeon!')
-    const seen = await watch(w.clock, band, SCREEN_MS + 1500)
+    expect(evolvedToasts(w.toasts)).toEqual([])
+    const told: boolean[] = []
+    const seen: Look[] = []
+    for (let t = 0; t < SCREEN_MS + 1500; t += 100) {
+      await w.clock.advance(100)
+      seen.push(await look(band))
+      told.push(evolvedToasts(w.toasts).length > 0)
+    }
+    const last = seen.map(l => l.kind).lastIndexOf('screen')
+    expect(told.slice(0, last).some(Boolean)).toBe(false)
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
     const screens = seen.filter(l => l.kind === 'screen')
     // About ten seconds of screen, one of them, from the first frame on.
     expect(seen[0]?.kind).toBe('screen')
@@ -215,7 +239,7 @@ test(
     const band = await mount($)
     await w.clock.advance(500)
     expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
-    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('Eevee evolved into Vaporeon!')
+    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
     expect(w.saveNow().party[0]?.species).toBe('vaporeon')
     const seen: Look[] = []
     for (let i = 0; i < 1200 && !seen.some(l => l.kind === 'screen'); i++) {
@@ -224,11 +248,18 @@ test(
     }
     const first = seen.findIndex(l => l.kind === 'screen')
     expect(first).toBeGreaterThan(20)
-    // The visitor was out (in the grass, aimable, or walking) up to the screen, and gone when it began.
+    // The visitor was out (in the grass, aimable, or walking) up to the screen, and gone when it began; Eevee kept
+    // its old form all that time.
     const out = seen.map(l => l.kind === 'aim' || l.colors.has(CATERPIE))
     expect(out.some(Boolean)).toBe(true)
     expect(out.lastIndexOf(true)).toBeLessThan(first)
     expect(seen[first]?.text.startsWith('What?') || seen[first]?.text === '').toBe(true)
+    expect(seen.slice(0, first).some(l => l.colors.has(VAPOREON))).toBe(false)
+    expect(seen.slice(0, first).some(l => l.colors.has(EEVEE))).toBe(true)
+    // Told once the screen has shown it.
+    expect(evolvedToasts(w.toasts)).toEqual([])
+    await watch(w.clock, band, SCREEN_MS + 500, 500)
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
   },
 )
 
@@ -342,6 +373,187 @@ test(
     expect(seen[seen.length - 1]?.colors.has(VAPOREON)).toBe(false)
     expect(JSON.stringify(w.saveNow())).toBe(released)
     expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
+  },
+)
+
+test('the frames sent as a screen ends go straight to the new form, never back to the old one', SLOW, async ($, on) => {
+  const w = await stoneWorld($ as never, on as never)
+  await mount($)
+  await w.clock.advance(500)
+  await cmd($, 'pokemon', 'give water stone eevee')
+  // Every frame the band is sent, tick by tick, as the terminal gets them.
+  const sent: Omit<Look, 'hasShop'>[] = []
+  for (let t = 0; t < SCREEN_MS + 1500; t += 50) {
+    await w.clock.advance(50)
+    if (w.band.cells) sent.push(parse(w.band.cells))
+  }
+  const last = sent.map(l => l.kind).lastIndexOf('screen')
+  expect(last).toBeGreaterThan(SCREEN_MS / 50 - 10)
+  const after = sent.slice(last + 1)
+  expect(after.length).toBeGreaterThan(5)
+  expect(after.filter(l => l.colors.has(EEVEE)).length).toBe(0)
+  expect(after.every(l => l.kind === 'band' && l.colors.has(VAPOREON))).toBe(true)
+})
+
+test('the party put away mid-screen: the screen stops, and the evolution is told then, once', SLOW, async ($, on) => {
+  const w = await stoneWorld($ as never, on as never)
+  const band = await mount($)
+  await w.clock.advance(500)
+  expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
+  await w.clock.advance(2000)
+  expect(evolvedToasts(w.toasts)).toEqual([])
+  await cmd($, 'pokemon', 'off')
+  expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
+  await cmd($, 'pokemon', 'on')
+  const seen = await watch(w.clock, band, SCREEN_MS, 250)
+  expect(seen.some(l => l.kind === 'screen')).toBe(false)
+  expect(seen[seen.length - 1]?.colors.has(VAPOREON)).toBe(true)
+  expect(evolvedToasts(w.toasts)).toHaveLength(1)
+})
+
+test(
+  'released while its screen waits for a visitor: no screen, and the evolution is told once',
+  SLOW,
+  async ($, on) => {
+    const w = await stoneWorld(
+      $ as never,
+      on as never,
+      withEevee({ party: [member('eevee', { id: 'e', gender: 'male' }), member('charmander', { next: [] })] }),
+    )
+    // A band still tall enough for a screen once Vaporeon has gone.
+    const band = await mount($)
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
+    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
+    expect(await cmd($, 'pokemon', 'release vaporeon')).toContain('Vaporeon')
+    const seen: Look[] = []
+    for (let i = 0; i < 600 && !evolvedToasts(w.toasts).length; i++) {
+      await w.clock.advance(100)
+      seen.push(await look(band))
+    }
+    seen.push(...(await watch(w.clock, band, SCREEN_MS, 250)))
+    expect(seen.some(l => l.kind === 'screen')).toBe(false)
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['charmander'])
+  },
+)
+
+test(
+  "another session's evolution noticed while a visitor is out: the old form walks until its screen",
+  SLOW,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('charmander', { id: 'a', gender: 'male', next: [lv('charmeleon', 16)] })] },
+      undefined,
+      undefined,
+      net(),
+    )
+    await cmd($, 'pokemon', 'party')
+    const band = await mount($)
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
+    const [was] = w.saveNow().party
+    w.store.set('save', {
+      ...w.saveNow(),
+      party: [{ ...was!, species: 'charmeleon', evolutions: 1, next: [lv('charizard', 36)], evolvedAt: w.clock.now() }],
+    })
+    // Noticed now, by a command's sync.
+    await cmd($, 'pokemon', 'party')
+    const seen: Look[] = []
+    for (let i = 0; i < 1200 && !seen.some(l => l.kind === 'screen'); i++) {
+      await w.clock.advance(100)
+      seen.push(await look(band))
+    }
+    const first = seen.findIndex(l => l.kind === 'screen')
+    expect(first).toBeGreaterThan(20)
+    expect(seen[first]?.text.startsWith('What?') || seen[first]?.text === '').toBe(true)
+    expect(seen.slice(0, first).some(l => l.colors.has(CHARMELEON))).toBe(false)
+    expect(seen.slice(0, first).some(l => l.colors.has(CHARMANDER))).toBe(true)
+  },
+)
+
+test(
+  'the band gone mid-screen with another evolution due: the screen still plays whole when it is back',
+  SLOW,
+  async ($, on) => {
+    answerTools(on)
+    // What Claude Code draws in the band's place while a survey shows.
+    on('ui.render', async () => ({ type: 'Text', children: ['survey'] }) as never)
+    const ready = { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' as const }
+    const w = await begin(
+      $,
+      on,
+      {
+        ...emptySave(),
+        party: [member('charmander', { id: 'a', ...ready }), member('charmander', { id: 'b', ...ready })],
+      },
+      undefined,
+      undefined,
+      net(),
+    )
+    await cmd($, 'pokemon', 'party')
+    const band = await mount($)
+    await w.clock.advance(500)
+    await $.tool.call(bash('git commit -m x') as never)
+    const early = await watch(w.clock, band, 1500)
+    expect(early.some(l => l.kind === 'screen')).toBe(true)
+    // A survey takes the band's place for a while: the second twin evolves meanwhile, with no band to play on.
+    await $.ui.mount({
+      plugin: 'pokemon',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: { hasSurvey: true, isWorking: false, maxRows: 30, bodyColumns: COLUMNS },
+    } as never)
+    for (let i = 0; i < 40 && w.saveNow().party.some(m => m.species === 'charmander'); i++) await w.clock.advance(250)
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['charmeleon', 'charmeleon'])
+    const back = await mount($)
+    const seen = await watch(w.clock, back, SCREEN_MS)
+    // The first screen goes on from where it was: through its flash, on to the end.
+    const screens = seen.filter(l => l.kind === 'screen')
+    expect(screens.length).toBeGreaterThan(SCREEN_MS / 100 - 30)
+    expect(screens.some(l => l.text === 'What? CHARMANDER is evolving!')).toBe(true)
+    expect(screens.some(l => l.text === 'Congratulations! Your CHARMANDER evolved into CHARMELEON!')).toBe(true)
+    // Each twin's evolution told once.
+    for (let i = 0; i < 20; i++) await w.clock.advance(500)
+    expect(evolvedToasts(w.toasts)).toEqual([
+      'What? Charmander evolved into Charmeleon!',
+      'What? Charmander evolved into Charmeleon!',
+    ])
+    void band
+  },
+)
+
+test(
+  "Nincada's screen is Nincada's alone; Shedinja's arrival is told with it, once the screen ends",
+  SLOW,
+  async ($, on) => {
+    answerTools(on)
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('nincada', { id: 'n', xp: xpForLevel(20) - 5, gender: 'male' })] },
+      undefined,
+      undefined,
+      net(6, { sprites: { nincada: solid('1;2;3', 6), ninjask: solid('7;8;9', 6), shedinja: solid('9;9;9', 6) } }),
+    )
+    await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+    const band = await mount($)
+    await w.clock.advance(500)
+    await $.tool.call(bash('git commit -m x') as never)
+    const seen: Look[] = []
+    const told: boolean[] = []
+    for (let t = 0; t < SCREEN_MS + 1500; t += 100) {
+      await w.clock.advance(100)
+      seen.push(await look(band))
+      told.push(evolvedToasts(w.toasts).length > 0)
+    }
+    expect(starts(seen)).toHaveLength(1)
+    expect(seen.some(l => l.text === 'What? NINCADA is evolving!')).toBe(true)
+    expect(told.slice(0, seen.map(l => l.kind).lastIndexOf('screen')).some(Boolean)).toBe(false)
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Nincada evolved into Ninjask! Shedinja joined your party!'])
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['ninjask', 'shedinja'])
   },
 )
 
