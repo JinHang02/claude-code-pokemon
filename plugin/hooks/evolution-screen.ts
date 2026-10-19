@@ -23,6 +23,8 @@ export const SCREEN_MS = PHASES.reduce((sum, [, ms]) => sum + ms, 0)
 // 5 rows of stage and the 3-row text box.
 export const SCREEN_MIN_ROWS = 8
 const BOX_ROWS = 3
+// A stage this many pixels high or less has none to spare around the sprite.
+const SMALL_STAGE = 12
 
 // The text sits on the box's middle row (row `rows - 2`) from this column, with as much room on the right.
 export const TEXT_COLUMN = 3
@@ -170,8 +172,9 @@ export function evolutionFrame(o: {
   const now = at(o.ms)
   background(pixels, o.style, columns, height, o.ms)
 
-  // Both sprites share a baseline, the pair centred in the stage with a pixel to spare above and below.
-  const room = Math.max(1, height - 2)
+  // Both sprites share a baseline, the pair centred in the stage with a pixel to spare above and below; a small
+  // stage gives the sprite every pixel it has.
+  const room = Math.max(1, height <= SMALL_STAGE ? height : height - 2)
   const from = fitInto(o.from, columns, room)
   const to = fitInto(o.to, columns, room)
   const baseline = Math.floor((height + Math.max(from.height, to.height)) / 2)
@@ -191,14 +194,19 @@ export function evolutionFrame(o: {
   else if (now.phase === 'flash') paint(swaps(now.t) % 2 ? to : from, silhouette)
   else if (now.phase === 'burst') {
     paint(to, silhouette)
-    // An ellipse of light from the sprite's middle, growing past the stage's corners as it fades.
+    // An ellipse of light from the sprite's middle, growing past the stage's corners as it fades. White light
+    // doesn't show on the off-white stage: there it is a pale blue with a darker ring at its edge.
     const [cx, cy] = [columns / 2, baseline - to.height / 2]
     const r = 4 + now.f * Math.max(columns / 2, height * 2)
     const strength = 1 - now.f * 0.6
+    const [light, ring] = o.style === 'white' ? [0xd4e4fc, 0x7890c0] : [0xffffff, 0xffffff]
     for (let y = 0; y < height; y++)
-      for (let x = 0; x < columns; x++)
-        if (((x + 0.5 - cx) / r) ** 2 + ((y + 0.5 - cy) / (r / 2)) ** 2 <= 1)
-          pixels[y * columns + x] = mix(pixels[y * columns + x] ?? 0, 0xffffff, strength)
+      for (let x = 0; x < columns; x++) {
+        const d = Math.sqrt(((x + 0.5 - cx) / r) ** 2 + ((y + 0.5 - cy) / (r / 2)) ** 2)
+        if (d > 1) continue
+        const edge = d * r > r - 2
+        pixels[y * columns + x] = mix(pixels[y * columns + x] ?? 0, edge ? ring : light, strength)
+      }
   } else paint(to)
 
   if (boxRows > 0) textBox(pixels, columns, height, boxRows)

@@ -17,6 +17,7 @@ const FROM_C = 0xabcdef
 const TO_C = 0x123456
 const FROM: Img = { pixels: Array<number>(64).fill(FROM_C), width: 8, height: 8 }
 const TO: Img = { pixels: Array<number>(120).fill(TO_C), width: 10, height: 12 }
+const NONE: Img = { pixels: Array<number>(120).fill(-1), width: 10, height: 12 }
 const W = 60
 const ROWS = 12
 const STAGE = (ROWS - 3) * 2
@@ -106,7 +107,9 @@ test('the flash shows silhouettes, white on rays and gradient and dark on white'
     expect(count(px, FROM_C) + count(px, TO_C)).toBe(0)
     // The middle of either sprite is silhouette.
     expect(at(img, W / 2, STAGE / 2 + 2)).toBe(tints[style])
-    expect(count(px, tints[style])).toBeGreaterThanOrEqual(64)
+    // Counted where the sprite is alone: the same frame with no Pokémon tells the stage's own sparkles apart.
+    const bare = stage(draw(style, AT.flash, { from: NONE, to: NONE }).img)
+    expect(px.filter((c, i) => c === tints[style] && bare[i] !== c).length).toBeGreaterThanOrEqual(64)
   }
 })
 
@@ -131,11 +134,33 @@ test('the burst lights up the Pokémon’s middle and spreads', () => {
     expect(light(at(img, W / 2, STAGE / 2 + 2))).toBe(true)
     const late = draw(style, 6650).img
     const flash = draw(style, 6150).img
-    // By the end the light has reached the corners of the stage.
+    // By the end the light has reached the top of the stage: brighter there, or on the white stage, blue.
     const top = (img: Img) => img.pixels.slice(0, W).reduce((a, c) => a + brightness(c), 0)
-    expect(top(late)).toBeGreaterThan(top(flash))
+    if (style === 'white') expect(late.pixels.slice(0, W).filter(c => c !== 0xf8f8f0).length).toBeGreaterThan(W / 2)
+    else expect(top(late)).toBeGreaterThan(top(flash))
   }
   expect(at(draw('white', 6150).img, W / 2, STAGE / 2 + 2)).toBe(0x30303a)
+})
+
+test('on the white stage the burst is a pale blue light with a darker ring, plain to see', () => {
+  const far = (c: number) => Math.abs(brightness(c) - brightness(0xf8f8f0)) > 90
+  for (const ms of [6250, 6450, 6650]) {
+    const px = stage(draw('white', ms).img)
+    const lit = px.filter(c => c !== 0xf8f8f0 && c !== 0x30303a)
+    expect(lit.length).toBeGreaterThan(60)
+    expect(lit.filter(far).length).toBeGreaterThan(20)
+    expect(lit.every(c => rgb(c)[2] > rgb(c)[0])).toBe(true)
+  }
+})
+
+test('a stage at the minimum height gives the sprite all its pixels', () => {
+  const tall: Img = { pixels: Array<number>(35 * 29).fill(TO_C), width: 35, height: 29 }
+  const { img } = draw('white', AT.hold, { to: tall, rows: SCREEN_MIN_ROWS })
+  const stageH = (SCREEN_MIN_ROWS - 3) * 2
+  const rowsWith = Array.from({ length: stageH }, (_, y) => img.pixels.slice(y * W, (y + 1) * W)).filter(r =>
+    r.includes(TO_C),
+  )
+  expect(rowsWith.length).toBe(stageH)
 })
 
 test('the text box fills the bottom three rows in the box colours', () => {
