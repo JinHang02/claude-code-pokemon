@@ -3052,7 +3052,9 @@ test('/pokemon evolution shows the style and the choices, sets one, and answers 
   expect(shown).toContain('white')
   expect(shown).toContain('gradient')
   expect(shown).toContain('Gen 3')
-  expect(await cmd($, 'pokemon', 'evolution white')).toContain('white')
+  expect(await cmd($, 'pokemon', 'evolution white')).toBe(
+    'Evolution screen: white, a plain white screen, like the Game Boy games (Gen 1–2).',
+  )
   expect(w.saveNow().evolutionStyle).toBe('white')
   expect(await cmd($, 'pokemon', 'evolution')).toMatch(/white.*\(current\)/)
   const bad = await cmd($, 'pokemon', 'evolution sparkly')

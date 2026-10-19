@@ -1033,7 +1033,7 @@ async function setEvolutionStyle($: EngineInterface, word: string): Promise<stri
   }
   if (!isEvolutionStyle(word)) return unknownStyle(word, styleOf(save))
   await mutate($, s => ({ ...s, evolutionStyle: word }))
-  return `Evolution screen: ${word} (${STYLE_TEXT[word]}).`
+  return `Evolution screen: ${word}, ${STYLE_TEXT[word]}.`
 }
 
 // What `member` can evolve into and how, as in the games (empty at a final stage), and its species' gender ratio.
