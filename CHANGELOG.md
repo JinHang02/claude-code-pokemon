@@ -34,7 +34,11 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - When a name fits more than one of yours, the command lists them, numbered, and does nothing:
   `Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2`.
   Each line shows gender, shininess, level, held item and where it is: the party first, then the PC box. Add the
-  number to pick one. A number past the end answers with the list again.
+  number to pick one. A number past the end answers with the list again (a list of one too), unless the words are a
+  name of their own: with two plain Zygarde, `zygarde 10` is still the 10% form. `shiny` can go anywhere
+  (`release eevee 2 shiny`), and the list's hint keeps it.
+- "Did you mean …?" only suggests one of yours it then finds: `release tyhlosion` with a Hisuian Typhlosion in the PC
+  box suggests `release typhlosion hisui`. Asking for a shiny you don't have says so.
 - Every command that names one of yours does this: `/pokemon <name>`, `add`, `deposit`, `release` (`remove`),
   `give` (Rare Candy too), `take` and `everstone`.
 - A number that is part of a name stays part of it: `/pokemon porygon 2` is Porygon2 unless you have two Porygon
@@ -43,11 +47,11 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 ### Added: release from the PC box
 
 - `/pokemon release <name> [n]` (or `remove`) works on the party and the PC box, with no confirmation:
-  _"Bye bye, Eevee (Lv 16, party)! It went back to the wild."_ It names the level and where it was, so a slip shows
-  at once.
+  _"Bye bye, ✨ Eevee ♂ (Lv 16, PC box)! It went back to the wild."_ It names the level and where it was, and ✨ and
+  ♀/♂ as the numbered list does, so a slip shows at once.
 - A held item goes back to the Bag. The free Everstone goes with the Pokémon (`/pokemon everstone` gives another).
   When the Bag already holds 999 of that item, the release is refused: "Your Bag can't hold another Fire Stone (999
-  already). Use one first."
+  already)."
 - Your only party member can't be released ("Pick a new lead first."); releasing the lead makes the next one lead.
   The Pokédex still counts it as seen and caught.
 - Releasing or depositing a Pokémon while another evolves leaves the animation on the evolving one. Releasing the
@@ -64,6 +68,19 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokemon vulpix` with only an Alolan Vulpix in your party makes that one lead. It used to catch a plain Vulpix.
   From the PC box a plain name never takes another form: with the Alolan one there, `/pokemon vulpix` still catches a
   plain one (`/pokemon alolan vulpix` brings it out). `/pokemon-play wild vulpix` still brings a plain one to catch.
+- `/pokemon <name>` for a Pokémon you don't own (and plain `/pokemon`) no longer sends your lead back to the wild: it
+  goes into the PC box with its level and held item. _"A wild Charmander appeared! It's your new lead. Pikachu (Lv 12)
+  went into the PC box."_ It used to be released, and its held item lost.
+- `/pokemon shiny eevee` with no shiny Eevee of yours always brings a new shiny one to lead, however many plain ones
+  you have (it used to depend on how many and where).
+- `/pokemon take <name>` looks in the party and the PC box together, numbered party first. Of several, the only one
+  holding an item is taken; when more than one holds something, it asks which.
+- "Came out of the PC box", "went into the PC box", "leads the party again" and "joined your party" show ✨ and ♀/♂
+  too. A Pokémon whose gender isn't known yet (one saved before genders, or not looked up yet) shows no sign.
+- A full Bag says the same in every command (release, give, take, buy): "Your Bag can't hold another Fire Stone (999
+  already)." Not enough ₽ shows the ₽: "Not enough ₽: ₽6,000 more to go."
+- `/pokemon add` right after another session made room in the party adds at once, instead of saying the party is full
+  until the next sync.
 
 ## [1.3.0] - 2026-10-13
 
