@@ -98,6 +98,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   older save holding more keeps them all.
 - `/pokemon party` and `box` put "together …" and "holds …" before "evolves …", and the evolves text, which can run
   long for a branching line, comes last. One long cell no longer pushes everyone else's columns off to the right.
+- A wild Pokémon roams the whole band, the 🛒 ₽ label's corner included, while it is out (the party still keeps out of
+  the corner). The label comes back once the visitor and its ball are gone.
 
 ### Fixed
 
