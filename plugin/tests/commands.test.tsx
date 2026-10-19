@@ -365,6 +365,14 @@ const newmonNet = (): Net => ({
   sprites: { caterpie: BLOCK, mewtwo: BLOCK, newmon: BLOCK },
   captureRates: { newmon: 255 },
 })
+// One that can never be caught. Mewtwo can't stand in: the table's rate for it is 3, a catch about once in 85 balls,
+// and only a species the table doesn't know takes its rate from PokeAPI.
+const nevermonNet = (): Net => ({
+  ...throwNet(),
+  list: JSON.stringify([...LIST, { name: 'nevermon', forms: ['regular'] }]),
+  sprites: { caterpie: BLOCK, mewtwo: BLOCK, nevermon: BLOCK },
+  captureRates: { nevermon: 0 },
+})
 type Aim = {
   pointer: (e: { type: 'down'; x: number; y: number; button: 'left'; fine?: { x: number; y: number } }) => Promise<void>
   drawn: () => Promise<unknown>
@@ -399,6 +407,18 @@ function cellIn(lines: Line[] | null, hex: string) {
   }
   return null
 }
+// The columns where the text band draws a bare `hex` cell.
+function columnsIn(lines: Line[] | null, hex: string) {
+  const xs = new Set<number>()
+  for (const runs of lines ?? []) {
+    let x = 0
+    for (const [text, , bg] of runs) {
+      for (let i = 0; i < text.length; i++) if (bg === hex && text[i] === ' ') xs.add(x + i)
+      x += text.length
+    }
+  }
+  return xs
+}
 // Moves the clock on until the text band shows a bare `hex` cell.
 async function seenIn(w: { clock: { advance: (ms: number) => Promise<unknown> } }, aim: Aim, hex: string) {
   for (let i = 0; i < 200; i++) {
@@ -430,8 +450,9 @@ async function visited(
   on: On,
   name: string,
   saved: Save = { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+  net = throwNet(),
 ) {
-  const w = await begin($, on, saved, TALL, undefined, throwNet())
+  const w = await begin($, on, saved, TALL, undefined, net)
   await cmd($, 'pokemon', 'party')
   const aim = (await mountBand($ as never)) as Aim
   await cmd($, 'pokemon-play', 'day')
@@ -447,14 +468,7 @@ test('while aiming, every step a wild Pokémon takes is drawn: clicks are judged
   // The engine redraws the click layer only when the plugin asks.
   let lines = await aimLines(aim)
   const edges = (l: Line[] | null) => {
-    const xs: number[] = []
-    for (const runs of l ?? []) {
-      let x = 0
-      for (const [text, , bg] of runs) {
-        for (let i = 0; i < text.length; i++) if (bg === '#00ffff' && text[i] === ' ') xs.push(x + i)
-        x += text.length
-      }
-    }
+    const xs = [...columnsIn(l, '#00ffff')]
     return xs.length ? ([Math.min(...xs), Math.max(...xs)] as const) : null
   }
   let jump = 0
@@ -544,18 +558,30 @@ test('a ball thrown at the sky above it misses: it flies, lands, blinks out, and
 })
 
 test('one that can never be caught breaks free: hidden in the ball, then back out', async ($, on) => {
-  const { w, aim, cell } = await visited($, on, 'mewtwo')
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  let hidden = false
-  let back = false
+  // The lead walks in front of a visitor. Here it is 2 columns wide, and the ball is thrown once the visitor shows
+  // 3 columns: then the lead never hides all of it, wherever it walks while the ball is out.
+  const net = nevermonNet()
+  net.sprites = { ...net.sprites, pikachu: solid('9;9;9', 12, 2) }
+  const { w, aim } = await visited($, on, 'nevermon', undefined, net)
+  let lines = await aimLines(aim)
+  for (let i = 0; i < 200 && columnsIn(lines, '#00ffff').size < 3; i++) {
+    await w.clock.advance(50)
+    lines = await aimLines(aim)
+  }
+  const cell = cellIn(lines, '#00ffff')
+  expect(cell).not.toBeNull()
+  await aim.pointer({ type: 'down', ...(cell ?? { x: 0, y: 0 }), button: 'left' })
+  // Whether each frame the band is sent shows it, each change once. The frame there at first was sent before
+  // aiming began, so it may not show it yet: what counts starts at the first frame that does.
+  const shown: boolean[] = []
   for (let i = 0; i < 60; i++) {
     await w.clock.advance(50)
     const isShown = cellOf(w.band.cells, 67, CYAN) !== null
-    if (!isShown) hidden = true
-    if (hidden && isShown) back = true
+    if (shown[shown.length - 1] !== isShown) shown.push(isShown)
   }
-  expect([hidden, back]).toEqual([true, true])
-  expect(w.saveNow().dex.mewtwo?.caught).toBeUndefined()
+  const from = shown.indexOf(true)
+  expect(shown.slice(from, from + 3)).toEqual([true, false, true])
+  expect(w.saveNow().dex.nevermon?.caught).toBeUndefined()
 })
 
 test('the click layer is there only while a wild Pokémon can be aimed at; a second click mid-throw does nothing', async ($, on) => {

@@ -137,7 +137,7 @@ export const kite = {
 }
 // Each species' gender ratio in eighths female, where a test fixes it: these always come out one way.
 export const GENDER_RATES: Record<string, number> = { combee: 8, vespiquen: 8, burmy: 0, mothim: 0 }
-// Capture rates where a test fixes them: Caterpie always caught, Mewtwo never.
+// Capture rates PokeAPI answers, where a test fixes them. A species in the table goes by the table's rate instead.
 export const CAPTURE_RATES: Record<string, number> = { caterpie: 255, mewtwo: 0 }
 // Each species' types where a test needs one: Pancham evolves only with a Dark type in the party.
 // By PokeAPI form name: Alolan Rattata is Dark, plain Rattata isn't.
