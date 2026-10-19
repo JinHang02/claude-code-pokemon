@@ -11,7 +11,7 @@ import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
-import type { Act, MartProps } from './mart'
+import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, isList } from './members'
 import type { Found, Place, Spot } from './members'
 import { guessItem, isSpacedOut, lookup, randomPick, slug, spell } from './lookup'
@@ -165,8 +165,28 @@ let wildRate: number | null = DEFAULT_RATE
 let pitch: Throw | null = null
 // The ₽ button's corner: the band's right this many columns, landscape only, the button's label laid over its top.
 const BUTTON_COLUMNS = 13
-// The PokéMart: open in the band, the last thing it said, and what is selected in it.
-let mart = { isOpen: false, message: '', isError: false, view: START }
+// The PokéMart: open in the band, the last thing it said, and what is selected in it. `isBought`: the last thing done
+// in it was a buy, so Enter asks before buying again (`isAsked` once it has). `typed`: how much of what the person typed
+// into it has gone to the prompt.
+type MartOpen = {
+  isOpen: boolean
+  message: string
+  isError: boolean
+  view: MartState
+  isBought: boolean
+  isAsked: boolean
+  typed: number
+}
+const shut = (): MartOpen => ({
+  isOpen: false,
+  message: '',
+  isError: false,
+  view: START,
+  isBought: false,
+  isAsked: false,
+  typed: 0,
+})
+let mart = shut()
 // While a wild Pokémon can be aimed at, the band is drawn as text by a click layer (a full-band click layer over
 // pixel art stalls the terminal), redrawn every AIM_EVERY ticks: text costs more to draw than pixel art.
 const AIM_EVERY = 2
@@ -1318,7 +1338,7 @@ function afterThrow($: EngineInterface, event: ThrowEvent) {
 }
 
 function openMart($: EngineInterface) {
-  mart = { isOpen: true, message: '', isError: false, view: START }
+  mart = { ...shut(), isOpen: true }
   $.ui.invalidate('ui.render')
 }
 
@@ -1370,10 +1390,25 @@ const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
 // next props while it stays open.
 async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps } | null> {
   const was = mart.view
-  const done = act(martProps(), was, a)
+  const p = martProps()
+  // Enter straight after a buy asks first: Enter ends every line typed, and the Mart keeps the keys after a click.
+  if (a === 'enter' && mart.isBought && !mart.isAsked) {
+    const item = p.items.filter(i => i.tab === p.tabs[was.tab])[was.sel]
+    if (item) {
+      mart = { ...mart, isAsked: true, message: `Press Enter again to buy another ${item.name}.`, isError: false }
+      return { props: martProps() }
+    }
+  }
+  const done = act(p, was, a)
   // Another item, tab or quantity: the last message was about the one before.
   const isMoved = done.state.tab !== was.tab || done.state.sel !== was.sel || done.state.qty !== was.qty
-  mart = { ...mart, view: done.state, ...(isMoved ? { message: '', isError: false } : {}) }
+  mart = {
+    ...mart,
+    view: done.state,
+    isBought: false,
+    isAsked: false,
+    ...(isMoved ? { message: '', isError: false } : {}),
+  }
   if (done.refusal) mart = { ...mart, message: done.refusal, isError: true }
   if (done.post && 'close' in done.post) {
     closeMart($)
@@ -1383,7 +1418,13 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
     try {
       const { text, isError } = await buyItem($, done.post.buy.id, done.post.buy.qty)
       // Bought: back to one. Refused: the quantity stays, to change and try again.
-      mart = { ...mart, message: text, isError, view: isError ? mart.view : { ...mart.view, qty: 1 } }
+      mart = {
+        ...mart,
+        message: text,
+        isError,
+        view: isError ? mart.view : { ...mart.view, qty: 1 },
+        isBought: !isError,
+      }
     } catch (err) {
       // The store refused: said in the Mart's own line, and reported.
       mart = {
@@ -1395,6 +1436,21 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
     }
   }
   return { props: martProps() }
+}
+
+// The person typed into the Mart (`typed`, all of it since it was drawn): it closes, the keyboard goes back to the
+// prompt, and the part not yet sent there follows. Claude Code gives a band the keys back only once what holds them
+// is gone, and has no way to hand them back otherwise.
+async function typedInMart($: EngineInterface, typed: string) {
+  const more = typed.slice(mart.typed)
+  if (!more) return
+  mart = { ...mart, typed: typed.length }
+  closeMart($)
+  try {
+    await $.prompt.fill({ text: more, mode: 'insert' })
+  } catch (err) {
+    await report($, err)
+  }
 }
 
 // Why the Mart can't open now, or null when it can.
@@ -1795,6 +1851,12 @@ export const register: Register = on => {
     if (click) throwAt(click)
     // A click on a button drawn before a visitor came opens nothing.
     if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
+    const typed = e.element === 'mart' ? (e.data as { typed?: unknown } | null)?.typed : undefined
+    // Typing that went on after the first key closed the Mart still goes to the prompt.
+    if (typeof typed === 'string') {
+      await typedInMart($, typed)
+      return {}
+    }
     const posted = e.element === 'mart' && mart.isOpen ? (e.data as { act?: unknown } | null)?.act : undefined
     if (isAct(posted)) {
       const answer = await martAct($, posted)

@@ -3,7 +3,7 @@ import type { ClientModule } from 'claude-code'
 import type { TextRun } from './sprite'
 
 // The PokéMart, drawn in the band while it's open. The hooks module keeps what is selected (`state`) and does the
-// buying; this draws the props it gets and posts `{ act }` for a click or a key.
+// buying; this draws the props it gets and posts `{ act }` for a click or a key, and `{ typed }` for typing.
 export type MartItem = {
   id: string
   name: string
@@ -28,14 +28,27 @@ export type MartProps = {
   // The selected item's picture, as `textRows` draws it.
   icon?: TextRun[][]
 }
+// `enter` is the Enter key's buy, which the hooks module may turn into a question; `buy` is the button's.
 export type Act =
-  'up' | 'down' | 'left' | 'right' | 'less' | 'more' | 'max' | 'buy' | 'close' | { tab: number } | { pick: number }
+  | 'up'
+  | 'down'
+  | 'left'
+  | 'right'
+  | 'less'
+  | 'more'
+  | 'max'
+  | 'buy'
+  | 'enter'
+  | 'close'
+  | { tab: number }
+  | { pick: number }
 export type MartPost = { buy: { id: string; qty: number } } | { close: true }
 // A control: row `y`, columns `x0` to `x1` (exclusive).
 export type Hit = { y: number; x0: number; x1: number; act: Act }
 
 export const START: MartState = { tab: 0, sel: 0, top: 0, qty: 1 }
-// Keys while the Mart has the focus. Escape never arrives: it gives the focus back to the prompt.
+// Keys while the Mart has the focus. Escape never arrives: it gives the focus back to the prompt. Any other key that
+// types a character is the person typing: the Mart closes and what they typed goes to the prompt.
 export const KEYS: Record<string, Act> = {
   up: 'up',
   down: 'down',
@@ -44,7 +57,7 @@ export const KEYS: Record<string, Act> = {
   '-': 'less',
   '+': 'more',
   '=': 'more',
-  return: 'buy',
+  return: 'enter',
   x: 'close',
 }
 // The item's picture: up to 14 columns by 7 rows, so a band this tall has room for any picture. It shows when the
@@ -61,7 +74,7 @@ const PICKED = '#ffe28a'
 const RED = '#e3350d'
 const GREY = '#888888'
 const WHITE = '#ffffff'
-const NAMES = ['up', 'down', 'left', 'right', 'less', 'more', 'max', 'buy', 'close']
+const NAMES = ['up', 'down', 'left', 'right', 'less', 'more', 'max', 'buy', 'enter', 'close']
 
 const fmt = (n: number) => n.toLocaleString('en-US')
 const width = (text: string) => [...text].length
@@ -120,7 +133,7 @@ export function act(p: MartProps, s: MartState, a: Act): { state: MartState; pos
     return { state: { ...s, qty: most(p, s) } }
   }
   if (a === 'close') return { state: s, post: { close: true } }
-  // The quantity stays: the hooks module sets it back to 1 once the buy has gone through.
+  // A buy, by the button or Enter. The quantity stays: the hooks module sets it back to 1 once the buy has gone through.
   return item ? { state: s, post: { buy: { id: item.id, qty: s.qty } } } : { state: s }
 }
 
@@ -264,7 +277,25 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   return { lines, hits }
 }
 
-const Mart: ClientModule<MartProps> = (p, s) => {
+// The names Claude Code gives keys that type nothing.
+const SPECIAL = new Set([
+  ...['up', 'down', 'left', 'right', 'return', 'enter', 'tab', 'backspace', 'delete', 'escape'],
+  ...['pageup', 'pagedown', 'home', 'end', 'insert', 'clear'],
+])
+// What a key types, or null for a special key or a chord. Characters that arrive together (typed faster than the
+// terminal reads them, or pasted) come as one key; control characters in them are left out.
+export function typedBy(e: { key: string; ctrl?: true; meta?: true }): string | null {
+  if (e.ctrl || e.meta) return null
+  if (e.key === 'space') return ' '
+  if (SPECIAL.has(e.key) || /^f\d{1,2}$/.test(e.key)) return null
+  const text = e.key.replace(/[\u0000-\u001f\u007f]/g, '')
+  return text || null
+}
+
+// `typed`: everything typed since the Mart was drawn, posted whole each time: a post in the frame after another
+// replaces it, so keys typed faster than frames reach the hooks module all the same.
+const Mart: ClientModule<MartProps, { typed: string }> = (p, s) => {
+  let typed = s.state?.typed ?? ''
   // Set on every draw, so a click is judged on the props drawn now.
   s.onPointer(e => {
     if (e.type !== 'down' || e.button !== 'left') return
@@ -272,8 +303,14 @@ const Mart: ClientModule<MartProps> = (p, s) => {
     if (hit) s.post({ act: hit.act })
   })
   s.onKey(e => {
-    const a = KEYS[e.key]
-    if (a) s.post({ act: a })
+    // Once typing has begun, every key is the person's line until the Mart has gone: no buy, and an x is a letter.
+    const a = typed ? undefined : KEYS[e.key]
+    if (a) return s.post({ act: a })
+    const ch = typedBy(e)
+    if (ch === null) return
+    typed += ch
+    s.setState({ typed })
+    s.post({ typed })
   })
   const { Box, Text } = s.elements
   return (

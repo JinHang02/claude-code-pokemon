@@ -65,6 +65,12 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   From the PC box a plain name never takes another form: with the Alolan one there, `/pokemon vulpix` still catches a
   plain one (`/pokemon alolan vulpix` brings it out). `/pokemon-play wild vulpix` still brings a plain one to catch.
 
+### Fixed
+
+- After a click in the PokéMart, typing a command no longer vanishes with every Enter a buy. Any key the Mart doesn't
+  use (`/`, a letter other than `x`, a digit, a space) closes it, and what you type goes to the prompt. Enter right
+  after a buy asks "Press Enter again to buy another Fire Stone." instead of buying again; a click on Buy still buys.
+
 ## [1.3.0] - 2026-10-13
 
 ### Added: the PokéMart and Pokédollars
