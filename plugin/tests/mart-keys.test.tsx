@@ -97,7 +97,11 @@ test("a letter that isn't one of the Mart's keys closes it too, and goes to the 
 })
 
 // The Mart open, the keys given to it by a click, and what the prompt receives.
-async function martOpen($: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0], on: On, isFilled = true) {
+async function martOpen(
+  $: Parameters<typeof begin>[0] & Parameters<typeof cmd>[0] & Parameters<typeof mountBand>[0],
+  on: On,
+  isFilled = true,
+) {
   const box = promptBox(on, isFilled)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 30_000 })
   await cmd($, 'pokemon', 'party')

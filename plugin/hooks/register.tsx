@@ -1350,7 +1350,7 @@ function throwAt($: EngineInterface, click: Click) {
   const w = status.wild
   if (!band || !wild || !w || !canAim()) return
   if (isNoRoom(save)) {
-    background($, $.ui.toast(NO_ROOM_TO_CATCH))
+    $.ui.toast(NO_ROOM_TO_CATCH)
     return
   }
   const height = band.rows * 2
