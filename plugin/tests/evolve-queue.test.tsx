@@ -186,7 +186,8 @@ test("a stone given to a Pokémon another session just released says it's gone, 
     undefined,
     net,
   )
-  await cmd($, 'pokemon', 'party')
+  // A name command loads the species list first, so it is in before the stall starts.
+  await cmd($, 'pokemon', 'take eevee')
   net.stall = new Promise<void>(r => (go = r))
   const pending = cmd($, 'pokemon', 'give water stone eevee')
   for (let i = 0; i < 20; i++) await w.clock.advance(10)
@@ -213,7 +214,7 @@ test('a stone waiting its turn behind another evolution, for a Pokémon released
   let said = ''
   const waiting = cmd($, 'pokemon', 'give water stone eevee').then(text => (said = text))
   await w.clock.advance(500)
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee ♀ (Lv 1, party)! It went back to the wild.')
   for (let i = 0; i < 100 && !said; i++) await w.clock.advance(100)
   await waiting
   expect(said).toBe('Eevee is no longer in your party. Your Water Stone is still in your Bag.')
