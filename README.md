@@ -132,7 +132,7 @@ Good to know:
 - **It always finishes.** There's no cancelling an evolution once it starts; an Everstone is still how to keep a Pokémon from evolving by itself.
 - **The reply says _"What? Eevee is evolving!"_**, and the _"What? Eevee evolved into Vaporeon!"_ toast comes when the screen ends.
 - **It waits for a wild visitor to leave** (caught, fled or let go), and the evolution is saved at once all the same. An open PokéMart closes for it. Several evolutions at once (twins, a Rare Candy chain) play one after another.
-- **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`.
+- **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`. A command that evolves another Pokémon meanwhile answers when its own screen begins, once this one has ended.
 - **It needs a band at least 8 rows tall.** Below that, the Pokémon flashes between white silhouettes in place, as before 1.5.0.
 - **An evolution in another Claude Code window plays here too** if it's less than 30 seconds old. A window you open later doesn't replay it.
 

@@ -49,8 +49,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - There is no cancelling: a screen always finishes. An Everstone is still the way to stop a Pokémon evolving by
   itself.
 - The screen takes no keys or clicks: the prompt and commands work while it plays. A click on it does nothing. A
-  screen already playing finishes after a `/clear`; a reload or restart mid-screen doesn't bring it back (the
-  evolution is saved either way).
+  command that evolves another Pokémon meanwhile (a twin's stone, a Rare Candy) answers when that one's screen
+  begins, after the screen playing now: up to about ten seconds, as evolutions go one at a time. A screen already
+  playing finishes after a `/clear`; a reload or restart mid-screen doesn't bring it back (the evolution is saved
+  either way).
 - Releasing or depositing the evolving Pokémon mid-screen lets the screen finish; nothing is written back for it.
 
 ### Known limitations
