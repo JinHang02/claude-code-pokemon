@@ -1666,14 +1666,19 @@ async function play($: EngineInterface, args: string): Promise<string> {
   return `Playing ${name}.`
 }
 
+// How long a naming command waits for a species list still downloading.
+const SPECIES_WAIT_MS = 2000
 // The `/pokemon` words that take no Pokémon's name.
 const UNNAMED = new Set(['party', 'box', 'size', 'bag', 'mart', 'buy', 'off', 'on'])
 
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
   const tail = rest.join(' ')
-  // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde).
-  if (!UNNAMED.has(head.toLowerCase())) await loadSpecies($).catch(() => null)
+  // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde). A list not
+  // there yet is waited for a moment only: a hanging download would hold every naming command up, and without it a
+  // name is read the plain way.
+  if (!species && !UNNAMED.has(head.toLowerCase()))
+    await Promise.race([loadSpecies($).catch(() => null), $.clock.sleep(SPECIES_WAIT_MS)])
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
