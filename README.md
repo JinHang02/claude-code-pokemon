@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![862 tests](https://img.shields.io/badge/tests-862_passing-27c93f?style=flat-square)](plugin/tests)
+[![875 tests](https://img.shields.io/badge/tests-875_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
@@ -204,6 +204,10 @@ brings one out to lead and `/pokemon add <name>` into the party; `/pokemon depos
 box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, ✨ Eevee ♂ (Lv 16,
 PC box)! It went back to the wild."_ A hold item it had goes back to your Bag; a free Everstone goes with it.
 
+The box holds 960, as in the games. Once it's full, a new lead that would send the old one there and a `deposit` are
+refused (_"There's no more room in your PC box!"_), and with the party full too no ball is thrown: the wild Pokémon
+stays out for you to catch once you release one.
+
 Two of a kind? Any command that names one asks which, and you add the number:
 
 ```text
@@ -257,7 +261,7 @@ Then hand them out. A stone or trade item evolves on the spot and is used up, a 
 In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-` `+` set how many (`Max` buys as many as you can afford), `Enter` buys and `x` closes. A buy you can't afford says how much more you need. Good to know:
 
 - **Clicks need Claude Code's fullscreen mode** (`/config`, or `"tui": "fullscreen"` in settings), for the ₽ button and the Mart as for Poké Balls. Without it, `/pokemon mart` shows the Mart and `/pokemon buy` does the shopping.
-- **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives the band the keyboard only on a click. Type anything that isn't a Mart key (`/`, a letter other than `x`, a digit) and the Mart closes and what you typed goes to the prompt. Enter right after a buy asks _"Press Enter again to buy another Fire Stone."_; a click on Buy always buys.
+- **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives the band the keyboard only on a click. Type anything that isn't a Mart key (`/`, a letter other than `x`, a capital `X`, a digit) and the Mart closes and what you typed goes to the prompt (if a dialog holds the prompt, a toast shows it). Enter right after a buy asks _"Press Enter again to buy another Fire Stone."_; a click on Buy always buys.
 - **Esc doesn't close it:** Claude Code keeps Escape for the prompt. Use `x` or `✕`.
 - **The mouse wheel doesn't move the list:** Claude Code doesn't pass it to the band. `↑` `↓` or `▲` `▼` do.
 - **Item pictures need a band at least 8 rows tall,** otherwise each item gets a coloured ◆.
@@ -273,7 +277,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon release <name> [n]`           | Set one free, from the party or the PC box (`remove` works too). A hold item goes back to your Bag, a free Everstone goes with it                                                                                                                                                           |
 | `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered: add the number to pick, as in `/pokemon give rare-candy eevee 2`                                                                                                                                                  |
 | `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                                                                                                                                     |
-| `/pokemon box`                          | Your PC box: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                                                                                                                                  |
+| `/pokemon box`                          | Your PC box, up to 960: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                                                                                                                       |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                                                                                                                             |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                                                                                                                                 |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                                                                                                                                 |

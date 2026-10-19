@@ -90,12 +90,20 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   already)." Not enough ₽ shows the ₽: "Not enough ₽: ₽6,000 more to go."
 - `/pokemon add` right after another session made room in the party adds at once, instead of saying the party is full
   until the next sync.
+- The PC box holds 960 Pokémon, as the games' 32 boxes of 30, and `/pokemon box` shows how full it is
+  (`Your PC box (40 / 960):`). When it's full, a new lead (or plain `/pokemon`) that would send the old one there and
+  a `deposit` are refused with "There's no more room in your PC box!", and nothing changes. With the party full too, a
+  click on a wild Pokémon throws no ball and says so; it stays out to catch once you release one. A catch whose box
+  another session fills while the ball wobbles breaks free. Nincada still evolves, but Shedinja needs the room. An
+  older save holding more keeps them all.
 
 ### Fixed
 
 - After a click in the PokéMart, typing a command no longer vanishes with every Enter a buy. Any key the Mart doesn't
   use (`/`, a letter other than `x`, a digit, a space) closes it, and what you type goes to the prompt. Enter right
   after a buy asks "Press Enter again to buy another Fire Stone." instead of buying again; a click on Buy still buys.
+- In the Mart, a capital X is typed, never taken for `x` (close), wherever the terminal reports it as shift + x. When
+  the prompt can't take what you typed (a dialog is open), a toast shows the text instead of dropping it.
 - The open Mart's "in bag" counts follow every Bag change at once: a release or `take` from the PC box, a `give`, a
   `/pokemon buy`, another session's change.
 - Two stones given one after the other no longer cut the first evolution short. Evolutions go one at a time, each with
