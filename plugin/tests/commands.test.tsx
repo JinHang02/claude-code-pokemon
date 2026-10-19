@@ -347,8 +347,9 @@ const colorsIn = (cells: string) => {
 
 const CYAN = 0x00ffff
 const BALL_RED = 0xe3350d
-const solid = (rgb: string, size: number) =>
-  Array.from({ length: size }, () => `\x1b[38;2;${rgb}m\x1b[48;2;${rgb}m▀\x1b[0m`.repeat(size)).join('\n')
+// `size` rows of `width` columns.
+const solid = (rgb: string, size: number, width = size) =>
+  Array.from({ length: size }, () => `\x1b[38;2;${rgb}m\x1b[48;2;${rgb}m▀\x1b[0m`.repeat(width)).join('\n')
 const TALL = solid('9;9;9', 12)
 // A wild visitor easy to find in the band: a solid cyan block.
 const BLOCK = solid('0;255;255', 8)
@@ -2748,7 +2749,9 @@ test('releasing the lead: the next one leads, and the band redraws without it', 
 test('releasing a party member while a wild Pokémon is out: it stays out and can still be caught', async ($, on) => {
   const EEVEE = '#0a0b0c'
   const net = throwNet()
-  net.sprites = { ...net.sprites, eevee: solid('10;11;12', 6) }
+  // The lead is drawn in front, and everyone stands still once the visitor steps out: a lead as wide as Eevee could
+  // hide it whole. This one, as tall as TALL but narrower than Eevee, never can.
+  net.sprites = { ...net.sprites, pikachu: solid('9;9;9', 12, 4), eevee: solid('10;11;12', 6) }
   const w = await begin(
     $,
     on,
