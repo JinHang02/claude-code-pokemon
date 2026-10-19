@@ -3,7 +3,7 @@
 import { itemName } from './items'
 import { isSpacedOut, lookup, slug, spell } from './lookup'
 import type { Lookup, Pick, Species } from './lookup'
-import { displayName, formatParty } from './save'
+import { displayName, formatParty, nameOf } from './save'
 import type { Member, Save } from './save'
 
 export type Place = 'party' | 'box'
@@ -43,10 +43,18 @@ function matching(pool: Spot[], named: string[], wantsShiny: boolean): Spot[] | 
 
 const isSpots = (found: Spot[] | Lookup | null): found is Spot[] => Array.isArray(found) && found.length > 0
 
+// Whether `words` are a name of their own among `names` (every species and form), spelled right or only spaced apart.
+function isName(names: Species[], words: string[]): boolean {
+  const found = names.length && words.length ? lookup(names, words) : null
+  return Boolean(found && ('pick' in found || ('guess' in found && isSpacedOut(found.guess, words))))
+}
+
 // The members `query` names in `places`, party first then the PC box, each in its stored order. `shiny` anywhere asks
 // for a shiny one. A last word that is a number picks the nth of the list the words before it name, when they name
 // several and it is in range; otherwise the whole words are tried as a name (`porygon 2`: Porygon2, `zygarde 10`),
-// then the number as a pick again: of one, 1 picks it. So every list's own hint, typed back, picks its line.
+// then the number as a pick again: of one, 1 picks it. Any other number answers with the list, even of one, unless
+// the whole words are a name of their own in `names` (every species and form) that none of yours is: a lead or an add
+// then catches that one. So every list's own hint, typed back, picks its line; a suggestion always finds someone.
 // `command` is what comes before the name (`'release '`), for a suggestion and the numbered list.
 export function findMembers(
   s: Save,
@@ -54,6 +62,7 @@ export function findMembers(
   places: Place[],
   command: string,
   levelOf: (m: Member) => number,
+  names: Species[] = [],
 ): Found {
   const words = wordsOf(query)
   const wantsShiny = words.includes('shiny')
@@ -63,35 +72,57 @@ export function findMembers(
     .flatMap(place => (place === 'party' ? s.party : (s.box ?? [])).map((member, at) => ({ place, at, member })))
   const last = named[named.length - 1] ?? ''
   const isNumbered = named.length > 1 && /^\d+$/.test(last)
-  // `-1` slugs to `1`: a signed number is below 1, out of range like `0`.
-  const nth = /^-/.test(query.trim().split(/\s+/).pop() ?? '') ? 0 : Number(last)
+  // `-1` slugs to `1`: a signed number is below 1, out of range like `0`. The sign is on the last word that isn't
+  // `shiny` (`eevee -1 shiny`).
+  const token = query
+    .trim()
+    .split(/\s+/)
+    .filter(t => wordsOf(t).some(w => w !== 'shiny'))
+    .pop()
+  const nth = /^-/.test(token ?? '') ? 0 : Number(last)
   const before = isNumbered ? matching(pool, named.slice(0, -1), wantsShiny) : null
-  const picked = isSpots(before) && before.length > 1 && nth > 0 ? before[nth - 1] : undefined
+  const listed = isSpots(before) ? before : []
+  const picked = listed.length > 1 && nth > 0 ? listed[nth - 1] : undefined
   if (picked) return { spot: picked }
   const whole = matching(pool, named, wantsShiny)
   if (isSpots(whole)) return whole.length === 1 && whole[0] ? { spot: whole[0] } : { choices: whole }
-  // Just one of the name before the number: 1 is that one, and any other number names none of yours (`porygon 2`
-  // with one Porygon: a lead or an add goes on to catch Porygon2).
-  const only = isSpots(before) && before.length === 1 && nth === 1 ? before[0] : undefined
+  // Just one of the name before the number: 1 is that one (`porygon 1`).
+  const only = listed.length === 1 && nth === 1 ? listed[0] : undefined
   if (only) return { spot: only }
-  if (isSpots(before) && before.length > 1) {
-    const name = words.slice(0, words.lastIndexOf(last)).join(' ')
-    return { error: formatChoices(before, name, command, levelOf) }
+  const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
+  const none = (name: string) => `No ${name} in your ${where}.${places.includes('party') ? ` ${formatParty(s)}` : ''}`
+  // A name of its own that none of yours is (`zygarde 10`, `porygon 2`): no list, and no guess at another one.
+  if (isName(names, named)) return { error: none(query.trim()) }
+  if (listed.length) {
+    const name = [...(wantsShiny ? ['shiny'] : []), ...named.slice(0, -1)].join(' ')
+    return { error: formatChoices(listed, name, command, levelOf) }
+  }
+  // What a guess finds typed back as suggested: the guess, or else another form of it that is here (a plain name never
+  // takes one out of the PC box), and how many.
+  const reach = (guess: Pick, isShiny: boolean) => {
+    for (const form of [guess.form, ...pool.filter(p => p.member.species === guess.species).map(p => p.member.form)]) {
+      const found = matching(pool, wordsOf(spell({ ...guess, form })), isShiny)
+      if (isSpots(found)) return { guess: { ...guess, form }, many: found.length }
+    }
+    return null
   }
   const guessOf = (found: Spot[] | Lookup | null) => (found && 'guess' in found ? found.guess : undefined)
   const [early, full] = [guessOf(before), guessOf(whole)]
-  // The whole query guessing another name took the number for part of it (`porygn 2`: Porygon2).
-  const isPartOfName = Boolean(early && full && full.species !== early.species)
+  const inRange = (many: number) => isNumbered && many > 1 && nth > 0 && nth <= many
+  // The whole query guessing another name took the number for part of it (`porygn 2`: Porygon2), unless the words
+  // before it guess a list the number is in, as `porygon 2` with two Porygon picks the second.
+  const isPartOfName = Boolean(
+    early && full && full.species !== early.species && !inRange(reach(early, wantsShiny)?.many ?? 0),
+  )
   const guess = isPartOfName ? full : (early ?? full)
-  if (guess) {
-    const many = pool.filter(
-      ({ member: m }) => m.species === guess.species && m.form === guess.form && (!wantsShiny || m.isShiny),
-    ).length
-    const number = isNumbered && !isPartOfName && many > 1 && nth > 0 && nth <= many ? ` ${last}` : ''
-    return { error: `${didYouMean(guess, `${command}${wantsShiny ? 'shiny ' : ''}`)}${number}` }
+  const found = guess && reach(guess, wantsShiny)
+  if (found) {
+    const number = !isPartOfName && inRange(found.many) ? ` ${last}` : ''
+    return { error: `${didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`)}${number}` }
   }
-  const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
-  return { error: `No ${query.trim()} in your ${where}.${places.includes('party') ? ` ${formatParty(s)}` : ''}` }
+  // A shiny asked for, and only plain ones of the guess here.
+  const plain = wantsShiny && guess ? reach(guess, false) : null
+  return { error: none(plain ? `shiny ${displayName(plain.guess.species, plain.guess.form)}` : query.trim()) }
 }
 
 // Whether an answer is the numbered list: a query whose number is past its end still names someone.
@@ -102,10 +133,9 @@ export function formatChoices(choices: Spot[], query: string, command: string, l
   const first = choices[0]?.member
   const isOneForm = choices.every(c => c.member.form === first?.form)
   const lines = choices.map(({ place, member: m }, i) => {
-    const sign = m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
     const held = m.heldItem ? ` holding ${itemName(m.heldItem)}` : ''
     const where = place === 'party' ? 'party' : 'PC box'
-    return `${i + 1}. ${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign} Lv ${levelOf(m)}${held} (${where})`
+    return `${i + 1}. ${nameOf(m)} Lv ${levelOf(m)}${held} (${where})`
   })
   const name = first ? displayName(first.species, isOneForm ? first.form : 'regular') : wordsOf(query).join(' ')
   return `Which ${name}? ${lines.join(' · ')} — add the number: /pokemon ${command}${wordsOf(query).join(' ')} ${choices.length}`
