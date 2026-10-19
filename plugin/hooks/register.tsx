@@ -86,6 +86,7 @@ import {
   wildPlacement,
 } from './scene'
 import type { Happening, Look, Phase, Status } from './scene'
+import { SPECIES } from './species-data'
 import { landscapeAt, LANDSCAPES } from './backdrop'
 import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
@@ -1242,18 +1243,22 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     if (!band || !fitted || status.wild || pitch) return null
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
     wild = { mon, left: fitWild(mon), pick }
-    wildRate = null
-    background(
-      $,
-      captureRateOf($, pick.species)
-        .catch((err: unknown) => {
-          if (wild?.pick === pick) wildRate = DEFAULT_RATE
-          throw err
-        })
-        .then(rate => {
-          if (wild?.pick === pick) wildRate = rate
-        }),
-    )
+    // The table has every listed species' rate; only one it doesn't know is downloaded.
+    const known = SPECIES[pick.species]?.rate
+    if (known === undefined) {
+      wildRate = null
+      background(
+        $,
+        captureRateOf($, pick.species)
+          .catch((err: unknown) => {
+            if (wild?.pick === pick) wildRate = DEFAULT_RATE
+            throw err
+          })
+          .then(rate => {
+            if (wild?.pick === pick) wildRate = rate
+          }),
+      )
+    } else wildRate = known
     status = startWild(status, band.columns, wild.left.width)
     closeMart($)
     $.ui.toast(`${isShiny ? '✨ ' : ''}A wild ${mon.name} appeared!`, { timeoutMs: 6000 })
@@ -1490,7 +1495,8 @@ async function play($: EngineInterface, args: string): Promise<string> {
   const words = name.split(/\s+/)
   const phase = PHASES.find(p => words.includes(p))
   const landscape = LANDSCAPES.find(l => words.includes(l))
-  if (phase || landscape) {
+  // After `wild` every word belongs to the name: `wild lycanroc dusk` is a Pokémon, not a scene.
+  if ((phase || landscape) && words[0] !== 'wild') {
     shown = { phase, landscape, until: tickNo + ticks(15_000) }
     return `Showing ${[phase, landscape].filter(Boolean).join(' ')} for 15 seconds.`
   }
@@ -1513,6 +1519,8 @@ async function play($: EngineInterface, args: string): Promise<string> {
     })
   } else if (name === 'evolve') return evolveMember($, 0, true)
   else if (words[0] === 'wild') {
+    // One visitor at a time: a second call doesn't bring (or claim) another.
+    if (wild && status.wild) return `${wild.mon.name} is still here.`
     const said = await spawnWild($, words.slice(1).join(' '))
     if (said) return said
     return wild ? `A wild ${wild.mon.name} wanders by.` : 'No wild Pokémon showed up.'

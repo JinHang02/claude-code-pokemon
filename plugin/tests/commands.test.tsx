@@ -356,6 +356,13 @@ const throwNet = (): Net => ({
   list: JSON.stringify(LIST),
   sprites: { caterpie: BLOCK, mewtwo: BLOCK },
 })
+// A species the table doesn't know, whose catch rate has to come from PokeAPI.
+const newmonNet = (): Net => ({
+  ...throwNet(),
+  list: JSON.stringify([...LIST, { name: 'newmon', forms: ['regular'] }]),
+  sprites: { caterpie: BLOCK, mewtwo: BLOCK, newmon: BLOCK },
+  captureRates: { newmon: 255 },
+})
 type Aim = {
   pointer: (e: { type: 'down'; x: number; y: number; button: 'left'; fine?: { x: number; y: number } }) => Promise<void>
   drawn: () => Promise<unknown>
@@ -484,7 +491,7 @@ test("while aiming, the click layer is the whole band: the ₽ button's corner s
 })
 
 test('a wild Pokémon can be aimed at only once its catch rate is known, so a sure catch stays sure', async ($, on) => {
-  const net = throwNet()
+  const net = newmonNet()
   const w = await begin(
     $,
     on,
@@ -498,7 +505,7 @@ test('a wild Pokémon can be aimed at only once its catch rate is known, so a su
   await cmd($, 'pokemon-play', 'day')
   let open = () => {}
   net.speciesStall = new Promise<void>(resolve => (open = resolve))
-  await cmd($, 'pokemon-play', 'wild caterpie')
+  await cmd($, 'pokemon-play', 'wild newmon')
   for (let i = 0; i < 80; i++) {
     await w.clock.advance(50)
     expect(await isAiming(aim)).toBe(false)
@@ -598,6 +605,44 @@ test('a wild Pokémon still downloading when another steps out stays away: one v
   open()
   await slow
   expect(w.toasts.filter(t => t.includes('appeared'))).toEqual([expect.stringMatching(/Caterpie appeared!$/)])
+  expect(w.saveNow().dex.mewtwo).toBeUndefined()
+})
+
+test('a species in the table is aimable at once: its catch rate needs no download', async ($, on) => {
+  const net = throwNet()
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+    TALL,
+    undefined,
+    net,
+  )
+  await cmd($, 'pokemon', 'party')
+  const aim = (await mountBand($ as never)) as Aim
+  await cmd($, 'pokemon-play', 'day')
+  net.speciesStall = new Promise<void>(() => {})
+  await cmd($, 'pokemon-play', 'wild caterpie')
+  const cell = await seenIn(w, aim, '#00ffff')
+  await aim.pointer({ type: 'down', ...cell, button: 'left' })
+  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+})
+
+test('/pokemon-play wild <name> keeps a time or landscape word in the name: it summons, it does not switch the scene', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild lycanroc dusk')).toBe('A wild Lycanroc (Dusk) wanders by.')
+})
+
+test('a second /pokemon-play wild while a visitor is out says it is still here, and brings no one', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
+  expect(await cmd($, 'pokemon-play', 'wild')).toBe('Caterpie is still here.')
+  expect(await cmd($, 'pokemon-play', 'wild mewtwo')).toBe('Caterpie is still here.')
+  expect(w.toasts.filter(t => t.includes('appeared'))).toHaveLength(1)
   expect(w.saveNow().dex.mewtwo).toBeUndefined()
 })
 
@@ -2273,7 +2318,7 @@ test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone
 })
 
 test('no ₽ button and no Mart from the moment a wild Pokémon is out, before it can be aimed at; the button comes back after', async ($, on) => {
-  const net = throwNet()
+  const net = newmonNet()
   const w = await begin(
     $,
     on,
@@ -2289,7 +2334,7 @@ test('no ₽ button and no Mart from the moment a wild Pokémon is out, before i
   // Its catch rate is still loading (up to 20 s offline): it can't be aimed at yet.
   let open = () => {}
   net.speciesStall = new Promise<void>(resolve => (open = resolve))
-  await cmd($, 'pokemon-play', 'wild caterpie')
+  await cmd($, 'pokemon-play', 'wild newmon')
   // A click on the button as last drawn, before the band is drawn again without it.
   await band.post({ open: true }, { in: 'shop' })
   expect(await martOf(band)).toBeNull()
@@ -2587,8 +2632,8 @@ test('a visitor already out stays the same Pokémon when the time and place chan
   expect(first).toMatch(/^A wild .+ wanders by\.$/)
   expect(await cmd($, 'pokemon-play', 'night hills')).toBe('Showing night hills for 15 seconds.')
   await w.clock.advance(1_000)
-  // With a visitor out, asking for another just names the one that is there.
-  expect(await cmd($, 'pokemon-play', 'wild')).toBe(first)
+  // With a visitor out, asking for another just says who is there.
+  expect(await cmd($, 'pokemon-play', 'wild')).toBe(first.replace(/^A wild (.+) wanders by\.$/, '$1 is still here.'))
   expect(w.toasts.filter(t => /appeared!$/.test(t))).toHaveLength(1)
 })
 

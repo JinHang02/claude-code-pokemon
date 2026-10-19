@@ -8,8 +8,8 @@ export type Where = { landscape: Landscape; phase: Phase; dex: Record<string, De
 const RARE_SHARE = 0.01
 const FORM_SHARE = 1 / 8
 const UNSEEN = 2.5
-const STAGE = { 1: 1, 2: 0.6, 3: 0.35 } as const
-const BABY = 0.3
+const STAGE = { 1: 1, 2: 0.75, 3: 0.55 } as const
+const BABY = 0.4
 // Same rule the table's generator uses, for forms a newer sprite list adds.
 const NOT_WILD_FORM = [
   /^mega(-[xy])?$/,
@@ -27,6 +27,8 @@ const NOT_WILD_FORM = [
   /^(shadow|ice)-rider$/,
   // Event and gift forms: Spiky-eared Pichu, Dada Zarude, Fancy and Poké Ball Vivillon.
   /^(spiky-eared|dada|fancy|poke-ball)$/,
+  // Item-triggered formes.
+  /^(therian|origin)$/,
 ]
 
 const PLACE: Record<Landscape, string[]> = {
@@ -70,7 +72,7 @@ export function weightOf(species: string, form: string, where: Where, forms?: st
   const base = !info
     ? 0.5
     : tier === 'common'
-      ? (info.rate / 255) * (info.isBaby ? BABY : STAGE[info.stage])
+      ? Math.sqrt(info.rate / 255) * (info.isBaby ? BABY : STAGE[info.stage])
       : tier === 'mythical'
         ? 0.5
         : 1
