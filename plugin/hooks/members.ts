@@ -69,7 +69,8 @@ function isName(names: Species[], words: string[]): boolean {
 // then the number as a pick again: of one, 1 picks it. Any other number answers with the list, even of one, unless
 // the whole words are a name of their own in `names` (every species and form) that none of yours is: a lead or an add
 // then catches that one. So every list's own hint, typed back, picks its line; a suggestion always finds someone.
-// `command` is what comes before the name (`'release '`), for a suggestion and the numbered list.
+// `command` is what comes before the name (`'release '`), for a suggestion and the numbered list; `columns`, how wide
+// the terminal is, for the party an answer shows.
 export function findMembers(
   s: Save,
   query: string,
@@ -77,6 +78,7 @@ export function findMembers(
   command: string,
   levelOf: (m: Member) => number,
   names: Species[] = [],
+  columns = Infinity,
 ): Found {
   const { level: atLevel, rest } = readLevel(query)
   const words = wordsOf(rest)
@@ -108,7 +110,8 @@ export function findMembers(
   const only = listed.length === 1 && nth === 1 ? listed[0] : undefined
   if (only) return { spot: only }
   const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
-  const none = (name: string) => `No ${name} in your ${where}.${places.includes('party') ? ` ${formatParty(s)}` : ''}`
+  const none = (name: string) =>
+    `No ${name} in your ${where}.${places.includes('party') ? ` ${formatParty(s, columns)}` : ''}`
   // What a guess finds typed back as suggested: the guess, or else another form of it that is here (a plain name never
   // takes one out of the PC box), and how many.
   const reach = (guess: Pick, isShiny: boolean) => {
@@ -212,7 +215,7 @@ export function formatChoices(choices: Spot[], query: string, command: string, l
       ...(isShinyMixed && !words.includes('shiny') ? [hint(`shiny ${typed}`)] : []),
       ...(isLevelMixed && next ? [hint(`${typed} lv ${levelOf(next)}`)] : []),
     ]
-    lines.push(`  … and ${more} more.${ways.length ? ` Fewer: ${ways.join(' · ')}` : ''}`)
+    lines.push(`  … and ${more} more.${ways.length ? ' Fewer:' : ''}`, ...ways.map(way => `    ${way}`))
   }
   return [`Which ${name}?`, ...lines, `Add the number: ${hint(typed)} ${choices.length}`].join('\n')
 }

@@ -341,11 +341,13 @@ test('a level narrows a name in every command, and a level none of yours is at n
     ),
   })
   const list = await cmd($, 'pokemon', 'release eevee')
-  expect(list.split('\n').slice(-2)).toEqual([
-    '  … and 15 more. Fewer: /pokemon release shiny eevee · /pokemon release eevee lv 1',
+  expect(list.split('\n').slice(-4)).toEqual([
+    '  … and 15 more. Fewer:',
+    '    /pokemon release shiny eevee',
+    '    /pokemon release eevee lv 1',
     'Add the number: /pokemon release eevee 25',
   ])
-  expect(list.split('\n').length).toBe(13)
+  expect(list.split('\n').length).toBe(15)
   expect(await cmd($, 'pokemon', 'release eevee lv 3')).toBe(
     [
       'Which Eevee?',

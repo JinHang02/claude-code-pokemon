@@ -444,7 +444,9 @@ test('a long list shows the first ten, says how many more, and how to narrow the
     [
       'Which Eevee?',
       ...box.slice(0, 10).map((_, i) => `  ${`${i + 1}.`.padStart(3)} Eevee Lv ${(i % 5) + 1} (PC box)`),
-      '  … and 15 more. Fewer: /pokemon release shiny eevee · /pokemon release eevee lv 1',
+      '  … and 15 more. Fewer:',
+      '    /pokemon release shiny eevee',
+      '    /pokemon release eevee lv 1',
       'Add the number: /pokemon release eevee 25',
     ].join('\n'),
   )
