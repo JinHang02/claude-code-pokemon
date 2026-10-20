@@ -14,7 +14,7 @@ import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, randomPick, readName, slug, spell, typedRest } from './lookup'
+import { guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -67,7 +67,7 @@ import {
   XP,
   xpForLevel,
 } from './save'
-import type { Ledger, Member, Save, Size } from './save'
+import type { Evolution, Ledger, Member, Save, Size } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
@@ -232,6 +232,28 @@ const evolvedHere = new Set<string>()
 const NOTICE_MS = 30_000
 // The member the evolution animation plays on: it follows it when the party changes under it.
 let evolving = ''
+// Party members waiting for /pokemon evolve, as the last evolution check found them (manual evolution only): by id and
+// form, so one that has evolved since, here or in another session, isn't ready in its new form.
+let readyKeys = new Set<string>()
+const readyKey = (m: Member) => `${m.id}|${m.species}|${m.form}`
+// Their ids. Nobody is ready while the party rests or evolves by itself, here or so set in another session.
+const readyNow = () =>
+  save.isOff || save.evolution === 'auto' ? [] : save.party.filter(m => readyKeys.has(readyKey(m))).map(m => m.id)
+// What the last evolution check saw of what makes a Pokémon ready (but the time of day, which the minute beat
+// checks): when it changes, here or synced from another session, the party is checked again.
+let checkedInputs = ''
+const inputsOf = (s: Save) =>
+  JSON.stringify([
+    s.evolution,
+    s.isOff,
+    viewOf(s).party.map(m => [m.id, m.species, m.form, level(m.xp), m.heldItem ?? '']),
+  ])
+function recheck($: EngineInterface) {
+  const inputs = inputsOf(save)
+  if (inputs === checkedInputs) return
+  checkedInputs = inputs
+  background($, learnEvolutions($))
+}
 let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
@@ -448,6 +470,8 @@ function mutate($: EngineInterface, change: (s: Save) => Save) {
     if (isRedrawn) background($, refreshParty($))
     // The open Mart shows the Bag, the wallet and the party's evolutions: any change to the save may move them.
     if (mart.isOpen) $.ui.invalidate('ui.render')
+    // A held item taken, a partner deposited or released: who is ready may have changed.
+    recheck($)
   })
 }
 
@@ -472,6 +496,7 @@ async function sync($: EngineInterface) {
   })
   if (isNewParty) await refreshParty($)
   if (isNewLook) $.ui.invalidate('ui.render')
+  recheck($)
 }
 
 // Every session's XP ledger in the store, by key.
@@ -1140,6 +1165,61 @@ async function typesOf($: EngineInterface, name: string): Promise<string[]> {
   }
 }
 
+const isEvolutionMode = (word: string): word is Evolution => word === 'manual' || word === 'auto'
+
+// `/pokemon evolve manual|auto`, or the mode in use and how to change it.
+async function setEvolution($: EngineInterface, mode: string): Promise<string> {
+  if (!isEvolutionMode(mode)) {
+    await sync($)
+    return `Evolution is ${save.evolution}. /pokemon evolve manual: a Pokémon that can evolve waits for /pokemon evolve <name>. /pokemon evolve auto: it evolves by itself.`
+  }
+  await mutate($, s => ({ ...s, evolution: mode }))
+  // In auto anyone waiting evolves now; in manual they're marked ready.
+  background($, learnEvolutions($))
+  return mode === 'auto'
+    ? 'Evolution: auto. Your Pokémon evolve by themselves as soon as they can.'
+    : "Evolution: manual. A Pokémon that can evolve waits for /pokemon evolve <name>; gold motes show it's ready."
+}
+
+// `/pokemon evolve <name> [into]`: the longest start of the words that names one party member is the one to evolve
+// (`eevee 2` for a twin), and the rest, if any, the species it evolves into. A level anywhere (`lv 30`) narrows the
+// name. `manual` or `auto` alone sets the mode, and nothing shows it.
+async function evolveByName($: EngineInterface, query: string): Promise<string> {
+  const word = query.trim().toLowerCase()
+  if (!slug(query) || isEvolutionMode(word)) return setEvolution($, word)
+  await sync($)
+  if (save.isOff) return RESTING
+  const { level: lv, rest: named } = readLevel(query)
+  const words = named.trim().split(/\s+/).filter(Boolean)
+  const firstWords = (n: number) => [...words.slice(0, n), ...(lv === undefined ? [] : [`lv ${lv}`])].join(' ')
+  let answer = ''
+  // A level alone (`lv 30`) names whoever is at it.
+  for (let n = words.length; n >= (words.length ? 1 : 0); n--) {
+    const spot = pickIn(save, firstWords(n), ['party'], 'evolve ')
+    const rest = words.slice(n)
+    // A number left over is a twin's that isn't there (`charmander 2` with one): the longer name's answer says so.
+    if (typeof spot !== 'string' && answer && rest.length === 1 && /^\d+$/.test(rest[0] ?? '')) return answer
+    // `eevee into espeon` reads as `eevee espeon`.
+    if (/^(into|to)$/i.test(rest[0] ?? '')) rest.shift()
+    if (typeof spot !== 'string')
+      return answerSoon(
+        $,
+        evolveMember($, spot.member.id, false, undefined, undefined, {
+          into: slug(rest.join(' ')),
+          as: firstWords(n),
+        }),
+        `Evolving ${displayName(spot.member.species, spot.member.form)}: what it comes to shows ${whenShown()}.`,
+      )
+    // Words that name one of yours without the level asked: no one of them is at it, which says more than the longer
+    // name's answer (`eevee lv 50 espeon`).
+    if (lv !== undefined && n && typeof pickIn(save, words.slice(0, n).join(' '), ['party'], 'evolve ') !== 'string')
+      return spot
+    // A guess at a misspelt name helps more than not finding the longer one (`eeve espeon`).
+    if (!answer || (spot.startsWith('Did you mean') && !answer.startsWith('Did you mean'))) answer = spot
+  }
+  return answer
+}
+
 type Surroundings = { phase: Phase; party: string[]; partyTypes: string[] }
 
 // The time of day and the party, as evolutions see them; types are fetched only when a member needs one.
@@ -1170,27 +1250,92 @@ let learning: Promise<void> = Promise.resolve()
 const learnEvolutions = ($: EngineInterface) => (learning = learning.catch(() => {}).then(() => checkEvolutions($)))
 
 // Looks up how every party member that doesn't know it yet evolves, then evolves any already due, one animation
-// at a time. Nothing evolves while the party is off.
+// at a time; with manual evolution they're marked ready and announced instead. Nothing evolves while the party is off.
 async function checkEvolutions($: EngineInterface) {
+  checkedInputs = inputsOf(save)
+  // One member's lookup failing (offline, nothing cached) doesn't keep the others from being checked; it is reported
+  // after them.
+  let failed: unknown
   for (const member of save.party.filter(m => m.next === undefined || m.gender === undefined)) {
-    const gender = await settleGender($, member)
-    const { stages } = await evolutionsOf($, { ...member, gender })
-    await mutate($, s => ({
-      ...s,
-      party: s.party.map(m =>
-        m.id === member.id && m.species === member.species ? { ...m, next: stages, gender } : m,
-      ),
-    }))
+    try {
+      const gender = await settleGender($, member)
+      const { stages } = await evolutionsOf($, { ...member, gender })
+      await mutate($, s => ({
+        ...s,
+        party: s.party.map(m =>
+          m.id === member.id && m.species === member.species ? { ...m, next: stages, gender } : m,
+        ),
+      }))
+    } catch (err) {
+      failed ??= err
+    }
   }
   const context = await evolutionContext($)
-  const isDue = (id: string) => view().party.some(m => m.id === id && dueFor(m, context).length > 0)
-  for (const { id } of save.party) {
-    if (save.isOff || !isDue(id)) continue
-    // The one before finishes its animation first. The party may have changed during the wait: due is asked again.
-    await animationDone($)
-    if (!save.isOff && isDue(id)) await evolveMember($, id)
+  if (save.evolution !== 'auto') await announceReady($, context)
+  else {
+    readyKeys = new Set()
+    // Asked again after every wait: the party may have been put to rest, or evolution made manual, meanwhile.
+    const isDue = (id: string) =>
+      !save.isOff && save.evolution === 'auto' && view().party.some(m => m.id === id && dueFor(m, context).length > 0)
+    for (const { id } of save.party) {
+      if (!isDue(id)) continue
+      // The one before finishes its animation first. The party may have changed during the wait: due is asked again.
+      await animationDone($)
+      if (isDue(id)) await evolveMember($, id)
+    }
   }
+  if (failed !== undefined) throw failed
 }
+
+// Marks the party members that could evolve now as ready (gold motes, "ready to evolve"), and tells the person once
+// per Pokémon. Nobody is ready while the party is off. Not while an evolution plays: its new form shows first. One
+// whose screen is still to play isn't ready yet either, so the screen keeps the surprise; its end checks again.
+async function announceReady($: EngineInterface, context: Surroundings) {
+  await animationDone($)
+  const isHeld = (m: Member) => [screen, ...screensDue].some(d => d && !d.isPreview && d.key === m.id)
+  readyKeys = new Set(
+    save.isOff
+      ? []
+      : view()
+          .party.filter(m => !isHeld(m) && dueFor(m, context).length > 0)
+          .map(readyKey),
+  )
+  // In the save as it is now: one that evolved meanwhile, in another session too, is told about in its new form.
+  const isNew = (s: Save) => s.party.filter(m => readyKeys.has(readyKey(m)) && !m.isAnnounced)
+  if (!isNew(save).length) return
+  let told: { m: Member; as: string }[] = []
+  await mutate($, s => {
+    told = s.isOff || s.evolution === 'auto' ? [] : isNew(s).map(m => ({ m, as: nameIn(s, m) }))
+    const ids = told.map(t => t.m.id)
+    return told.length
+      ? { ...s, party: s.party.map(m => (ids.includes(m.id) ? { ...m, isAnnounced: true as const } : m)) }
+      : s
+  })
+  for (const { m, as } of told)
+    $.ui.toast(`${displayName(m.species, m.form)} is ready to evolve! /pokemon evolve ${as}`, { timeoutMs: 6000 })
+}
+
+// The words that name `m` in the party for /pokemon evolve: its spelling, with its number among twins
+// (`charmander 2`).
+function nameIn(s: Save, m: Member): string {
+  const words = spell(m)
+  const spot = pickIn(s, words, ['party'], 'evolve ')
+  if (typeof spot !== 'string' && spot.member.id === m.id) return words
+  for (let n = 1; n <= s.party.length; n++) {
+    const numbered = pickIn(s, `${words} ${n}`, ['party'], 'evolve ')
+    if (typeof numbered !== 'string' && numbered.member.id === m.id) return `${words} ${n}`
+  }
+  return words
+}
+
+const RESTING = 'Your Pokémon are resting. /pokemon on brings them back.'
+// More forms of one species than this to evolve into are only looks, not a pick (Vivillon's twenty patterns).
+const MAX_FORM_PICKS = 3
+// An evolution of its own stopped by a switch to manual; nobody reads it, the Pokémon is marked ready instead.
+const WAITING = 'Evolution is manual now.'
+
+const orList = (names: string[]) =>
+  names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : (names[0] ?? '')
 
 // Waits out an evolution animation or screen still playing; nothing to wait for when no band is drawn. A screen
 // still waiting for a visitor to leave isn't waited for: the evolutions after it go ahead, their screens after it.
@@ -1205,16 +1350,20 @@ let evolutions: Promise<unknown> = Promise.resolve()
 // What an evolution answers. `isShown`: its screen, its animation or a toast tells it, so a command that has stopped
 // waiting for it doesn't need to.
 type Evolved = { text: string; isShown?: boolean }
+// `ask`: set when the person asked (/pokemon evolve): the species they named ('' for none), and the words that named
+// the Pokémon (`eevee 2`), to suggest again.
+type Ask = { into: string; as: string }
 function evolveMember(
   $: EngineInterface,
   id: string,
   isPreview = false,
   given?: string,
   style?: EvolutionStyle,
+  ask?: Ask,
 ): Promise<Evolved> {
   // As it is now, to name it if it has gone by its turn.
   const asked = save.party.find(m => m.id === id)
-  const run = evolutions.catch(() => {}).then(() => evolveNow($, id, asked, isPreview, given, style))
+  const run = evolutions.catch(() => {}).then(() => evolveNow($, id, asked, isPreview, given, style, ask))
   evolutions = run
   return run
 }
@@ -1270,6 +1419,8 @@ async function settleGender($: EngineInterface, member: Member): Promise<Gender>
 // in the same write). The animation plays from its current sprite, once any other has finished: on its own screen
 // when the band is tall enough (in `style`, a preview's own, else the saved one), else in place. A preview plays it
 // and puts the old form back afterwards; a real one saves the new form and tells the person, its screen to follow.
+// `ask` set: the person asked for it (/pokemon evolve), and a branch is theirs to pick; unset, one evolving by itself
+// takes its own.
 async function evolveNow(
   $: EngineInterface,
   id: string,
@@ -1277,11 +1428,24 @@ async function evolveNow(
   isPreview = false,
   given?: string,
   style?: EvolutionStyle,
+  ask?: Ask,
 ): Promise<Evolved> {
   const member = save.party.find(m => m.id === id)
   if (!member) return { text: asked ? goneText(save, asked, given) : 'Your party is empty.' }
+  // Asked for by name and evolved meanwhile, while this waited its turn (in another session too): that evolution
+  // stands, and this one doesn't take it a stage further. An item tries the new form, which says if it can't use it.
+  if (ask && asked && (member.species !== asked.species || member.form !== asked.form))
+    return { text: goneText(save, asked, given) }
   const name = displayName(member.species, member.form)
   const gone = (s: Save) => goneText(s, member, given)
+  const isAsked = ask !== undefined
+  const into = ask?.into
+  // Not by an item or a preview: it stops if the party is put to rest, and, evolving by itself, if evolution is
+  // made manual, whenever that happens before the save.
+  const stopped = (s: Save) =>
+    isPreview || given ? '' : s.isOff ? RESTING : !isAsked && s.evolution !== 'auto' ? WAITING : ''
+  if (stopped(save)) return { text: stopped(save) }
+  if (isAsked && member.heldItem === 'everstone') return { text: `${name} holds an everstone: it won't evolve.` }
   // Before any download or animation; the save write checks again.
   if (given && !isPreview && !save.bag?.[given]) return { text: noItem(itemName(given)) }
   try {
@@ -1296,8 +1460,64 @@ async function evolveNow(
       : given
         ? byItem.filter(s => timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase))
         : dueFor(withTime({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, times), context)
+    const list = await loadSpecies($)
+    const formOf = (s: Stage) => evolvedForm(s, member.form, list.find(p => p.name === s.species)?.forms ?? [])
+    // Asked for, a branch is the person's to pick, by species and form (Weezing or Galarian Weezing); evolving by
+    // itself, it takes this Pokémon's own. A species with many forms that are only looks (Vivillon's patterns) is one
+    // pick: its form is the Pokémon's own.
+    const isLooks = (species: string) =>
+      new Set(options.filter(s => s.species === species).map(formOf)).size > MAX_FORM_PICKS
+    const pickOf = (s: Stage) => `${s.species}|${isLooks(s.species) ? 'regular' : formOf(s)}`
+    const labelOf = (pick: string) => {
+      const [species = '', form = 'regular'] = pick.split('|')
+      return displayName(species, form)
+    }
+    const picks = [...new Set(allowed.map(pickOf))]
+    let choices = allowed
+    if (isAsked && into) {
+      // The name read as the species and form words it spells, among those it evolves into in any way.
+      const all = [...new Set(options.map(pickOf))]
+      const species = [...new Set(all.map(p => p.split('|')[0] ?? ''))]
+      // Each look by name too: `vivillon fancy` is that one.
+      const names = species.map(name => ({
+        name,
+        forms: isLooks(name)
+          ? ['regular', ...options.filter(s => s.species === name).map(formOf)]
+          : all.filter(p => p.startsWith(`${name}|`)).map(p => p.split('|')[1] ?? 'regular'),
+      }))
+      const found = lookup(names, slug(into).split('-').filter(Boolean))
+      const pick = 'pick' in found ? found.pick : null
+      // The plain name of a species that has no plain form here is any of its forms.
+      const named = all.filter(
+        p =>
+          pick &&
+          (p === `${pick.species}|${pick.form}` ||
+            (isLooks(pick.species) && p.startsWith(`${pick.species}|`)) ||
+            (pick.form === 'regular' && p.startsWith(`${pick.species}|`) && !all.includes(`${pick.species}|regular`))),
+      )
+      const looked = allowed.filter(s => pick && isLooks(s.species) && formOf(s) === pick.form)
+      const due = looked.length ? looked : allowed.filter(s => named.includes(pickOf(s)))
+      const duePicks = [...new Set(due.map(pickOf))]
+      if (!named.length && allowed.length)
+        return {
+          text: `${name} can't evolve into ${speciesName(slug(into))}. It can evolve into ${orList(picks.map(labelOf))}.`,
+        }
+      // A branch it has, but not now: how it gets there.
+      if (named.length && !due.length) {
+        const ways = evolvesText(withTime({ ...member, next: options.filter(s => named.includes(pickOf(s))) }, times))
+        return { text: `${name} ${ways.replace(/^evolves/, `evolves into ${orList(named.map(labelOf))}`)}.` }
+      }
+      if (duePicks.length > 1)
+        return {
+          text: `${name} can evolve into ${orList(duePicks.map(labelOf))}.\nPick one: /pokemon evolve ${ask?.as ?? spell(member)} <name>`,
+        }
+      choices = due
+    } else if (isAsked && picks.length > 1)
+      return {
+        text: `${name} can evolve into ${orList(picks.map(labelOf))}.\nPick one: /pokemon evolve ${ask?.as ?? spell(member)} <name>`,
+      }
     // A preview shows any branch; a real evolution takes this Pokémon's own.
-    const next = isPreview ? allowed[Math.floor(Math.random() * allowed.length)] : chooseStage(member.id, allowed)
+    const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, choices)
     if (!next) {
       if (!isPreview && !options.length)
         await mutate($, s => ({
@@ -1319,8 +1539,7 @@ async function evolveNow(
           : `${name} doesn't evolve any further.`,
       }
     }
-    const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
-    const form = evolvedForm(next, member.form, forms)
+    const form = formOf(next)
     const { art, isShiny } = await fetchArt($, fileOf({ species: next.species, form }), member.isShiny)
     // In place, it waits for the animation playing; a screen waits its turn among the screens.
     if (!canScreen()) await animationDone($)
@@ -1329,6 +1548,22 @@ async function evolveNow(
     if (!now) return { text: gone(save) }
     if (!isPreview && !given && now.heldItem === 'everstone')
       return { text: `${name} holds an everstone: it won't evolve.` }
+    if (stopped(save)) return { text: stopped(save) }
+    // Or lost what it evolves by: its held item taken, its partner deposited, the hour gone by. Asked again in the
+    // save write, of the party as it is then.
+    const later = isPreview || given ? null : await evolutionContext($)
+    const isStillDue = (s: Save) => {
+      const latest = s.party.find(m => m.id === member.id && m.species === member.species)
+      if (!later || !latest) return true
+      const grown = withTime({ ...latest, xp: latest.xp + (extra[member.id] ?? 0), next: stages }, times)
+      // That party's types as looked up for the context (one that joined since, not looked up, counts as none).
+      const partyTypes = later.partyTypes.length
+        ? s.party.flatMap(m => types.get(pokeapiForm(m.species, m.form)) ?? [])
+        : []
+      return dueFor(grown, { ...later, party: s.party.map(m => m.species), partyTypes }).includes(next)
+    }
+    const notDue = () => `${name} ${evolvesText(withTime({ ...member, next: stages }, times))}.`
+    if (!isStillDue(save)) return { text: notDue() }
     const { next: _, ...rest } = member
     const evolved: Member = { ...rest, species: next.species, form, isShiny, evolutions: member.evolutions + 1 }
     const newName = displayName(next.species, form)
@@ -1385,12 +1620,20 @@ async function evolveNow(
         outcome = `${name} holds an everstone: it won't evolve.`
         return s
       }
+      if (stopped(s)) {
+        outcome = stopped(s)
+        return s
+      }
       if (given && !s.bag?.[given]) {
         outcome = noItem(itemName(given))
         return s
       }
+      if (!isStillDue(s)) {
+        outcome = notDue()
+        return s
+      }
       outcome = ''
-      const { next: __, heldItem, ...kept } = latest
+      const { next: __, heldItem, isAnnounced: ___, ...kept } = latest
       // A held item that made it evolve is used up; any other stays held.
       const keeps = heldItem && !(next.way.kind === 'hold' && next.way.item === heldItem)
       const grown: Member = {
@@ -1426,6 +1669,8 @@ async function evolveNow(
       shedText = stored.isInParty ? ` ${shedName} joined your party!` : ` ${shedName} went to the PC box.`
       return stored.save
     })
+    // Its new form is ready only once the next check says so.
+    if (!outcome) readyKeys.delete(readyKey(member))
     const said = `What? ${name} evolved into ${newName}!${shedText}`
     // The screen tells what it became, and draws the party again, when it ends.
     if (shows && !outcome) queueScreen($, { ...shows, said })
@@ -1786,6 +2031,7 @@ const lookNow = (): Look => ({
   wild: (wild && (pitch ? wildLook(pitch, wild.left) : wild.left)) ?? undefined,
   evolveFrom: evolveFrom ?? undefined,
   ...(pitch ? { overlays: ballOverlays(pitch) } : {}),
+  ready: (fitted?.keys ?? []).map(id => readyNow().includes(id)),
 })
 
 // Whether an evolution can have its screen: a band tall enough is drawn.
@@ -1858,8 +2104,12 @@ async function endScreen($: EngineInterface) {
   if (done.said) $.ui.toast(done.said)
   $.ui.invalidate('ui.render')
   background($, refreshParty($))
+  if (!done.isPreview) readyAfter($)
   startScreen($)
 }
+
+// An evolution's screen is over (played, cut short or not played): its new form may be ready to evolve again.
+const readyAfter = ($: EngineInterface) => background($, learnEvolutions($))
 
 // The screen playing stops short (its band too short now, while drawing): the evolution is told now, and drawn evolved
 // from the next frame. The party is published again, outside the drawing.
@@ -1876,12 +2126,14 @@ function cutScreen($: EngineInterface) {
   }
   if (done.said) $.ui.toast(done.said)
   background($, refreshParty($))
+  if (!done.isPreview) readyAfter($)
 }
 
 // A screen that won't play: the evolution is told now, and the party drawn evolved.
 function skipScreen($: EngineInterface, s: Screen) {
   if (s.said) $.ui.toast(s.said)
   background($, refreshParty($))
+  if (!s.isPreview) readyAfter($)
 }
 
 // The party went off: no screen plays now or later; the evolutions stay saved, and are told now.
@@ -1892,6 +2144,7 @@ function dropScreens($: EngineInterface) {
   screen = null
   if (status.mood?.isScreen) status = { ...status, mood: null }
   background($, refreshParty($))
+  readyAfter($)
 }
 
 const isScreenPlaying = () => Boolean(screen && status.mood?.kind === 'evolve' && status.mood.isScreen)
@@ -1941,13 +2194,15 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   // The scene keeps moving underneath; nothing is drawn over the Mart.
   if (mart.isOpen) return
+  const look = lookNow()
+  // Rising motes move at the calm pace too: a Pokémon may wait to evolve for days.
   if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return
   const cells = screen
     ? screenCells(screen, band.total, band.rows)
-    : toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total)).cells
+    : toCells(frame(status, fitted.lefts, band.columns, band.rows, look, band.total)).cells
   if (cells === lastCells && !isHidden) return
   if (isAiming) {
     // The redraw makes this frame again and records it as drawn.
@@ -2063,6 +2318,8 @@ const HELP = [
       ['give <item> <name>', 'evolve, level up or hold'],
       ['take <name>', 'take back what it holds'],
       ['everstone <name>', 'stop it evolving, or not'],
+      ['evolve <name> [n]', "evolve one that's ready"],
+      ['evolve manual, auto', 'by /pokemon evolve, or by itself'],
       ['mart', 'the PokéMart, by mouse'],
       ['buy <item> [count]', 'the PokéMart, by typing'],
       ['size <size>', 'small, normal or auto'],
@@ -2087,7 +2344,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
-      return formatParty(view(), replyColumns)
+      return formatParty(view(), replyColumns, readyNow())
     case 'box':
       return showBox($, tail)
     case 'add':
@@ -2103,6 +2360,8 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return setEvolutionStyle($, tail.toLowerCase())
     case 'everstone':
       return toggleEverstone($, tail)
+    case 'evolve':
+      return evolveByName($, tail)
     case 'bag':
       await sync($)
       return formatBag(save, cash)
@@ -2238,7 +2497,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon alone brings a random new lead (the old one goes to the PC box) · <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
+        'Your Pokémon: /pokemon alone brings a random new lead (the old one goes to the PC box) · <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · evolve <name> [into] · evolve manual|auto · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
@@ -2303,7 +2562,7 @@ export const register: Register = on => {
         return `${formatDex(
           save,
           (species ?? []).map(s => s.name),
-        )}\n\n${formatParty(view(), replyColumns)}`
+        )}\n\n${formatParty(view(), replyColumns, readyNow())}`
       } catch (err) {
         return `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}`
       }

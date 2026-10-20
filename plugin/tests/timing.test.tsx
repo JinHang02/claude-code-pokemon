@@ -213,6 +213,7 @@ test(
       on,
       {
         ...emptySave(),
+        evolution: 'auto',
         party: [
           member('charmander', { id: 'a', xp: xpForLevel(16) - 1, gender: 'male', next: [lv('charmeleon', 16)] }),
         ],

@@ -641,3 +641,50 @@ test("a Pokémon at the scene's far right stays in the scene: the button's colum
   const land = scenery(TOTAL, ROWS, { phase: 'day' }, right.t, SCENE)
   expect(slice(band, SCENE, 13).pixels).toEqual(slice(land, SCENE, 13).pixels)
 })
+
+test('a Pokémon ready to evolve has gold motes rising around it, and only around it', () => {
+  const gold = [0xffdf5e, 0xfff1a8, 0xfffbe8]
+  let motes = 0
+  for (let t = 0; t < ticks(1800); t++) {
+    const s = { ...still, t }
+    const plain = frame(s, [SPRITE], W, ROWS)
+    const ready = frame(s, [SPRITE], W, ROWS, { phase: 'day', ready: [true] })
+    expect(frame(s, [SPRITE], W, ROWS, { phase: 'day', ready: [false] }).pixels).toEqual(plain.pixels)
+    ready.pixels.forEach((c, i) => {
+      if (c === plain.pixels[i]) return
+      motes++
+      expect(gold).toContain(c)
+      expect(Math.abs((i % W) - (10 + SPRITE.width / 2))).toBeLessThanOrEqual(SPRITE.width / 2 + 2)
+    })
+  }
+  expect(motes).toBeGreaterThan(0)
+})
+
+test("a ready Pokémon's motes keep out of the ₽ button's corner, and away while one evolves", () => {
+  const gold = [0xffdf5e, 0xfff1a8, 0xfffbe8]
+  const right: Status = { ...still, actors: [{ ...newScene(SCENE - SPRITE.width), roam: idle }] }
+  let motes = 0
+  for (let t = 0; t < ticks(1800); t++) {
+    const band = frame({ ...right, t }, [SPRITE], SCENE, ROWS, { phase: 'day', ready: [true] }, TOTAL)
+    motes += band.pixels.filter(c => gold.includes(c)).length
+    expect(slice(band, SCENE, 13).pixels).toEqual(
+      slice(scenery(TOTAL, ROWS, { phase: 'day' }, t, SCENE), SCENE, 13).pixels,
+    )
+  }
+  expect(motes).toBeGreaterThan(0)
+  const party: Status = {
+    ...still,
+    actors: [
+      { ...newScene(10), roam: idle },
+      { ...newScene(11), roam: idle },
+    ],
+  }
+  let s = evolve(party, 1)
+  for (let i = 0; i < EVOLVE - 2; i++) {
+    s = run(s, 1, [SPRITE.width, SPRITE.width])
+    const look = { phase: 'day' as const, evolveFrom: OTHER }
+    expect(frame(s, [SPRITE, SPRITE], W, ROWS, { ...look, ready: [true, true] }).pixels).toEqual(
+      frame(s, [SPRITE, SPRITE], W, ROWS, look).pixels,
+    )
+  }
+})

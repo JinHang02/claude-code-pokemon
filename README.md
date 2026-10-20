@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![962 tests](https://img.shields.io/badge/tests-962_passing-27c93f?style=flat-square)](plugin/tests)
+[![992 tests](https://img.shields.io/badge/tests-992_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
@@ -98,7 +98,15 @@ _What? Charmander is evolving!_ They evolve **the way they do in the games**:
 - **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open. A Soothe Bell makes the time count one and a half times.
 - **Time of day:** Riolu only by day, Rockruff into Midnight Lycanroc at night, Eevee into Espeon by day or Umbreon by night.
 
-Regional forms evolve the way their region does, and a Pokémon that can branch always takes the same branch, decided by that Pokémon, as in the games.
+Regional forms evolve the way their region does.
+
+**You decide when.** A Pokémon that can evolve by itself (level, friendship, time of day, a held item, a party member) gets gold motes rising around it, a one-off _"Charmander is ready to evolve!"_, and waits for you:
+
+```text
+/pokemon evolve charmander
+```
+
+A Pokémon that could go more than one way asks which: `/pokemon evolve eevee espeon`. Rather have them evolve by themselves, each always taking the branch the games give that Pokémon? `/pokemon evolve auto` (and `/pokemon evolve manual` to go back).
 
 Then **evolution gets its own screen**, as in the games. The band makes way for an evolution scene: _"What? EEVEE is evolving!"_, the old and new forms swapping in silhouette, faster and faster, a burst of light, and _"Congratulations! Your EEVEE evolved into VAPOREON!"_. About ten seconds later the band is back, with Vaporeon walking where Eevee stood. Stones and trade items come from the [PokéMart](#welcome-to-the-pokémart). Hand one over and it works at once:
 
@@ -129,7 +137,7 @@ Pick the screen you grew up with. It's saved, so every window uses it:
 
 Good to know:
 
-- **It always finishes.** There's no cancelling an evolution once it starts, unless the terminal gets too short for the screen: then it ends there, with its toast, and the band goes on with the new form. An Everstone is still how to keep a Pokémon from evolving by itself.
+- **It always finishes.** There's no cancelling an evolution once it starts, unless the terminal gets too short for the screen: then it ends there, with its toast, and the band goes on with the new form. In manual (the default) nothing evolves until you ask; with `/pokemon evolve auto`, an Everstone is still how to keep a Pokémon from evolving by itself.
 - **The reply says _"What? Eevee is evolving!"_**, and the _"What? Eevee evolved into Vaporeon!"_ toast comes when the screen ends.
 - **It waits for a wild visitor to leave** (caught, fled or let go), and the evolution is saved at once all the same. An open PokéMart closes for it. Several evolutions at once (twins, a Rare Candy chain) play one after another.
 - **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`. A command that evolves another Pokémon meanwhile answers at once, and its screen plays after this one. If what it does can't be worked out within a second, the reply says so (_"Giving the Water Stone to Eevee: what it does shows after the one on screen."_), and a stone it can't use is told in a toast when its turn comes.
@@ -143,7 +151,7 @@ Good to know:
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/party-1.4.png" width="820" alt="/pokemon party: each with its time together, then what it holds, then how it evolves. Vaporeon, together 1d 3h 8m, holds a Soothe Bell and is a final form; Gloom holds a Lucky Egg and evolves with a Leaf Stone or with a Sun Stone; Charmeleon evolves at Lv 36">
 </p>
 
-Love your Charmander just the way it is? Give it an everstone and it won't evolve by itself. A stone or trade item you `/pokemon give` it still works:
+Love your Charmander just the way it is? Give it an everstone and it won't evolve, by itself or by `/pokemon evolve`. A stone or trade item you `/pokemon give` it still works:
 
 ```text
 /pokemon everstone charmander
@@ -320,6 +328,8 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                                                                                                                                     |
 | `/pokemon box [name] [page]`            | Your PC box, up to 960, 30 to a page (`box 2`). A name, `shiny` or `lv <n>` shows only those, with their places in the box: `box eevee`, `box shiny`. `/pokemon <name>` or `add <name>` brings one out                                                                                      |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                                                                                                                             |
+| `/pokemon evolve <name> [into]`         | Evolve a Pokémon that's ready (gold motes); name the branch when it could go more than one way: `evolve eevee espeon`                                                                                                                                                                       |
+| `/pokemon evolve manual \| auto`        | `manual` (the default): Pokémon wait for `/pokemon evolve`. `auto`: they evolve by themselves as soon as they can. A stone or trade item you give works at once either way                                                                                                                  |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                                                                                                                                 |
 | `/pokemon evolution [style]`            | The evolution screen: `rays` (the default), `white` or `gradient`. No style: which one you have, and the three to choose from                                                                                                                                                               |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                                                                                                                                 |
@@ -411,6 +421,8 @@ In Claude Code's own per-plugin store under your Claude config directory. Your p
 <details>
 <summary><b>Why didn't my Pokémon evolve at Lv 30?</b></summary>
 <br>
+Evolution is manual by default: a Pokémon that can evolve waits, with gold motes rising around it and <code>ready to evolve</code> in <code>/pokemon party</code>, until you run <code>/pokemon evolve &lt;name&gt;</code>. <code>/pokemon evolve auto</code> makes them evolve by themselves. If another Claude Code session is still running an older version of the plugin, restart it: an older version evolves them by itself.
+
 Since 1.3.0, evolutions follow the games: a Pikachu needs a Thunder Stone, a Haunter a Linking Cord, a Pichu friendship. <code>/pokemon party</code> says what each one needs. Seventeen evolutions that need a move, steps or a battle in the games (Mime Jr., Yanma, Aipom, Poipole, Steenee, Lickitung, Clobbopus, Tangela, Bonsly, Stantler, Meltan, White-Striped Basculin, Piloswine, Galarian Yamask and Farfetch'd, Hisuian Qwilfish, and Eevee into Sylveon) still happen by level, at Lv 30 or 10 levels after the Pokémon reached its stage.
 </details>
 
@@ -460,7 +472,7 @@ Commands Claude runs through its shell tool: test runners like <code>pytest</cod
 - **More CPU while you can aim:** for the half minute or so a wild Pokémon can be aimed at, the band costs about 20 to 35% CPU against about 10%.
 - **No Gen 9:** the Pokémon end at Gen 8 (Enamorus), and Gen 9 items (the Gimmighoul Coin, Syrupy Apple, the Teacups...) aren't sold.
 - **Some evolutions keep a level:** 17 that need a move, steps or a battle in the games go by level ([FAQ](#faq)), and a Pokémon holding a level-up item, or Mantyke, evolves within a minute rather than at the level-up itself.
-- **Restart every open window after upgrading.** A window still running an older version writes the save its own way until it restarts. One on 1.2.0 erases your Bag, held items and ₽, and evolves by its old Lv 30 rule; one on 1.3.0 or 1.4.0 resets your evolution style. The [CHANGELOG](CHANGELOG.md) has the details.
+- **Restart every open window after upgrading.** A window still running an older version writes the save its own way until it restarts. One on 1.2.0 erases your Bag, held items and ₽, and evolves by its old Lv 30 rule; one on 1.3.0 or 1.4.0 resets your evolution style. Any version without manual evolution evolves Pokémon by itself, whatever `/pokemon evolve manual` says. The [CHANGELOG](CHANGELOG.md) has the details.
 - **Commands you run while an evolution screen plays already use the new form:** the save has it from the start, so `/pokemon party` and `/pokedex` show it, and a command that names the Pokémon needs its new name (`/pokemon give rare candy charmeleon` while _"CHARMANDER is evolving!"_ is on screen).
 - **Drawn in the terminal only:** not in the Desktop app, the VS Code chat panel or the web (those sessions still earn XP).
 

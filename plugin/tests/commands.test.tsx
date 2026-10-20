@@ -99,7 +99,11 @@ test(
   KIT,
   async ($, on) => {
     answerTools(on)
-    const w = await begin($, on, { ...emptySave(), party: [member('charmander', { xp: xpForLevel(16) - 5 })] })
+    const w = await begin($, on, {
+      ...emptySave(),
+      evolution: 'auto',
+      party: [member('charmander', { xp: xpForLevel(16) - 5 })],
+    })
     await until($, () => evolveLevel(w.saveNow().party[0]) === 16)
     await $.tool.call(bash('git commit -m "ship it"') as never)
     await until($, () => evolveLevel(w.saveNow().party[0]) === 36 && w.toasts.length > 0)
@@ -134,6 +138,7 @@ test('an everstone given while an evolution downloads stops it, and the everston
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [member('charmander', { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)] })],
   })
   await cmd($, 'pokemon', 'party')
@@ -965,6 +970,7 @@ test('two of one species: only the one due evolves, and the other keeps its ever
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [
       member('charmeleon', { id: 'calm', xp: 0, next: [lv('charizard', 36)], heldItem: 'everstone' }),
       member('charmeleon', { id: 'due', xp: xpForLevel(36) - 5, next: [lv('charizard', 36)] }),
@@ -982,6 +988,7 @@ test('two of one species: only the one due evolves, and the other keeps its ever
 test('dropping an everstone evolves a Pokémon already past its level', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [member('charmander', { xp: xpForLevel(20), next: [lv('charmeleon', 16)], heldItem: 'everstone' })],
   })
   expect(await cmd($, 'pokemon', 'everstone charmander')).toBe('Charmander dropped its everstone and can evolve again.')
@@ -991,6 +998,7 @@ test('dropping an everstone evolves a Pokémon already past its level', KIT, asy
 test('nothing evolves while the party is off; /pokemon on lets it', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     isOff: true,
     party: [member('charmander', { xp: xpForLevel(16), next: [lv('charmeleon', 16)] })],
   })
@@ -1166,6 +1174,7 @@ test('two members due at once evolve one after the other, each with its whole an
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [
       member('charmander', { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)] }),
       member('pikachu', { xp: xpForLevel(30) - 5, next: [lv('raichu', 30)] }),
@@ -1185,6 +1194,7 @@ test('with no band drawn (a `claude -p` run), evolutions never wait for an anima
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [
       member('charmander', { xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)] }),
       member('pikachu', { xp: xpForLevel(30) - 5, next: [lv('raichu', 30)] }),
@@ -1254,6 +1264,7 @@ test('gender follows the species, shows in the party, and decides gender-only ev
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [member('combee', { xp: xpForLevel(21) - 5 }), member('burmy', { form: 'sandy', xp: xpForLevel(20) - 5 })],
   })
   await until($, () => w.saveNow().party.every(m => m.next !== undefined))
@@ -1292,7 +1303,12 @@ async function dawnStoneOnFreshKirlia(
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('pikachu', { next: [], gender: 'male' })], bag: { 'dawn-stone': 1 } },
+    {
+      ...emptySave(),
+      evolution: 'auto',
+      party: [member('pikachu', { next: [], gender: 'male' })],
+      bag: { 'dawn-stone': 1 },
+    },
     ART,
     undefined,
     net,
@@ -1615,6 +1631,7 @@ test('one twin evolving keeps its place, and the other its own', KIT, async ($, 
     on,
     {
       ...emptySave(),
+      evolution: 'auto',
       party: [
         member('charmander', { id: 'a', ...ready }),
         member('charmander', { id: 'b', ...ready, heldItem: 'everstone' }),
@@ -1666,7 +1683,11 @@ async function evolvedElsewhere($: Engine, on: On, adopt: () => Promise<unknown>
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('charmander', { id: 'a', gender: 'male', next: [lv('charmeleon', 16)] })] },
+    {
+      ...emptySave(),
+      evolution: 'auto',
+      party: [member('charmander', { id: 'a', gender: 'male', next: [lv('charmeleon', 16)] })],
+    },
     ART,
     undefined,
     net,
@@ -1764,6 +1785,7 @@ test(
     answerTools(on)
     const w = await begin($, on, {
       ...emptySave(),
+      evolution: 'auto',
       party: [
         member('charmander', { id: 'a', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),
         member('charmeleon', {
@@ -1805,6 +1827,7 @@ test('a slow party refresh in flight never draws over an evolution', KIT, async 
     on,
     {
       ...emptySave(),
+      evolution: 'auto',
       party: [member('pikachu', { id: 'p', xp: xpForLevel(30) - 5, next: [lv('raichu', 30)], gender: 'male' })],
     },
     ART,
@@ -1850,7 +1873,7 @@ test('Rockruff evolves at Lv 25 into the Lycanroc of the hour: Midnight at night
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('rockruff', { xp: xpForLevel(25) - 5 })] },
+    { ...emptySave(), evolution: 'auto', party: [member('rockruff', { xp: xpForLevel(25) - 5 })] },
     ART,
     undefined,
     net,
@@ -1867,7 +1890,7 @@ test('Rockruff by day becomes Midday Lycanroc, the plain form', KIT, async ($, o
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('rockruff', { xp: xpForLevel(25) - 5 })] },
+    { ...emptySave(), evolution: 'auto', party: [member('rockruff', { xp: xpForLevel(25) - 5 })] },
     ART,
     undefined,
     net,
@@ -1880,7 +1903,11 @@ test('Rockruff by day becomes Midday Lycanroc, the plain form', KIT, async ($, o
 
 test('Pancham evolves at Lv 32 only with a Dark-type in the party', KIT, async ($, on) => {
   answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pancham', { xp: xpForLevel(32) - 5 })] })
+  const w = await begin($, on, {
+    ...emptySave(),
+    evolution: 'auto',
+    party: [member('pancham', { xp: xpForLevel(32) - 5 })],
+  })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   await $.tool.call(bash('git commit -m x') as never)
   for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
@@ -1896,7 +1923,11 @@ test(
   KIT,
   async ($, on) => {
     answerTools(on)
-    const w = await begin($, on, { ...emptySave(), party: [member('nincada', { xp: xpForLevel(20) - 5 })] })
+    const w = await begin($, on, {
+      ...emptySave(),
+      evolution: 'auto',
+      party: [member('nincada', { xp: xpForLevel(20) - 5 })],
+    })
     await until($, () => w.saveNow().party[0]?.next !== undefined)
     await $.tool.call(bash('git commit -m x') as never)
     await until($, () => w.toasts.length === 1)
@@ -1914,6 +1945,7 @@ test('Pancham counts an Alolan Rattata as the Dark-type it is', KIT, async ($, o
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [member('pancham', { xp: xpForLevel(32) - 5 }), member('rattata', { form: 'alola' })],
   })
   await until($, () => w.saveNow().party.every(m => m.next !== undefined))
@@ -1939,6 +1971,7 @@ test('with a full party, Shedinja goes to the PC box', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [
       member('nincada', { xp: xpForLevel(20) - 5 }),
       member('pikachu', { next: [] }),
@@ -1957,6 +1990,7 @@ test('with a full party and a full PC box, Nincada still evolves, and Shedinja s
   const box = Array.from({ length: 960 }, (_, i) => member('caterpie', { id: `b${i}`, next: [] }))
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [
       member('nincada', { xp: xpForLevel(20) - 5 }),
       member('pikachu', { next: [] }),
@@ -1987,7 +2021,7 @@ test('Dusclops waits for a Reaper Cloth: past Lv 30 it stays, and the party says
 })
 
 test('Mantyke evolves once a Remoraid joins the party', KIT, async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('mantyke')] })
+  const w = await begin($, on, { ...emptySave(), evolution: 'auto', party: [member('mantyke')] })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
   expect(w.saveNow().party[0]?.species).toBe('mantyke')
@@ -2165,6 +2199,7 @@ test('the everstone stays free: same words as ever, and it never enters the Bag'
 test('a Rare Candy is one level, and the evolution that level brings', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
+    evolution: 'auto',
     party: [member('charmander', { xp: xpForLevel(15) + 3 })],
     bag: { 'rare-candy': 1 },
   })
@@ -2217,7 +2252,7 @@ test('time together brings friendship evolutions: Pichu becomes Pikachu after 10
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('pichu', { id: 'p' })] },
+    { ...emptySave(), evolution: 'auto', party: [member('pichu', { id: 'p' })] },
     ART,
     undefined,
     together({ p: FRIENDSHIP_MS - 90_000 }),
@@ -2235,7 +2270,7 @@ test('Eevee by friendship: Umbreon at night, Espeon by day', KIT, async ($, on) 
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('eevee', { id: 'e' })] },
+    { ...emptySave(), evolution: 'auto', party: [member('eevee', { id: 'e' })] },
     ART,
     undefined,
     together({ e: FRIENDSHIP_MS - 30_000 }, 0, hourAt(23)),
@@ -2248,7 +2283,7 @@ test('Eevee by day becomes Espeon', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
-    { ...emptySave(), party: [member('eevee', { id: 'e' })] },
+    { ...emptySave(), evolution: 'auto', party: [member('eevee', { id: 'e' })] },
     ART,
     undefined,
     together({ e: FRIENDSHIP_MS - 30_000 }, 0, hourAt(12)),
@@ -2330,6 +2365,7 @@ test(
       on,
       {
         ...emptySave(),
+        evolution: 'auto',
         party: [
           member('charmander', { id: 'c', xp: xpForLevel(16) - 1 }),
           member('pikachu', { id: 'p', next: [], gender: 'male' }),
@@ -3137,6 +3173,7 @@ async function actWhileEvolving($: Engine, on: On, act: string, said: string) {
     on,
     {
       ...emptySave(),
+      evolution: 'auto',
       party: [
         member('pikachu', { id: 'p', ...plain }),
         member('charmander', { id: 'c', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),

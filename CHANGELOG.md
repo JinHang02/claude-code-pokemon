@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
+## [Unreleased]
+
+### Added: you decide when they evolve
+
+- Evolution is manual by default. A Pokémon that can evolve by itself (a level, friendship, the time of day, a held
+  item, a party member) no longer does: six gold motes rise around it in the meadow, a toast says it's ready (once per
+  Pokémon), and `/pokemon party` and `/pokedex` mark it `ready to evolve`.
+- `/pokemon evolve <name>` evolves it, on the evolution screen you have (`charmander 2` for a twin, as its toast
+  says, or `charmander lv 36`). The reply is _"What? Charmander is evolving!"_, as for a stone, and if the evolution
+  can't be worked out within a second (screens waiting their turn, a slow download), _"Evolving Charmander: what it
+  comes to shows after the one on screen."_ One that could go more than one way lists them, forms of one species
+  included (Koffing into Weezing or Galarian Weezing), and `/pokemon evolve eevee espeon` or
+  `/pokemon evolve koffing galarian weezing` picks one. Not ready, a final form, holding an everstone or resting, it
+  says why not; a branch that needs something else says what.
+- An evolution under way stops if what it evolves by goes before it's saved (its held item taken, its partner put in
+  the PC box), and a Pokémon another session evolved meanwhile isn't taken a stage further.
+- `/pokemon evolve auto` brings back evolving by itself, each Pokémon taking its own branch as before, and evolves
+  anyone already waiting. `/pokemon evolve manual` switches back, and `/pokemon evolve` alone says which you have.
+  `/pokemon evolution` is still the screen's style. `/pokemon help` lists both.
+- A stone or trade item from `/pokemon give` still evolves at once, in either mode. A Rare Candy or a held item that
+  brings an evolution makes the Pokémon ready instead.
+- Ready follows the conditions: one that needs a party member or a held item stops being ready as soon as it goes,
+  here or in another session, and one that evolves only at night stops showing motes by day, within a minute.
+- A Pokémon whose evolution screen is still to play (a wild visitor out, another screen first) isn't told ready in
+  its new form until the screen has shown it, so the screen keeps the surprise.
+- The motes move at the meadow's calm pace, so a Pokémon waiting for days doesn't keep the terminal busier.
+- Known limit: a Claude Code window still running a version without manual evolution (1.5.0 and before) evolves
+  Pokémon by itself, and its saves drop the evolution setting and which Pokémon were announced. Restart other
+  windows after updating.
+
 ## [1.5.0] - 2026-10-20
 
 ### Added: the evolution screen
@@ -603,6 +633,7 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.5.0...HEAD
 [1.5.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.2.0...v1.3.0

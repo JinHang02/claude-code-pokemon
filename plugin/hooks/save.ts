@@ -6,6 +6,8 @@ import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from 
 import type { Item } from './items'
 
 export type Size = 'auto' | 'normal' | 'small'
+// `manual`: a Pokémon that can evolve waits for /pokemon evolve; `auto`: it evolves by itself straight away.
+export type Evolution = 'manual' | 'auto'
 
 export type Member = {
   // Tells apart two members of the same species (an evolution can lead to one already in the party).
@@ -28,6 +30,8 @@ export type Member = {
   isCaught?: true
   // When it last evolved: another session shows the evolution's screen only when it is recent.
   evolvedAt?: number
+  // Its "ready to evolve" toast has been shown, so it isn't shown again; gone once it evolves.
+  isAnnounced?: true
 }
 
 export type DexEntry = { seen: number; shiny: number; first: number; caught?: number }
@@ -40,6 +44,7 @@ export type DexEntry = { seen: number; shiny: number; first: number; caught?: nu
 export type Save = {
   party: Member[]
   size: Size
+  evolution: Evolution
   dex: Record<string, DexEntry>
   recent: string[]
   box?: Member[]
@@ -88,7 +93,7 @@ const SIZES: Size[] = ['auto', 'normal', 'small']
 
 export const styleOf = (save: Save): EvolutionStyle => save.evolutionStyle ?? DEFAULT_EVOLUTION_STYLE
 
-export const emptySave = (): Save => ({ party: [], size: 'auto', dex: {}, recent: [] })
+export const emptySave = (): Save => ({ party: [], size: 'auto', evolution: 'manual', dex: {}, recent: [] })
 
 // Species and form names as the sprite list spells them; anything else never reaches a file path or URL.
 export const isName = (name: unknown): name is string =>
@@ -152,6 +157,7 @@ function loadMember(raw: unknown, at: number): Member | null {
     ...(raw.gender === 'female' || raw.gender === 'male' || raw.gender === null ? { gender: raw.gender } : {}),
     ...(raw.isCaught === true ? { isCaught: true as const } : {}),
     ...(count(raw.evolvedAt) ? { evolvedAt: count(raw.evolvedAt) } : {}),
+    ...(raw.isAnnounced === true ? { isAnnounced: true as const } : {}),
   }
 }
 
@@ -214,6 +220,7 @@ export function loadSave(raw: unknown): Save {
   return {
     party,
     size: SIZES.includes(s.size as Size) ? (s.size as Size) : 'auto',
+    evolution: s.evolution === 'auto' ? 'auto' : 'manual',
     dex,
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
     ...(box.length ? { box } : {}),
@@ -551,11 +558,12 @@ export function evolvesText(m: Member): string {
   return `evolves ${texts.length > 3 ? `${texts.slice(0, 3).join(', ')} or another way` : texts.join(' or ')}`
 }
 
-// A member's columns: name, level, xp to the next level, time together, what it holds, how it evolves. The evolves
-// text is last and unpadded: it can run long (a branching line), and must not push the others to the right.
-function memberColumns(m: Member): string[] {
+// A member's columns: name, level, xp to the next level, time together, what it holds, how it evolves (`isReady`:
+// it's waiting for /pokemon evolve). The evolves text is last and unpadded: it can run long (a branching line), and
+// must not push the others to the right.
+function memberColumns(m: Member, isReady = false): string[] {
   const lv = level(m.xp)
-  const evolves = evolvesText(m)
+  const evolves = isReady ? 'ready to evolve' : evolvesText(m)
   return [
     `${nameOf(m)}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
@@ -627,15 +635,18 @@ function fitRows(rows: string[][], columns: number): string[] {
 }
 
 // One row per member, every column lined up, for a terminal `columns` wide. `2.` stays: after the Lead row Markdown
-// starts no numbered list (only a `1.` can break into a paragraph).
-export function formatParty(save: Save, columns = Infinity): string {
+// starts no numbered list (only a `1.` can break into a paragraph). `ready`: the ids of those waiting for
+// /pokemon evolve.
+export function formatParty(save: Save, columns = Infinity, ready: string[] = []): string {
   if (!save.party.length) return 'Your party is empty. /pokemon <name> picks a lead.'
+  const isReady = (m: Member) => ready.includes(m.id)
   return [
     'Your party:',
     ...fitRows(
-      save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)]),
+      save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m, isReady(m))]),
       columns,
     ),
+    ...(save.party.some(isReady) ? ["/pokemon evolve <name> evolves a Pokémon that's ready."] : []),
   ].join('\n')
 }
 

@@ -380,6 +380,7 @@ test('twins due at once evolve one screen after the other, never two at once', S
     on,
     {
       ...emptySave(),
+      evolution: 'auto',
       party: [member('charmander', { id: 'a', ...ready }), member('charmander', { id: 'b', ...ready })],
     },
     undefined,
@@ -561,6 +562,7 @@ test(
       on,
       {
         ...emptySave(),
+        evolution: 'auto',
         party: [member('charmander', { id: 'a', ...ready }), member('charmander', { id: 'b', ...ready })],
       },
       undefined,
@@ -607,7 +609,11 @@ test(
     const w = await begin(
       $,
       on,
-      { ...emptySave(), party: [member('nincada', { id: 'n', xp: xpForLevel(20) - 5, gender: 'male' })] },
+      {
+        ...emptySave(),
+        evolution: 'auto',
+        party: [member('nincada', { id: 'n', xp: xpForLevel(20) - 5, gender: 'male' })],
+      },
       undefined,
       undefined,
       net(6, { sprites: { nincada: solid('1;2;3', 6), ninjask: solid('7;8;9', 6), shedinja: solid('9;9;9', 6) } }),
