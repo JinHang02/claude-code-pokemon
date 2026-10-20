@@ -402,21 +402,41 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
   return run
 }
 
-// Applies `change` to the latest save (another Claude Code session may have written since), then stores
-// and adopts the result, so sessions running side by side never undo each other.
-function mutate($: EngineInterface, change: (s: Save) => Save) {
-  let isRedrawn = false
-  const run = queued(async () => {
+// Inside the queue: `change` made on the store's latest save and stored. The store has no compare-and-set, so the save
+// is read again just before the write: when another window wrote meanwhile, `change` is made again on what it wrote
+// (twice more at most). Two windows writing within one store round trip can still lose one of the changes; none is
+// ever made twice. Nothing is written when nothing changes. Resolves the save read and the save as it now stands.
+async function writeSave($: EngineInterface, change: (s: Save) => Save) {
+  for (let tries = 1; ; tries++) {
     const raw = await $.store.get('save')
     await seedTogether($, raw)
     const latest = loadSave(raw)
     const next = change(latest)
+    if (next === latest || JSON.stringify(next) === JSON.stringify(latest)) return { latest, next: latest }
+    if (tries < 3 && JSON.stringify(await $.store.get('save')) !== JSON.stringify(raw)) continue
+    await $.store.set('save', next)
+    return { latest, next }
+  }
+}
+
+// Applies `change` to the latest save (another Claude Code session may have written since), then stores
+// and adopts the result, so sessions running side by side don't undo each other. A write the store refuses (another
+// window holding its lock) changes nothing here: the save and the party drawn are read again from the store.
+function mutate($: EngineInterface, change: (s: Save) => Save) {
+  let isRedrawn = false
+  const run = queued(async () => {
+    const { latest, next } = await writeSave($, change)
     isRedrawn = isOtherParty(latest, save)
     save = next
-    await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
     countLedgers(await readLedgers($))
   })
+  run.catch(() =>
+    background(
+      $,
+      sync($).then(() => refreshParty($)),
+    ),
+  )
   // In the background: a stalled download never holds up the command.
   return run.then(() => {
     if (isRedrawn) background($, refreshParty($))
@@ -485,13 +505,17 @@ async function foldLedgers($: EngineInterface) {
     })
 }
 
-// The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites.
+// The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites. That retry
+// runs one at a time: one still waiting on a slow download isn't started again (two at once would catch two first
+// Pokémon, the first going to the PC box), while the syncs go on.
+let retrying: Promise<unknown> | null = null
 async function retry($: EngineInterface) {
   await sync($)
   if (++syncs % FOLD_EVERY === 0) await foldLedgers($)
-  if (save.isOff) return
-  if (!save.party.length) await setLead($, '')
-  else if (isPartyStale) await refreshParty($)
+  if (save.isOff || retrying) return
+  if (!save.party.length) retrying = setLead($, '')
+  else if (isPartyStale) retrying = refreshParty($)
+  if (retrying) await retrying.finally(() => (retrying = null))
 }
 
 // A save from before the `together` key kept time together in itself (`raw`, read just before): it seeds the key
@@ -597,6 +621,7 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
   let text = ''
   let isCaught = false
   await mutate($, latest => {
+    isCaught = false
     const gone = latest.party[0]
     if (gone && isBoxFull(latest)) {
       text = noRoomForLead(gone)
@@ -632,8 +657,9 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   const caught = await catchOne($, query, 'add ')
   if (typeof caught === 'string') return caught
   const name = displayName(caught.species, caught.form)
-  let text = `${caught.isShiny ? '✨ ' : ''}${name} joined your party!`
+  let text = ''
   await mutate($, s => {
+    text = `${caught.isShiny ? '✨ ' : ''}${name} joined your party!`
     if (s.party.length >= MAX_PARTY)
       text = `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
     else return { ...recordSeen(s, caught.species, caught.isShiny, Date.now()), party: [...s.party, caught] }
@@ -650,6 +676,8 @@ async function leadOwned($: EngineInterface, query: string): Promise<string | nu
   let text = ''
   let isMoved = false
   await mutate($, s => {
+    text = ''
+    isMoved = false
     const found = find(s, query, ['party', 'box'], '')
     if (isNoneIn(found)) return s
     const spot = spotOf(found, query, '')
@@ -688,6 +716,8 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
   let text = ''
   let isMoved = false
   await mutate($, s => {
+    text = ''
+    isMoved = false
     const found = find(s, query, ['box'], 'add ')
     if (s.party.length >= MAX_PARTY || isNoneIn(found)) return s
     const spot = spotOf(found, query, 'add ')
@@ -717,6 +747,7 @@ async function releaseOne($: EngineInterface, query: string, command: string): P
   let text = ''
   let isPartyChanged = false
   await mutate($, s => {
+    isPartyChanged = false
     const spot = pickIn(s, query, ['party', 'box'], `${command} `)
     const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query, levelWithLedger)
     if (typeof done === 'string') {
@@ -772,7 +803,12 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   const spot = pickIn(save, who, ['party'], `give ${item.id} `)
   if (typeof spot === 'string') return spot
   // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
-  return evolveMember($, spot.member.id, false, item.id)
+  const name = displayName(spot.member.species, spot.member.form)
+  return answerSoon(
+    $,
+    evolveMember($, spot.member.id, false, item.id),
+    `Giving the ${item.name} to ${name}: what it does shows ${whenShown()}.`,
+  )
 }
 
 // The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
@@ -828,6 +864,7 @@ async function takeItem($: EngineInterface, query: string, places: Place[] = ['p
   let text = ''
   let isDropped = false
   await mutate($, s => {
+    isDropped = false
     const found = find(s, query, places, 'take ')
     const holders = 'choices' in found ? found.choices.filter(c => c.member.heldItem) : []
     const spot = holders[0] && holders.length === 1 ? holders[0] : spotOf(found, query, 'take ')
@@ -881,6 +918,7 @@ async function feedCandy($: EngineInterface, query: string, item: Item): Promise
   let text = ''
   let grew = false
   await mutate($, s => {
+    grew = false
     const spot = pickIn(s, query, ['party'], `give ${item.id} `)
     if (typeof spot === 'string') {
       text = spot
@@ -1144,21 +1182,47 @@ async function animationDone($: EngineInterface) {
 }
 
 // Evolutions run one at a time, by a level, a stone, a dropped everstone or a preview alike: each waits for the one
-// before to finish, its animation too, so no animation is cut short.
+// before to finish, so no animation is cut short. A screen waits its turn among the screens instead.
 let evolutions: Promise<unknown> = Promise.resolve()
+// What an evolution answers. `isShown`: its screen, its animation or a toast tells it, so a command that has stopped
+// waiting for it doesn't need to.
+type Evolved = { text: string; isShown?: boolean }
 function evolveMember(
   $: EngineInterface,
   id: string,
   isPreview = false,
   given?: string,
   style?: EvolutionStyle,
-): Promise<string> {
+): Promise<Evolved> {
   // As it is now, to name it if it has gone by its turn.
   const asked = save.party.find(m => m.id === id)
   const run = evolutions.catch(() => {}).then(() => evolveNow($, id, asked, isPreview, given, style))
   evolutions = run
   return run
 }
+
+// How long a command waits for its evolution's answer. Claude Code gives a command ten seconds, and an evolution can
+// wait its turn behind others (and their downloads) for longer: past this the command answers that it is on its way,
+// and what it comes to is told in a toast unless the screen or the animation shows it.
+const ANSWER_MS = 1000
+async function answerSoon($: EngineInterface, run: Promise<Evolved>, later: string): Promise<string> {
+  const early = await Promise.race([run, $.clock.sleep(ANSWER_MS).then(() => null)])
+  if (early?.isShown) shownAnswers.add(early.text)
+  if (early) return early.text
+  background(
+    $,
+    run.then(done => {
+      if (!done.isShown) $.ui.toast(done.text)
+    }),
+  )
+  return later
+}
+// Answers their evolution has told already (its screen, its animation or its toast): a command answering late doesn't
+// toast them again.
+const shownAnswers = new Set<string>()
+// When an evolution asked for now will show: after the screen or the animation playing or waiting, else at once.
+const isEvolutionAhead = () => Boolean(screen || screensDue.length || status.mood?.kind === 'evolve')
+const whenShown = () => (isEvolutionAhead() ? 'after the one on screen' : 'in a moment')
 
 // Why `m` isn't there to evolve: it evolved in another session, or it left the party (released or put in the PC box,
 // here while it waited its turn or in another session). An item given for it stays in the Bag.
@@ -1195,13 +1259,13 @@ async function evolveNow(
   isPreview = false,
   given?: string,
   style?: EvolutionStyle,
-): Promise<string> {
+): Promise<Evolved> {
   const member = save.party.find(m => m.id === id)
-  if (!member) return asked ? goneText(save, asked, given) : 'Your party is empty.'
+  if (!member) return { text: asked ? goneText(save, asked, given) : 'Your party is empty.' }
   const name = displayName(member.species, member.form)
   const gone = (s: Save) => goneText(s, member, given)
   // Before any download or animation; the save write checks again.
-  if (given && !isPreview && !save.bag?.[given]) return noItem(itemName(given))
+  if (given && !isPreview && !save.bag?.[given]) return { text: noItem(itemName(given)) }
   try {
     // Its gender before its stages, as a check would: a Dawn Stone makes a Gallade only of a male Kirlia.
     const gender = isPreview ? member.gender : await settleGender($, member)
@@ -1225,22 +1289,28 @@ async function evolveNow(
       if (given) {
         const way = byItem[0]?.way
         const time = way?.kind === 'item' ? way.time : undefined
-        return time
-          ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}.`
-          : `${name} can't use ${withArticle(itemName(given))}.`
+        return {
+          text: time
+            ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}.`
+            : `${name} can't use ${withArticle(itemName(given))}.`,
+        }
       }
-      return options.length
-        ? `${name} ${evolvesText(withTime({ ...member, next: stages }, times))}.`
-        : `${name} doesn't evolve any further.`
+      return {
+        text: options.length
+          ? `${name} ${evolvesText(withTime({ ...member, next: stages }, times))}.`
+          : `${name} doesn't evolve any further.`,
+      }
     }
     const forms = (await loadSpecies($)).find(s => s.name === next.species)?.forms ?? []
     const form = evolvedForm(next, member.form, forms)
     const { art, isShiny } = await fetchArt($, fileOf({ species: next.species, form }), member.isShiny)
-    await animationDone($)
+    // In place, it waits for the animation playing; a screen waits its turn among the screens.
+    if (!canScreen()) await animationDone($)
     // It may have moved, left, or been given an everstone during the downloads and the wait.
     const now = save.party.find(m => m.id === member.id && m.species === member.species)
-    if (!now) return gone(save)
-    if (!isPreview && !given && now.heldItem === 'everstone') return `${name} holds an everstone: it won't evolve.`
+    if (!now) return { text: gone(save) }
+    if (!isPreview && !given && now.heldItem === 'everstone')
+      return { text: `${name} holds an everstone: it won't evolve.` }
     const { next: _, ...rest } = member
     const evolved: Member = { ...rest, species: next.species, form, isShiny, evolutions: member.evolutions + 1 }
     const newName = displayName(next.species, form)
@@ -1253,8 +1323,9 @@ async function evolveNow(
     const shows: Screen | null =
       drawn && canScreen() ? { key: member.id, from: drawn, to: mon, style: style ?? styleOf(save), isPreview } : null
     if (!shows) {
-      // Another's screen still to finish (its band gone for now): this one simply changes, the screen plays on.
-      const isInPlace = drawnAt >= 0 && !screen
+      // Another's screen still to finish (its band gone for now): this one simply changes, the screen plays on. With
+      // no band drawn (the party off, a survey up) nothing plays, now or later.
+      const isInPlace = drawnAt >= 0 && !screen && Boolean(band) && !save.isOff
       evolveFrom = (isInPlace && fitted?.lefts[drawnAt]) || null
       await update($, party, list => list.map(m => (m.key === member.id ? mon : m)))
       evolving = member.id
@@ -1265,14 +1336,18 @@ async function evolveNow(
       // A screen leaves the lead as it is; it only waits, like any screen, for a visitor to go.
       const what = `${name} evolving into ${newName} in the ${shows.style} style`
       const isWaiting = isVisited()
+      const isBehind = isEvolutionAhead()
       queueScreen($, shows)
-      return isWaiting
+      const text = isWaiting
         ? `A wild ${wild?.mon.name ?? 'Pokémon'} is out: ${what} plays once it has gone.`
-        : `Previewing ${what}.`
+        : `Previewing ${what}${isBehind ? ', after the one on screen' : ''}.`
+      return { text, isShown: true }
     }
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
-      return `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
+      const text = `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
+      // The style asked for needs the screen.
+      return { text: style ? `No room for the ${style} screen here. ${text}` : text, isShown: true }
     }
     // Shedinja comes along when Nincada evolves by level, with Nincada's level and shininess, and counts as caught.
     const shed = next.way.kind === 'level' ? stages.find(s => s.way.kind === 'shed') : undefined
@@ -1281,6 +1356,7 @@ async function evolveNow(
     let outcome = ''
     const evolvedAt = await $.clock.now()
     await mutate($, s => {
+      shedText = ''
       const i = s.party.findIndex(m => m.id === member.id && m.species === member.species)
       const latest = s.party[i]
       if (!latest) {
@@ -1340,12 +1416,19 @@ async function evolveNow(
       // Also redraws over any refresh that was already under way with the old sprite.
       await refreshParty($)
     }
-    if (outcome) return outcome
+    if (outcome) return { text: outcome }
     background($, learnEvolutions($))
-    return shows ? `What? ${name} is evolving!` : `${name} evolved into ${newName}!${shedText}`
+    return {
+      text: shows ? `What? ${name} is evolving!` : `${name} evolved into ${newName}!${shedText}`,
+      isShown: true,
+    }
   } catch (err) {
     if (!isPreview) await report($, err)
-    return `${name} couldn't evolve right now: ${err instanceof Error ? err.message : String(err)}`
+    return {
+      text: `${name} couldn't evolve right now: ${err instanceof Error ? err.message : String(err)}`,
+      // The report has told it.
+      isShown: !isPreview,
+    }
   }
 }
 
@@ -1502,10 +1585,8 @@ async function keepCatch($: EngineInterface) {
   let isInParty = false
   let isStored = true
   await mutate($, s => {
-    if (isNoRoom(s)) {
-      isStored = false
-      return s
-    }
+    isStored = !isNoRoom(s)
+    if (!isStored) return s
     const kept = storeCaught(recordCaught(s, pick.species, Date.now()), caught)
     isInParty = kept.isInParty
     return kept.save
@@ -1704,9 +1785,10 @@ function noticeEvolutions($: EngineInterface, was: Mon[], drawn: Mon[], now: num
   }
 }
 
-// An evolution's screen, after any before it. One evolving again before its last screen played starts from there.
+// An evolution's screen, after any before it. One evolving again before its last screen played starts from there; a
+// preview never changes what it starts from, as it saves nothing.
 function queueScreen($: EngineInterface, next: Screen) {
-  const last = [screen, ...screensDue].filter(d => d?.key === next.key).pop()
+  const last = [screen, ...screensDue].filter(d => d && !d.isPreview && d.key === next.key).pop()
   screensDue.push(last ? { ...next, from: last.to } : next)
   startScreen($)
 }
@@ -1758,6 +1840,23 @@ async function endScreen($: EngineInterface) {
   $.ui.invalidate('ui.render')
   background($, refreshParty($))
   startScreen($)
+}
+
+// The screen playing stops short (its band too short now, while drawing): the evolution is told now, and drawn evolved
+// from the next frame. The party is published again, outside the drawing.
+function cutScreen($: EngineInterface) {
+  const done = screen
+  if (!done) return
+  screen = null
+  lastCells = ''
+  if (status.mood?.isScreen) status = { ...status, mood: null }
+  const at = fitted?.keys.indexOf(done.key) ?? -1
+  if (fitted && at >= 0 && !done.isPreview) {
+    const { budget } = fitted
+    fitted = { ...fitted, lefts: fitted.lefts.map((l, i) => (i === at ? fit(done.to, budget) : l)) }
+  }
+  if (done.said) $.ui.toast(done.said)
+  background($, refreshParty($))
 }
 
 // A screen that won't play: the evolution is told now, and the party drawn evolved.
@@ -1880,12 +1979,15 @@ async function play($: EngineInterface, args: string): Promise<string> {
   } else if (words[0] === 'evolve') {
     const style = words[1]
     if (words.length > 2 || (style && !isEvolutionStyle(style))) return unknownStyle(style ?? '', styleOf(save))
-    return evolveMember(
+    if (save.isOff)
+      return 'Your Pokémon are resting in their Poké Balls: there is nothing to show. /pokemon on brings them back.'
+    const lead = save.party[0]
+    const asked = style && isEvolutionStyle(style) ? style : undefined
+    const name = lead ? `${displayName(lead.species, lead.form)}'s` : 'the'
+    return answerSoon(
       $,
-      save.party[0]?.id ?? '',
-      true,
-      undefined,
-      style && isEvolutionStyle(style) ? style : undefined,
+      evolveMember($, lead?.id ?? '', true, undefined, asked),
+      `Previewing ${name} evolution${asked || canScreen() ? ` in the ${asked ?? styleOf(save)} style` : ''} ${whenShown()}.`,
     )
   } else if (words[0] === 'wild') {
     // One visitor at a time: a second call doesn't bring (or claim) another.
@@ -2017,6 +2119,28 @@ async function load($: EngineInterface) {
   }
 }
 
+// Claude Code gives a command ten seconds, then drops its answer (and unloads a plugin that keeps overrunning). A
+// command not done by this time (a stalled download another one started, a store held up) answers that it is still
+// at it. When it's done, what it changed is told in a toast; a list says it's ready to be asked for again.
+const COMMAND_MS = 6000
+const STILL_WORKING = "Still working on it… What comes of it is told in a notification when it's done."
+async function promptly($: EngineInterface, line: string, work: () => Promise<string>): Promise<string> {
+  const run = work()
+  const answer = await Promise.race([run, $.clock.sleep(COMMAND_MS).then(() => null)])
+  if (answer !== null) {
+    shownAnswers.delete(answer)
+    return answer
+  }
+  background(
+    $,
+    run.then(text => {
+      if (shownAnswers.delete(text) || !text) return
+      $.ui.toast(text.includes('\n') ? `Pokémon: ${line} is ready. Run it again to see it.` : text)
+    }),
+  )
+  return STILL_WORKING
+}
+
 // Commands wait for start-up, but no longer than this: a stalled download never holds them up.
 const START_WAIT_MS = 5000
 const settled = ($: EngineInterface) => Promise.race([started, $.clock.sleep(START_WAIT_MS)])
@@ -2083,41 +2207,47 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'pokemon-play' }, async ($, e) => {
-    try {
-      await ready
-      await settled($)
-      return { text: await play($, e.args) }
-    } catch (err) {
-      return { text: `Couldn't reach the Pokémon: ${err instanceof Error ? err.message : String(err)}` }
-    }
-  })
+  on('command.run', { command: 'pokemon-play' }, async ($, e) => ({
+    text: await promptly($, `/pokemon-play ${e.args}`.trim(), async () => {
+      try {
+        await ready
+        await settled($)
+        return await play($, e.args)
+      } catch (err) {
+        return `Couldn't reach the Pokémon: ${err instanceof Error ? err.message : String(err)}`
+      }
+    }),
+  }))
 
-  on('command.run', { command: 'pokedex' }, async $ => {
-    try {
-      await ready
-      await settled($)
-      await sync($)
-      await loadSpecies($)
-      return {
-        text: `${formatDex(
+  on('command.run', { command: 'pokedex' }, async $ => ({
+    text: await promptly($, '/pokedex', async () => {
+      try {
+        await ready
+        await settled($)
+        await sync($)
+        await loadSpecies($)
+        return `${formatDex(
           save,
           (species ?? []).map(s => s.name),
-        )}\n\n${formatParty(view())}`,
+        )}\n\n${formatParty(view())}`
+      } catch (err) {
+        return `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}`
       }
-    } catch (err) {
-      return { text: `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}` }
-    }
-  })
+    }),
+  }))
 
   on('command.run', { command: 'pokemon' }, async ($, e) => {
     feel('activity')
-    try {
-      await ready
-      await settled($)
-      return { text: await pokemon($, e.args) }
-    } catch (err) {
-      return { text: `Couldn't reach the Pokémon: ${err instanceof Error ? err.message : String(err)}` }
+    return {
+      text: await promptly($, `/pokemon ${e.args}`.trim(), async () => {
+        try {
+          await ready
+          await settled($)
+          return await pokemon($, e.args)
+        } catch (err) {
+          return `Couldn't reach the Pokémon: ${err instanceof Error ? err.message : String(err)}`
+        }
+      }),
     }
   })
 
@@ -2237,6 +2367,8 @@ export const register: Register = on => {
       }
       if (wild) wild = { ...wild, left: fitWild(wild.mon) }
     }
+    // Too short now for the screen playing (the terminal shrank): it ends here, with its toast, and the band goes on.
+    if (screen && e.props.maxRows < SCREEN_MIN_ROWS) cutScreen($)
     const fits = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)
     // A screen keeps the band's height while it plays, however the party changes under it.
     const rows = screen ? Math.min(e.props.maxRows, Math.max(fits, screen.rows)) : fits

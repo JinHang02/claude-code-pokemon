@@ -23,7 +23,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokemon-play evolve [style]` shows your lead's evolution on the screen you have, or on the style you name, once:
   _"Previewing Eevee evolving into Espeon in the rays style."_ Nothing is saved: the style stays as it was, and the
   lead walks on unchanged when the screen ends. With a wild Pokémon out, the reply says the preview plays once it has
-  gone.
+  gone. With no room for the screen (a band under 8 rows), it plays in place and says so: _"No room for the white
+  screen here."_ With the party off, it says there is nothing to show.
 - Every real evolution gets the screen: by level, stone, trade item or Linking Cord, friendship, time of day, Rare
   Candy. When Nincada evolves, its screen shows Ninjask, and Shedinja joins when it ends, in the toast.
 - The sprites are scaled down to fit the stage when they're taller, nearest-neighbour so the pixels stay sharp. A
@@ -43,22 +44,46 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - An evolution in another Claude Code window plays its screen here too, if it's less than 30 seconds old. A window
   opened later doesn't replay old evolutions. Each evolution now saves when it happened (`evolvedAt`) for this.
 - A band under 8 rows tall keeps the in-place animation from 1.4.0: the Pokémon flashes between white silhouettes
-  where it stands.
+  where it stands. A terminal made too short for the screen while it plays ends it there, with its toast, and the
+  band goes on with the new form.
 - With the party off (`/pokemon off`) or no band drawn, an evolution happens with its toast, and no screen shows
   later. Putting the party away while a screen plays or waits ends it, with its toast.
-- There is no cancelling: a screen always finishes. An Everstone is still the way to stop a Pokémon evolving by
+- There is no cancelling: a screen always finishes, unless the terminal gets too short for it. An Everstone is still the way to stop a Pokémon evolving by
   itself.
 - The screen takes no keys or clicks: the prompt and commands work while it plays. A click on it does nothing. A
-  command that evolves another Pokémon meanwhile (a twin's stone, a Rare Candy) answers when that one's screen
-  begins, after the screen playing now: up to about ten seconds, as evolutions go one at a time. A screen already
-  playing finishes after a `/clear`; a reload or restart mid-screen doesn't bring it back (the evolution is saved
-  either way).
+  command that evolves another Pokémon meanwhile (a twin's stone, a Rare Candy) answers at once, and its screen plays
+  after the one playing now. When an evolution can't be worked out within a second (evolutions waiting their turn, a
+  slow download), its command doesn't wait for it: _"Giving the Water Stone to Eevee: what it does shows after the one
+  on screen."_ (or _"Previewing Eevee's evolution in the rays style after the one on screen."_), and a stone it can't
+  use is told in a toast when its turn comes. A screen already playing finishes after a `/clear`; a reload or restart
+  mid-screen doesn't bring it back (the evolution is saved either way).
 - Releasing or depositing the evolving Pokémon mid-screen lets the screen finish; nothing is written back for it.
 
 ### Known limitations
 
 - `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save
   has it from the start.
+
+### Fixed
+
+- Two Claude Code windows changing the save at the same moment no longer undo each other. A `/pokemon on` in one
+  window could be reverted by a `/pokemon everstone` in the other, and a purchase, a catch or an evolution could be
+  lost the same way. A window now reads the save again just before it writes, and makes its change on what another
+  window wrote meanwhile. Two writes within the same few milliseconds can still lose one of the changes; none is ever
+  made twice.
+- A save write the store refuses (another window holding its lock) is no longer shown as done: the ₽, the Bag and the
+  party drawn stay as stored, and the command says it couldn't reach the Pokémon.
+- Every command answers within a few seconds, whatever it waits on. Commands queued behind evolutions or a stalled
+  download could run past Claude Code's ten seconds for a command: their answers were lost, and after a few the plugin
+  was unloaded until a restart, the band gone. A command still waiting after six seconds now answers _"Still working
+  on it… What comes of it is told in a notification when it's done."_ What it then does comes as a toast, and a list
+  (`/pokedex`, `/pokemon party`) says it's ready to be run again.
+- An evolution while the party is off no longer plays its in-place animation when `/pokemon on` brings the party
+  back: it comes back evolved, as the toast already said.
+- `/pokemon-play evolve` while the party is off says there is nothing to show, instead of promising a preview that
+  never came.
+- A first start offline, then a slow network, catches one first Pokémon. Retries could overlap and catch two, the
+  first going into the PC box unasked.
 
 ### Upgrading
 
