@@ -13,10 +13,10 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![915 tests](https://img.shields.io/badge/tests-915_passing-27c93f?style=flat-square)](plugin/tests)
+[![960 tests](https://img.shields.io/badge/tests-960_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
-[Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq)
+[Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
 
 </div>
 
@@ -39,7 +39,7 @@ Start a new session and a wild Pokémon will be waiting above your prompt. Want 
 
 One you already own takes the lead. One you don't is caught fresh and leads, and the old lead rests in your PC box with its level and what it holds. Nobody is sent away.
 
-> **Works on** macOS, Linux and Windows. **Needs** Claude Code **2.1.287 or newer** and a terminal with 24-bit color (iTerm2, Ghostty, kitty, WezTerm, Windows Terminal, the VS Code / Cursor terminal...). It's a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview), and mods are on by default from 2.1.287. If your party doesn't show up, run `/plugin`: the line under the tabs should list `pokemon` among the active mods.
+> **Made on** macOS, with the test suite running on Linux on every push; Windows should work but hasn't been tried (see [Known limitations](#known-limitations)). **Needs** Claude Code **2.1.287 or newer** and a terminal with 24-bit color (iTerm2, Ghostty, kitty, WezTerm, Windows Terminal, the VS Code / Cursor terminal...). It's a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview), and mods are on by default from 2.1.287. If your party doesn't show up, run `/plugin`: the line under the tabs should list `pokemon` among the active mods.
 
 ---
 
@@ -88,7 +88,7 @@ Every Pokémon in your party earns experience from the work you and Claude get d
 | A test run passes (`pytest`, `npm test`, `go test`, `cargo test`...) |  **+5** |
 | A commit goes through                                                | **+10** |
 
-A Pokémon holding a Lucky Egg earns half as much again.
+A test run and a commit in one command (`npm test && git commit`) earn both. A Pokémon holding a Lucky Egg earns half as much again, rounded down (a test run's 5 XP is 7). Levels stop at **Lv 100**, as in the games.
 
 _What? Charmander is evolving!_ They evolve **the way they do in the games**:
 
@@ -129,11 +129,12 @@ Pick the screen you grew up with. It's saved, so every window uses it:
 
 Good to know:
 
-- **It always finishes.** There's no cancelling an evolution once it starts; an Everstone is still how to keep a Pokémon from evolving by itself.
+- **It always finishes.** There's no cancelling an evolution once it starts, unless the terminal gets too short for the screen: then it ends there, with its toast, and the band goes on with the new form. An Everstone is still how to keep a Pokémon from evolving by itself.
 - **The reply says _"What? Eevee is evolving!"_**, and the _"What? Eevee evolved into Vaporeon!"_ toast comes when the screen ends.
 - **It waits for a wild visitor to leave** (caught, fled or let go), and the evolution is saved at once all the same. An open PokéMart closes for it. Several evolutions at once (twins, a Rare Candy chain) play one after another.
-- **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`. A command that evolves another Pokémon meanwhile answers when its own screen begins, once this one has ended.
-- **It needs a band at least 8 rows tall.** Below that, the Pokémon flashes between white silhouettes in place, as before 1.5.0.
+- **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`. A command that evolves another Pokémon meanwhile answers at once, and its screen plays after this one. If what it does can't be worked out within a second, the reply says so (_"Giving the Water Stone to Eevee: what it does shows after the one on screen."_), and a stone it can't use is told in a toast when its turn comes.
+- **When Nincada evolves,** its screen shows Ninjask, and Shedinja joins when it ends (into the PC box if the party is full).
+- **It needs a band at least 8 rows tall.** Below that, the Pokémon flashes between white silhouettes in place, as before 1.5.0. On a narrow band the message shortens and keeps both names: _"CHARMANDER evolved into CHARMELEON!"_, then _"CHARMANDER → CHARMELEON!"_.
 - **An evolution in another Claude Code window plays here too** if it's less than 30 seconds old. A window you open later doesn't replay it.
 
 `/pokemon party` says how long each one has been with you, what it holds and how it evolves:
@@ -152,11 +153,11 @@ Love your Charmander just the way it is? Give it an everstone and it won't evolv
 
 ## Gotta see 'em all
 
-**905 Pokémon**, Bulbasaur to Enamorus, plus **424 alternate forms**: Megas, Gigantamax, Alolan, Galarian, Hisuian and more. Any of them can be **shiny** ✨ (1 in 32).
+**905 Pokémon**, Bulbasaur to Enamorus (Gen 1 to 8), plus **424 alternate forms**: Megas, Gigantamax, Alolan, Galarian, Hisuian and more. Any of them can be **shiny** ✨ (1 in 32). Names are written as in the games (Farfetch'd, Mr. Mime, Nidoran♀, Ho-Oh, Type: Null), and you can type them with or without the punctuation: `farfetchd`, `mr mime`, `nidoran f`, `ho oh`.
 
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/wild.gif" width="400" alt="Tall grass rustles, a wild Bulbasaur steps out, and Pikachu and Eevee jump and turn to it with a red ! speech bubble">
 
-Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustles at the edge, your party jumps and turns to it with a red **!** speech bubble, and Claude Code tells you who it is: _"A wild Bulbasaur appeared!"_. It stops halfway to look around, then moves on.
+Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustles at the edge, your party jumps and turns to it with a red **!** speech bubble, and Claude Code tells you who it is: _"A wild Bulbasaur appeared!"_. It roams the whole band, the ₽ corner too, stops halfway to look around, then moves on.
 
 Who comes depends on **where and when you are**, as in the games. On average a Pidgey turns up about once in 190 visits, an Eevee once in 970 and a Dratini once in 1,900: ten Pidgey for every Dratini. Legendaries, mythicals and Ultra Beasts together come about once in 100. Water types gather at the lake, Ghosts come out at night, and a Pokémon **you've never seen** is 2.5 times as likely to step out of the grass:
 
@@ -225,7 +226,7 @@ When a wild Pokémon wanders by, **click it** to throw a Poké Ball. Aim for the
 grass or a gap in its sprite misses. A hit wobbles in the grass, and how often it holds follows the games' own
 catch rates: a Caterpie every time, a Pikachu 3 times in 4, a legendary hardly ever. Break free and it may run. Claude Code passes clicks only in its fullscreen mode (`/config`, or `"tui": "fullscreen"` in settings), so turn that on to throw.
 
-Catches join your party, twin or not, or your **PC box** when the party is full (`/pokemon box`). `/pokemon <name>`
+Catches join your party, twin or not, or your **PC box** when the party is full (`/pokemon box`, 30 to a page: `/pokemon box 2` is the next, and `/pokemon box eevee` or `/pokemon box shiny` shows only those). `/pokemon <name>`
 brings one out to lead and `/pokemon add <name>` into the party; `/pokemon deposit <name>` puts a party member in the
 box, level and all. `/pokemon release <name>` sets one free, from the party or the box: _"Bye bye, ✨ Eevee ♂ (Lv 16,
 PC box)! It went back to the wild."_ A hold item it had goes back to your Bag; a free Everstone goes with it.
@@ -238,12 +239,25 @@ Two of a kind? Any command that names one asks which, and you add the number:
 
 ```text
 /pokemon release eevee
-Which Eevee? 1. Eevee ♀ Lv 24 (party) · 2. ✨ Eevee ♂ Lv 3 (PC box) — add the number: /pokemon release eevee 2
+Which Eevee?
+  1. Eevee ♀ Lv 24 (party)
+  2. ✨ Eevee ♂ Lv 3 (PC box)
+Add the number: /pokemon release eevee 2
+
 /pokemon release eevee 2
 Bye bye, ✨ Eevee ♂ (Lv 3, PC box)! It went back to the wild.
 ```
 
-A number past the end lists them again, and `shiny` can go anywhere (`release eevee 2 shiny`). A number that belongs to a name stays part of it: `zygarde 10` is Zygarde's 10% form, and `porygon 2` is Porygon2 (unless you have two Porygon: then it's the second one).
+A long list shows the first ten, then how many more and how to narrow them down:
+
+```text
+  … and 15 more. Fewer:
+    /pokemon release shiny eevee
+    /pokemon release eevee lv 1
+Add the number: /pokemon release eevee 10
+```
+
+Any number still picks, and a number past the end lists them again. `shiny` and a level (`lv 30`, `lv30` or `level 30`) can go anywhere: `release eevee 2 shiny`, `release eevee lv 30`. A number that belongs to a name stays part of it: `zygarde 10` is Zygarde's 10% form, and `porygon 2` is Porygon2 (unless you have two Porygon: then it's the second one).
 
 ---
 
@@ -270,7 +284,7 @@ Every item has its picture and its description from the games, and a _"Your part
 | Stones     | Fire, Water, Thunder, Leaf, Ice, Moon, Sun, Shiny, Dusk and Dawn Stones                                                                                                                                                          | ₽3,000                    |
 | Hold items | Metal Coat, King's Rock, Dragon Scale, Up-Grade, Dubious Disc, Protector, Electirizer, Magmarizer, Reaper Cloth, Deep Sea Tooth and Scale, Prism Scale, Sachet, Whipped Dream, Razor Claw and Fang, Oval Stone, Strawberry Sweet | ₽5,000                    |
 | Special    | The Linking Cord, Tart and Sweet Apples, Cracked and Chipped Pots, Black Augurite, Peat Block, the two Scrolls, Galarica Cuff and Wreath                                                                                         | ₽5,000                    |
-| Other      | Rare Candy (one level), Lucky Egg (half as much XP again), Soothe Bell (time together counts 1.5 times)                                                                                                                          | ₽4,800 / ₽10,000 / ₽4,000 |
+| Other      | Rare Candy (one level), Lucky Egg (half as much XP again, rounded down), Soothe Bell (time together counts 1.5 times)                                                                                                            | ₽4,800 / ₽10,000 / ₽4,000 |
 
 Then hand them out. A stone or trade item evolves on the spot and is used up, a Rare Candy is one level, and a hold item is held: one per Pokémon, as in the games, so giving another puts the old one back in your Bag. An item that would do nothing is refused, and nothing is used up.
 
@@ -291,6 +305,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 - **Esc doesn't close it:** Claude Code keeps Escape for the prompt. Use `x` or `✕`.
 - **The mouse wheel doesn't move the list:** Claude Code doesn't pass it to the band. `↑` `↓` or `▲` `▼` do.
 - **Item pictures need a band at least 8 rows tall,** otherwise each item gets a coloured ◆.
+- **It fits from 40 columns:** on a narrow band the tabs and buttons close up, and every one can still be clicked, with each price whole.
 - **The Mart stays shut while a wild Pokémon is out:** catch it or let it go first.
 
 ## Commands
@@ -301,9 +316,9 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon <name>`                       | Pick your lead, spelled exactly; forms in any order: `charizard mega y`, `galarian mr mime`, `shiny gengar`. An owned one leads; a new one is caught and the old lead goes into the PC box. `shiny <name>` leads a shiny one you own, else catches a new one. Close misses get a suggestion |
 | `/pokemon add [name]`                   | Grow your party (up to 3, twins welcome): from your PC box, or a new catch. No name: a random catch                                                                                                                                                                                         |
 | `/pokemon release <name> [n]`           | Set one free, from the party or the PC box (`remove` works too). A hold item goes back to your Bag, a free Everstone goes with it                                                                                                                                                           |
-| `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered: add the number to pick, as in `/pokemon give rare-candy eevee 2`                                                                                                                                                  |
+| `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered (the first ten, and how to narrow the rest): add the number to pick, as in `/pokemon give rare-candy eevee 2`. `shiny` or `lv <n>` narrows any name: `/pokemon release eevee lv 30`                                |
 | `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                                                                                                                                     |
-| `/pokemon box`                          | Your PC box, up to 960: Pokémon you caught while the party was full. `/pokemon <name>` or `add <name>` brings one out                                                                                                                                                                       |
+| `/pokemon box [name] [page]`            | Your PC box, up to 960, 30 to a page (`box 2`). A name, `shiny` or `lv <n>` shows only those, with their places in the box: `box eevee`, `box shiny`. `/pokemon <name>` or `add <name>` brings one out                                                                                      |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                                                                                                                             |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                                                                                                                                 |
 | `/pokemon evolution [style]`            | The evolution screen: `rays` (the default), `white` or `gradient`. No style: which one you have, and the three to choose from                                                                                                                                                               |
@@ -314,8 +329,9 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon take <name>`                  | Put its held item back in your Bag. Looks in the party, then the PC box; of several, the only holder, else it asks which                                                                                                                                                                    |
 | `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                                                                                                                           |
 | `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                                                                                                                                      |
+| `/pokemon help`                         | Every sub-command, one a line                                                                                                                                                                                                                                                               |
 | `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                                                                                                                                   |
-| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve [style]` (your lead's evolution on that screen, nothing saved), `wild [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                           |
+| `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve [style]` (your lead's evolution on that screen, nothing saved), `wild [shiny] [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                   |
 
 ---
 
@@ -377,7 +393,7 @@ Plugins can't change the "Tip:" line under the spinner, but your own Claude Code
 <details>
 <summary><b>Does it slow Claude down?</b></summary>
 <br>
-No. A frame takes a few milliseconds to draw. When nothing is moving it drops from 20 to 5 frames a second and skips frames that haven't changed. Network work like evolutions happens in the background and never holds up Claude's tools.
+Hardly. A frame takes a few milliseconds to draw. When nothing is moving it drops from 20 to 5 frames a second and skips frames that haven't changed. Network work like evolutions happens in the background and never holds up Claude's tools. The one busier time is the half minute or so a wild Pokémon can be aimed at: the band is drawn as coloured text at 10 frames a second, which costs about 20 to 35% CPU against about 10% the rest of the time.
 </details>
 
 <details>
@@ -401,7 +417,7 @@ Since 1.3.0, evolutions follow the games: a Pikachu needs a Thunder Stone, a Hau
 <details>
 <summary><b>Can I run several Claude Code sessions at once?</b></summary>
 <br>
-Yes. Every session shows the same party and they all earn XP for it, so working in three terminals levels your team three times as fast. Each session keeps the XP it earns under its own key, so no session ever overwrites another's XP, and sessions pick up each other's changes within about 10 seconds. Subagents don't earn XP of their own; they show up as clones instead.
+Yes. Every session shows the same party and they all earn XP for it, so working in three terminals levels your team three times as fast. Each session keeps the XP it earns under its own key, so no session ever overwrites another's XP, and sessions pick up each other's changes within about 10 seconds. Two windows changing the party, the Bag or ₽ at once keep both changes: each reads the save again just before it writes. Only two writes within the same few milliseconds can lose one of them. Subagents don't earn XP of their own; they show up as clones instead.
 </details>
 
 <details>
@@ -413,7 +429,7 @@ Yes. Every session shows the same party and they all earn XP for it, so working 
 <details>
 <summary><b>Does it work on Windows and Linux?</b></summary>
 <br>
-Yes. Nothing in it is tied to an operating system: the drawing is plain colored text, downloads are cached in the usual place for each system, and the time of day comes from your local clock. On Windows, use Windows Terminal (the old console can't show 24-bit color). It's developed on macOS, and the test suite runs on Linux on every push.
+Linux, yes: the test suite runs on Linux on every push. Windows should, but nobody has tried it yet: the code has had a review for Windows, not a run. Nothing in it is tied to an operating system: the drawing is plain colored text, downloads are cached in the usual place for each system, and the time of day comes from your local clock. On Windows, use Windows Terminal (the old console can't show 24-bit color). If you try it, an issue saying how it went is very welcome.
 </details>
 
 <details>
@@ -423,12 +439,29 @@ Not yet. The scene is drawn with terminal cells, so it lives in the Claude Code 
 </details>
 
 <details>
+<summary><b>A command said "Still working on it…"</b></summary>
+<br>
+Every <code>/pokemon</code> command answers within a few seconds, so Claude Code never gives up on it. One still busy after six seconds (usually a slow download) answers <i>"Still working on it… What comes of it is told in a notification when it's done."</i> What it then does comes as a toast. A list (<code>/pokemon party</code>, <code>/pokedex</code>) toasts <i>"Pokémon: /pokedex is ready. Run it again to see it."</i> instead, so run it again.
+</details>
+
+<details>
 <summary><b>What counts as a "test run" or a "commit"?</b></summary>
 <br>
-Commands Claude runs through its shell tool: test runners like <code>pytest</code>, <code>jest</code>, <code>vitest</code>, <code>go test</code>, <code>cargo test</code> or <code>npm test</code> (also inside <code>docker compose run</code>), and <code>git commit</code>. Commands you type in your own terminal aren't visible to the plugin.
+Commands Claude runs through its shell tool: test runners like <code>pytest</code>, <code>jest</code>, <code>vitest</code>, <code>go test</code>, <code>cargo test</code> or <code>npm test</code> (also inside <code>docker compose run</code>), and <code>git commit</code>. A test run and a commit in one command (<code>npm test &amp;&amp; git commit</code>) earn both. Commands you type in your own terminal aren't visible to the plugin.
 </details>
 
 ---
+
+## Known limitations
+
+- **Windows is untested.** It's made on macOS and the tests run on Linux; Windows has had a code review, not a run.
+- **Clicks need Claude Code's fullscreen mode** (`/config`, or `"tui": "fullscreen"` in settings): throwing Poké Balls, the ₽ button and the Mart. Without it, `/pokemon mart` shows the Mart and `/pokemon buy` shops.
+- **Pixel-exact aim** needs a terminal that says where in a cell you clicked: kitty, Ghostty, iTerm2, WezTerm and foot do. Elsewhere, and through tmux, a click counts both pixels of the cell.
+- **More CPU while you can aim:** for the half minute or so a wild Pokémon can be aimed at, the band costs about 20 to 35% CPU against about 10%.
+- **No Gen 9:** the Pokémon end at Gen 8 (Enamorus), and Gen 9 items (the Gimmighoul Coin, Syrupy Apple, the Teacups...) aren't sold.
+- **Some evolutions keep a level:** 17 that need a move, steps or a battle in the games go by level ([FAQ](#faq)), and a Pokémon holding a level-up item, or Mantyke, evolves within a minute rather than at the level-up itself.
+- **Restart every open window after upgrading.** A window still running an older version writes the save its own way until it restarts. One on 1.2.0 erases your Bag, held items and ₽, and evolves by its old Lv 30 rule; one on 1.3.0 or 1.4.0 resets your evolution style. The [CHANGELOG](CHANGELOG.md) has the details.
+- **Drawn in the terminal only:** not in the Desktop app, the VS Code chat panel or the web (those sessions still earn XP).
 
 ## How it works
 
@@ -436,7 +469,7 @@ A Claude Code plugin built on [function hooks](https://code.claude.com/docs/en/p
 
 - **Rendering:** sprites arrive as truecolor ANSI art. They're parsed into a pixel grid, scaled to fit, and painted into a cell grid of `▀` half-blocks, two pixels per cell, 20 times a second.
 - **Reactions:** hooks on `turn.start`, `turn.complete`, `tool.call` and `session.compact` feed a small state machine: moods, roaming with easing and braking, particles, clones following the leader's path.
-- **Saving:** party, XP and Pokédex live in Claude Code's per-plugin store. Each session writes its XP under its own key and party changes re-read the latest save first, so parallel sessions add up rather than undo each other.
+- **Saving:** party, XP and Pokédex live in Claude Code's per-plugin store. Each session writes its XP under its own key, and every other change reads the save again just before it's written, so parallel sessions add up rather than undo each other.
 - **Layout:** the plugin is `plugin/` (all an install fetches): `hooks/register.tsx` (wiring), `hooks/scene.ts` (animation), `hooks/backdrop.ts` (landscapes), `hooks/sprite.ts` (sprites to cells), `hooks/save.ts` (party, XP, Pokédex), `hooks/reactions.ts` (what counts as a pass or a failure), `hooks/evolution.ts` (evolution chains), `hooks/evolution-screen.ts` and `hooks/evolution-style.ts` (the evolution screen), `hooks/items.ts`, `hooks/shop.tsx` and `hooks/mart.tsx` (items, wallet button and the PokéMart), `hooks/lookup.ts` and `hooks/members.ts` (names, and which one you mean), `hooks/catch.ts` and `hooks/aim.tsx` (the Poké Ball), `hooks/item-icons.ts` (item pictures), `hooks/encounter.ts` and `hooks/species-data.ts` (who wanders by), `hooks/spinner.ts` (spinner words), and `tests/`. The README images live on the `assets` branch.
 
 ## Development

@@ -668,7 +668,7 @@
               />
               <figcaption class="dialog">
                 <b>A wild Pokémon appears</b>Every 10 to 20 minutes the grass rustles and a visitor walks across. Click
-                it to throw a Poké Ball.
+                it to throw a Poké Ball (in Claude Code's fullscreen mode).
               </figcaption>
             </figure>
             <figure>
@@ -717,6 +717,10 @@
                 </tr>
               </tbody>
             </table>
+            <p>
+              A test run and a commit in one command (<code>npm test &amp;&amp; git commit</code>) earn both. Levels
+              stop at Lv 100, as in the games.
+            </p>
           </div>
           <div>
             <img
@@ -747,7 +751,16 @@
               <code>/pokemon evolution rays</code> (the default, Gen 4–5), <code>white</code> (Gen 1–2) or
               <code>gradient</code> (Gen 3).
             </p>
-            <p>905 Pokémon, 424 alternate forms, and a 1 in 32 chance of a shiny on every catch.</p>
+            <p>
+              The screen waits for a wild visitor to leave, and needs a band at least 8 rows tall; below that the
+              Pokémon flashes in place. On a narrow band its message shortens and keeps both names. The prompt keeps
+              working meanwhile: a command that evolves another one answers at once, and its screen plays next.
+            </p>
+            <p>
+              905 Pokémon from Gen 1 to 8, 424 alternate forms, and a 1 in 32 chance of a shiny on every catch. Names
+              are written as in the games, Farfetch'd, Mr. Mime, Nidoran♀, and you can type them without the
+              punctuation.
+            </p>
           </div>
         </div>
       </section>
@@ -800,14 +813,15 @@
               <h3>On the shelves</h3>
               <p>
                 Ten evolution stones for ₽3,000. The trade items (Metal Coat, Dragon Scale, Up-Grade and the rest), the
-                Linking Cord and Galar's apples and pots for ₽5,000. Rare Candy, a Lucky Egg for half as much XP again,
-                and a Soothe Bell that makes time together count one and a half times.
+                Linking Cord, Galar's apples and pots, the two Scrolls, Black Augurite, Peat Block, the Galarica Cuff
+                and Wreath for ₽5,000. Rare Candy, a Lucky Egg for half as much XP again (rounded down), and a Soothe
+                Bell that makes time together count one and a half times.
               </p>
               <p>
                 No clicks in your terminal? <code>/pokemon buy fire stone 3</code> shops by typing. Clicking needs
                 Claude Code's fullscreen mode, and the Mart takes its keys once you click into it. Type a command and it
                 closes, and the command goes to your prompt. Enter right after a buy asks first, so nothing is bought
-                twice by accident.
+                twice by accident. It fits a band from 40 columns wide.
               </p>
             </div>
           </div>
@@ -853,7 +867,8 @@
                 likely and a fitting hour twice, but anyone can still wander anywhere.
               </p>
               <p>
-                Click it to throw a Poké Ball. Catches join your party, twins welcome, or your PC box when it's full.
+                Click it to throw a Poké Ball, in Claude Code's fullscreen mode (<code>/config</code>). Catches join
+                your party, twins welcome, or your PC box when it's full.
               </p>
             </div>
             <div>
@@ -877,6 +892,7 @@
           <h2>Commands</h2>
           <p class="intro">Type them straight into Claude Code.</p>
           <ul class="menu">
+            <li><code>/pokemon</code><span>A random Pokémon leads; the old lead rests in the PC box</span></li>
             <li>
               <code>/pokemon &lt;name&gt;</code
               ><span
@@ -891,20 +907,24 @@
             <li>
               <code>/pokemon release &lt;name&gt; [n]</code
               ><span
-                >Set one free, from the party or the PC box; a hold item goes back to your Bag, a free Everstone goes
-                with it</span
+                >Set one free, from the party or the PC box (<code>remove</code> works too); a hold item goes back to
+                your Bag, a free Everstone goes with it</span
               >
             </li>
             <li>
               <code>&lt;name&gt; &lt;n&gt;</code
               ><span
-                >Two of a kind? Any command lists them numbered: <code>/pokemon release eevee 2</code> picks the second,
-                and <code>shiny</code> can go anywhere</span
+                >Two of a kind? Any command lists them numbered: <code>/pokemon release eevee 2</code> picks the second.
+                <code>shiny</code> or <code>lv 30</code> narrows any name</span
               >
             </li>
             <li><code>/pokemon party</code><span>Levels, how each one evolves, held items and time together</span></li>
             <li>
-              <code>/pokemon box</code><span>Your PC box: Pokémon you caught while the party was full, up to 960</span>
+              <code>/pokemon box [name] [page]</code
+              ><span
+                >Your PC box, up to 960, 30 to a page: <code>box 2</code>, <code>box eevee</code>,
+                <code>box shiny</code></span
+              >
             </li>
             <li>
               <code>/pokemon deposit &lt;name&gt;</code><span>Move a party member into the box, level and all</span>
@@ -933,13 +953,21 @@
               <code>/pokemon-play &lt;animation&gt;</code
               ><span
                 >Watch any animation now: <code>evolve</code> (or <code>evolve white</code> to try a screen),
-                <code>wild</code>, <code>dusk lake</code>…</span
+                <code>wild</code> (or <code>wild shiny pikachu</code>), <code>dusk lake</code>…</span
               >
             </li>
             <li>
               <code>/pokemon off</code
               ><span>Put them in their Poké Balls; <code>/pokemon on</code> brings them back</span>
             </li>
+            <li>
+              <code>/pokemon size &lt;size&gt;</code
+              ><span
+                >Sprite size: <code>small</code>, <code>normal</code> or <code>auto</code>, which goes small on short
+                terminals</span
+              >
+            </li>
+            <li><code>/pokemon help</code><span>Every sub-command, one a line</span></li>
           </ul>
         </div>
       </section>
@@ -971,8 +999,11 @@
             <details>
               <summary>Does it slow Claude Code down?</summary>
               <p>
-                No. It draws about 20 frames a second while things move and drops to 5 when nothing does, and it never
-                touches Claude's work.
+                Hardly. It draws about 20 frames a second while things move and drops to 5 when nothing does, and it
+                never touches Claude's work. For the half minute or so a wild Pokémon can be aimed at, the band is drawn
+                as coloured text and costs about 20 to 35% CPU against about 10%. Every command answers within a few
+                seconds: one held up by a slow download says "Still working on it…" and tells what it did in a
+                notification, or that a list is ready to run again.
               </p>
             </details>
             <details>
@@ -998,6 +1029,25 @@
                 iTerm2, Ghostty, kitty, WezTerm and Windows Terminal draw the pixel art crisply. In the VS Code or
                 Cursor terminal, set <code>terminal.integrated.minimumContrastRatio</code> to 1. macOS Terminal.app
                 works but shows thin lines between rows.
+              </p>
+            </details>
+            <details>
+              <summary>Can I use it in several windows at once?</summary>
+              <p>
+                Yes. They share one party, and all of them earn XP for it. Two windows changing it at once keep both
+                changes; only two writes within the same few milliseconds can lose one. After upgrading, restart every
+                open window: one still running an older version writes the save its own way, and 1.2.0 erases your Bag,
+                held items and ₽.
+              </p>
+            </details>
+            <details>
+              <summary>What doesn't it do yet?</summary>
+              <p>
+                It's made on macOS and tested on Linux; Windows hasn't been tried yet. Clicks (Poké Balls, the ₽ button,
+                the Mart) need Claude Code's fullscreen mode, and pixel-exact aim needs a terminal that reports where in
+                a cell you clicked (kitty, Ghostty, iTerm2, WezTerm, foot). Pokémon end at Gen 8, so Gen 9 isn't in. The
+                <a href="https://github.com/JinHang02/claude-code-pokemon#known-limitations">README</a> has the full
+                list.
               </p>
             </details>
           </div>
