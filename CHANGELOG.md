@@ -55,6 +55,13 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   either way).
 - Releasing or depositing the evolving Pokémon mid-screen lets the screen finish; nothing is written back for it.
 
+### Fixed
+
+- `/pokemon give <item> <name> -1` (or `0`, `1.5`) gave the item to the first one: only a whole number from 1 picks,
+  as in `release`, and anything else answers with the numbered list. A fraction is no pick anywhere now
+  (`release eevee 1.5` no longer releases the 15th), and the answer quotes what you typed: _"No -1 in your party"_,
+  where it said _"No 1"_.
+
 ### Known limitations
 
 - `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save

@@ -20,6 +20,26 @@ export const slug = (text: string) =>
     .trim()
     .replace(/\s+/g, '-')
 
+// `rest`, a run of `slug(text)`'s words at its front or back, as typed: with the signs and dots `slug` drops, so
+// `eevee -1` stays a number below 1 and `1.5` is no 15. The words themselves when a typed word straddles the run.
+export function typedRest(text: string, rest: string[]): string {
+  const words = slug(text).split('-').filter(Boolean)
+  const tail = words.length - rest.length
+  const isTail = rest.every((w, i) => words[tail + i] === w)
+  const [from, to] = isTail ? [tail, words.length] : [0, rest.length]
+  const edge = isTail ? from : to
+  const kept: string[] = []
+  let at = 0
+  for (const token of text.trim().split(/\s+/).filter(Boolean)) {
+    const start = at
+    at += slug(token).split('-').filter(Boolean).length
+    if (start < edge && at > edge) return rest.join(' ')
+    // A token of no words (`-`) at the edge goes with the run.
+    if (start >= from && at <= to) kept.push(token)
+  }
+  return at === words.length ? kept.join(' ') : rest.join(' ')
+}
+
 export type Pick = { dex: number; species: string; form: string }
 
 const pickOf = (list: Species[], dex: number, form = 'regular'): Pick => ({ dex, species: list[dex]?.name ?? '', form })
@@ -90,8 +110,9 @@ function exact(list: Species[], words: string[]): Pick | null {
 }
 
 // The closest species and form to a misspelt or partial query: a run of its words is the species (exact,
-// then a prefix, then a near miss), the words left over a form of it. Resolves an error text when nothing fits.
-function closestPick(list: Species[], words: string[]): Pick | string {
+// then a prefix, then a near miss), the words left over a form of it. Resolves an error text when nothing fits, naming
+// the query as `typed` (the words by default).
+function closestPick(list: Species[], words: string[], typed = words.join(' ')): Pick | string {
   let failure: string | undefined
   const formWords = new Set([...Object.keys(ADJECTIVES), ...list.flatMap(p => p.forms.flatMap(f => f.split('-')))])
   for (const match of ['exact', 'prefix', 'typo'] as const)
@@ -112,14 +133,15 @@ function closestPick(list: Species[], words: string[]): Pick | string {
           ? `${label} has no "${rest.join(' ')}" form. Try: ${forms.join(', ')}.`
           : `${label} has no other forms.`
       }
-  return failure ?? `No Pokémon called "${words.join(' ')}".`
+  return failure ?? `No Pokémon called "${typed}".`
 }
 
-// Only an exact spelling picks a Pokémon; a near miss or a partial name comes back as a guess to confirm.
-export function lookup(list: Species[], words: string[]): Lookup {
+// Only an exact spelling picks a Pokémon; a near miss or a partial name comes back as a guess to confirm. `typed`: the
+// query as typed, for the answer that names it.
+export function lookup(list: Species[], words: string[], typed?: string): Lookup {
   const pick = exact(list, words)
   if (pick) return { pick }
-  const guess = closestPick(list, words)
+  const guess = closestPick(list, words, typed)
   return typeof guess === 'string' ? { error: guess } : { guess }
 }
 

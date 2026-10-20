@@ -14,7 +14,7 @@ import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, isList } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, isSpacedOut, lookup, randomPick, slug, spell } from './lookup'
+import { guessItem, isSpacedOut, lookup, randomPick, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -556,7 +556,12 @@ async function catchOne($: EngineInterface, query: string, command = ''): Promis
   const wantsShiny = words.includes('shiny')
   const named = words.filter(w => w !== 'shiny')
   if (!words.length && query.trim()) return `No Pokémon called "${query.trim()}".`
-  const found = named.length ? lookup(list, named) : { pick: randomPick(list) }
+  const typed = query
+    .trim()
+    .split(/\s+/)
+    .filter(t => slug(t) !== 'shiny')
+    .join(' ')
+  const found = named.length ? lookup(list, named, typed) : { pick: randomPick(list) }
   if ('error' in found) return found.error
   // Spelt right but spaced apart (`porygon 2`) is that one.
   if ('guess' in found && !isSpacedOut(found.guess, named))
@@ -760,11 +765,12 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   if (!found) {
     const guess = guessItem(words)
     return guess
-      ? `Did you mean ${guess.item.name}? Run /pokemon give ${guess.item.id} ${guess.rest.join(' ') || '<pokemon>'}`
+      ? `Did you mean ${guess.item.name}? Run /pokemon give ${guess.item.id} ${typedRest(args, guess.rest) || '<pokemon>'}`
       : 'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.'
   }
   const { item, rest } = found
-  const who = rest.join(' ')
+  // As typed, so a number in it is read as typed (`eevee -1` lists).
+  const who = typedRest(args, rest)
   if (!who) return `Give ${withArticle(item.name)} to whom? /pokemon give ${item.id} <pokemon>`
   await sync($)
   if (item.kind === 'candy') return feedCandy($, who, item)

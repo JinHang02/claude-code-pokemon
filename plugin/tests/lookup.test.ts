@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { guessItem, lookup, randomPick, slug, spell } from '../hooks/lookup'
+import { guessItem, lookup, randomPick, slug, spell, typedRest } from '../hooks/lookup'
 
 const LIST = [
   { name: 'charizard', forms: ['regular', 'gmax', 'mega-x', 'mega-y'] },
@@ -75,4 +75,13 @@ test('an item name a little off is guessed, with the words left for the Pokémon
   expect(guess('kings rok slowpoke')).toEqual(['kings-rock', 'slowpoke'])
   expect(guess('banana pikachu')).toBeNull()
   expect(guess('eevee')).toBeNull()
+})
+
+test('the words after an item, as typed: a sign or a dot stays, a word split across the run falls back', () => {
+  expect(typedRest('rare candy eevee -1', ['eevee', '1'])).toBe('eevee -1')
+  expect(typedRest('eevee 1.5 fire stone', ['eevee', '15'])).toBe('eevee 1.5')
+  expect(typedRest('fire stone  Nidoran♀ -2', ['nidoran', 'f', '2'])).toBe('Nidoran♀ -2')
+  expect(typedRest('fire stone - eevee', ['eevee'])).toBe('- eevee')
+  expect(typedRest('fire-stone-eevee 2', ['eevee', '2'])).toBe('eevee 2')
+  expect(typedRest('rare candy', [])).toBe('')
 })

@@ -296,3 +296,39 @@ test('a name command never waits long for a species list that hangs: it answers 
   expect(await timed('deposit charmander')).toBe('Charmander (Lv 1) went into the PC box.')
   expect(await timed('take eevee')).toBe("Eevee isn't holding anything.")
 })
+
+test('give with a number below 1 or not whole answers with the list, spends nothing, and echoes what was typed', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+    bag: { 'rare-candy': 2, 'fire-stone': 1 },
+  })
+  for (const n of ['-1', '0', '1.5', '+1', '-2'])
+    expect([n, await cmd($, 'pokemon', `give rare candy eevee ${n}`)]).toEqual([
+      n,
+      expect.stringMatching(/^Which Eevee\?/),
+    ])
+  expect(w.saveNow().bag).toEqual({ 'rare-candy': 2, 'fire-stone': 1 })
+  expect(w.saveNow().party.map(m => m.xp)).toEqual([0, 0, 0])
+  expect(await cmd($, 'pokemon', 'give fire stone 1.5')).toMatch(/^No 1\.5 in your party\./)
+  expect(await cmd($, 'pokemon', 'give fire stone -1')).toMatch(/^No -1 in your party\./)
+  // A hint for a misspelt item keeps the sign, so typing it back still lists.
+  expect(await cmd($, 'pokemon', 'give rare cndy eevee -1')).toBe(
+    'Did you mean Rare Candy? Run /pokemon give rare-candy eevee -1',
+  )
+  expect(await cmd($, 'pokemon', 'give rare candy eevee 2')).toBe('Eevee grew to Lv 2!')
+  expect(w.saveNow().party.map(m => m.id === 'e2' && m.xp > 0)).toEqual([false, false, true])
+})
+
+test('a fraction is not a pick: release eevee 1.5 with fifteen Eevee lists them', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: Array.from({ length: 15 }, (_, i) => member('eevee', { id: `e${i + 1}` })),
+  })
+  for (const n of ['1.5', '1,5', '15.0'])
+    expect([n, await cmd($, 'pokemon', `release eevee ${n}`)]).toEqual([n, expect.stringMatching(/^Which Eevee\?/)])
+  expect(w.saveNow().box?.length).toBe(15)
+  expect(await cmd($, 'pokemon', '-1')).toBe('No Pokémon called "-1".')
+  expect(await cmd($, 'pokemon', 'add 1.5')).toBe('No Pokémon called "1.5".')
+})

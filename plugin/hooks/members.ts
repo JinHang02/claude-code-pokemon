@@ -72,14 +72,14 @@ export function findMembers(
     .flatMap(place => (place === 'party' ? s.party : (s.box ?? [])).map((member, at) => ({ place, at, member })))
   const last = named[named.length - 1] ?? ''
   const isNumbered = named.length > 1 && /^\d+$/.test(last)
-  // `-1` slugs to `1`: a signed number is below 1, out of range like `0`. The sign is on the last word that isn't
-  // `shiny` (`eevee -1 shiny`).
+  // `-1` slugs to `1` and `1.5` to `15`: only a whole number as typed picks; a signed one or a fraction is out of
+  // range like `0`. It is the last word that isn't `shiny` (`eevee -1 shiny`), on its own or after a hyphen (`eevee-2`).
   const token = query
     .trim()
     .split(/\s+/)
     .filter(t => wordsOf(t).some(w => w !== 'shiny'))
     .pop()
-  const nth = /^-/.test(token ?? '') ? 0 : Number(last)
+  const nth = /^(?:[^-].*-)?\d+$/.test(token ?? '') ? Number(last) : 0
   const before = isNumbered ? matching(pool, named.slice(0, -1), wantsShiny) : null
   const listed = isSpots(before) ? before : []
   const picked = listed.length > 1 && nth > 0 ? listed[nth - 1] : undefined
