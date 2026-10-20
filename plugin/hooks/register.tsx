@@ -1270,9 +1270,9 @@ async function checkEvolutions($: EngineInterface) {
       failed ??= err
     }
   }
-  const context = await evolutionContext($)
-  if (save.evolution !== 'auto') await announceReady($, context)
+  if (save.evolution !== 'auto') await announceReady($)
   else {
+    const context = await evolutionContext($)
     readyKeys = new Set()
     // Asked again after every wait: the party may have been put to rest, or evolution made manual, meanwhile.
     const isDue = (id: string) =>
@@ -1290,18 +1290,44 @@ async function checkEvolutions($: EngineInterface) {
 // Marks the party members that could evolve now as ready (gold motes, "ready to evolve"), and tells the person once
 // per Pokémon. Nobody is ready while the party is off. Not while an evolution plays: its new form shows first. One
 // whose screen is still to play isn't ready yet either, so the screen keeps the surprise; its end checks again.
-async function announceReady($: EngineInterface, context: Surroundings) {
+async function announceReady($: EngineInterface) {
   await animationDone($)
-  const isHeld = (m: Member) => [screen, ...screensDue].some(d => d && !d.isPreview && d.key === m.id)
+  // The surroundings after the wait: a partner, a held item or the hour may have gone meanwhile.
+  const context = await evolutionContext($)
+  const drawn = await read($, party)
+  const now = await $.clock.now()
+  // Another session's evolution still drawn in its old form here, recent enough for its screen to come
+  // (noticeEvolutions queues it once its sprite is in).
+  const isComing = (m: Member) => {
+    const was = drawn.find(d => d.key === m.id)
+    return Boolean(
+      was &&
+      was.name !== displayName(m.species, m.form) &&
+      m.evolvedAt &&
+      now - m.evolvedAt <= NOTICE_MS &&
+      canScreen() &&
+      !evolvedHere.has(lookOf(m)),
+    )
+  }
+  const isHeld = (m: Member) => isComing(m) || [screen, ...screensDue].some(d => d && !d.isPreview && d.key === m.id)
+  // Due in save `s`, with its own party and the types looked up for it (one not looked up yet counts as none, and
+  // waits for the next check).
+  const isDueIn = (s: Save, m: Member) => {
+    const partyTypes = context.partyTypes.length
+      ? s.party.flatMap(p => types.get(pokeapiForm(p.species, p.form)) ?? [])
+      : []
+    return dueFor(m, { ...context, party: s.party.map(p => p.species), partyTypes }).length > 0
+  }
   readyKeys = new Set(
     save.isOff
       ? []
       : view()
-          .party.filter(m => !isHeld(m) && dueFor(m, context).length > 0)
+          .party.filter(m => !isHeld(m) && isDueIn(save, m))
           .map(readyKey),
   )
-  // In the save as it is now: one that evolved meanwhile, in another session too, is told about in its new form.
-  const isNew = (s: Save) => s.party.filter(m => readyKeys.has(readyKey(m)) && !m.isAnnounced)
+  // In the save as it is now: one that evolved meanwhile, in another session too, is told about in its new form, and
+  // one whose partner or item went in another session isn't told about at all.
+  const isNew = (s: Save) => viewOf(s).party.filter(m => readyKeys.has(readyKey(m)) && !m.isAnnounced && isDueIn(s, m))
   if (!isNew(save).length) return
   let told: { m: Member; as: string }[] = []
   await mutate($, s => {
@@ -1495,17 +1521,22 @@ async function evolveNow(
             (isLooks(pick.species) && p.startsWith(`${pick.species}|`)) ||
             (pick.form === 'regular' && p.startsWith(`${pick.species}|`) && !all.includes(`${pick.species}|regular`))),
       )
-      const looked = allowed.filter(s => pick && isLooks(s.species) && formOf(s) === pick.form)
-      const due = looked.length ? looked : allowed.filter(s => named.includes(pickOf(s)))
+      // A look named by its pattern (`alcremie matcha cream strawberry`) is that one only, never another look of the
+      // species; a species named plainly is any of its stages.
+      const look = pick && isLooks(pick.species) && pick.form !== 'regular' ? pick : null
+      const isNamed = (s: Stage) =>
+        look ? s.species === look.species && formOf(s) === look.form : named.includes(pickOf(s))
+      const due = allowed.filter(isNamed)
       const duePicks = [...new Set(due.map(pickOf))]
-      if (!named.length && allowed.length)
+      if ((!named.length || !options.some(isNamed)) && allowed.length)
         return {
           text: `${name} can't evolve into ${speciesName(slug(into))}. It can evolve into ${orList(picks.map(labelOf))}.`,
         }
       // A branch it has, but not now: how it gets there.
-      if (named.length && !due.length) {
-        const ways = evolvesText(withTime({ ...member, next: options.filter(s => named.includes(pickOf(s))) }, times))
-        return { text: `${name} ${ways.replace(/^evolves/, `evolves into ${orList(named.map(labelOf))}`)}.` }
+      if (named.length && options.some(isNamed) && !due.length) {
+        const ways = evolvesText(withTime({ ...member, next: options.filter(isNamed) }, times))
+        const label = look ? displayName(look.species, look.form) : orList(named.map(labelOf))
+        return { text: `${name} ${ways.replace(/^evolves/, `evolves into ${label}`)}.` }
       }
       if (duePicks.length > 1)
         return {

@@ -217,6 +217,8 @@ export type Net = {
   now?: number
   keys?: Record<string, unknown>
   beforeSet?: (key: string) => void
+  // Runs as a store key is read: another window's write landing just before this one reads.
+  beforeGet?: (key: string) => void
 }
 
 // The engine around the plugin: a fake network, store, clock zone and UI calls; resolves the store and toasts.
@@ -285,6 +287,7 @@ export function world(
     return ok((file && net.sprites?.[file]) || art)
   })
   on('store.get', async (_$, e) => {
+    net.beforeGet?.(e.key)
     if (net.isStoreBroken) throw new Error('store unreadable')
     return { value: store.get(e.key) }
   })

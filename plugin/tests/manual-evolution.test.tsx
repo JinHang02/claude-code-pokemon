@@ -4,6 +4,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { SCREEN_MS } from '../hooks/evolution-screen'
 import { emptySave, xpForLevel } from '../hooks/save'
+import { CHAIN_OF, CHAINS as REAL_CHAINS, LIST as REAL_LIST } from './fixtures/evolutions'
 import {
   answerTools,
   ART,
@@ -576,4 +577,115 @@ test('/pokemon evolve answers within a second when its download stalls, and tell
     'Charmander is ready to evolve! /pokemon evolve charmander',
     'What? Charmander evolved into Charmeleon!',
   ])
+})
+
+test(
+  'a partner put away while another screen plays: no ready toast once it ends',
+  { timeoutMs: 60_000 },
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      {
+        ...emptySave(),
+        bag: { 'rare-candy': 1 },
+        party: [
+          member('charmander', { xp: xpForLevel(16), gender: 'male' }),
+          member('pancham', { xp: xpForLevel(31), gender: 'male' }),
+          member('umbreon', { gender: 'male' }),
+        ],
+      },
+      tall('1;2;3'),
+      undefined,
+      { isOnline: true, list: JSON.stringify(LIST), now: hourAt(12) },
+    )
+    await until($, () => w.toasts.some(t => t.includes('Charmander is ready')))
+    await mountBand($)
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon', 'evolve charmander')).toBe('What? Charmander is evolving!')
+    // Pancham reaches Lv 32 with its Dark-type partner, then the partner goes, all while the screen plays.
+    expect(await cmd($, 'pokemon', 'give rare candy pancham')).toContain('Lv 32')
+    expect(await cmd($, 'pokemon', 'deposit umbreon')).toContain('PC box')
+    for (let i = 0; i < 30; i++) await w.clock.advance(500)
+    expect(w.toasts.some(t => t.includes('Pancham is ready'))).toBe(false)
+    expect(w.saveNow().party.find(m => m.species === 'pancham')?.isAnnounced).toBeUndefined()
+  },
+)
+
+test('a partner another window puts away just before the ready write: no ready toast', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('mantyke', { gender: 'male' })],
+    // Looked up already: nothing about it is written before the ready check.
+    box: [member('remoraid', { gender: 'male', next: [] })],
+  })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  // Remoraid joins; as the check goes to save its announcement, another window has put it back in the PC box.
+  let isArmed = false
+  w.net.beforeGet = key => {
+    if (!isArmed || key !== 'save') return
+    isArmed = false
+    const s = w.saveNow()
+    w.store.set('save', { ...s, party: s.party.filter(m => m.species !== 'remoraid'), box: s.party.slice(1) })
+  }
+  const s = w.saveNow()
+  w.store.set('save', { ...s, party: [...s.party, ...(s.box ?? [])], box: [] })
+  await cmd($, 'pokemon', 'party')
+  isArmed = true
+  for (let i = 0; i < 20; i++) await w.clock.settle()
+  expect(w.toasts.some(t => t.includes('Mantyke is ready'))).toBe(false)
+  expect(w.saveNow().party.map(m => [m.species, m.isAnnounced])).toEqual([['mantyke', undefined]])
+})
+
+test(
+  "another window's evolution waiting on its sprite: the new form isn't told ready before its screen",
+  { timeoutMs: 60_000 },
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('charmander', { xp: xpForLevel(40), gender: 'male' })] },
+      tall('1;2;3'),
+      undefined,
+      { isOnline: true, list: JSON.stringify(LIST), now: hourAt(12) },
+    )
+    await until($, () => w.toasts.length === 1)
+    await mountBand($)
+    await w.clock.advance(500)
+    // Another window evolves it; Charmeleon's sprite is slow to come here.
+    const s = w.saveNow()
+    const { next: _, isAnnounced: __, ...kept } = s.party[0]!
+    w.store.set('save', {
+      ...s,
+      party: [{ ...kept, species: 'charmeleon', evolutions: 1, evolvedAt: await w.clock.now() }],
+    })
+    let open = () => {}
+    const held = new Promise<void>(resolve => (open = resolve))
+    w.net.artStall = file => (file === 'charmeleon' ? held : undefined)
+    await cmd($, 'pokemon', 'size normal')
+    for (let i = 0; i < 20; i++) await w.clock.settle()
+    expect(w.toasts.some(t => t.includes('Charmeleon is ready'))).toBe(false)
+    open()
+    for (let i = 0; i < 300 && !w.toasts.some(t => t.includes('Charmeleon is ready')); i++) await w.clock.advance(500)
+    expect(w.toasts.filter(t => t.includes('Charmeleon is ready'))).toEqual([
+      'Charmeleon is ready to evolve! /pokemon evolve charmeleon',
+    ])
+  },
+)
+
+test('a look named that comes only at night waits by day, and no other look takes its place', async ($, on) => {
+  const chain = REAL_CHAINS[CHAIN_OF.milcery!]
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('milcery', { heldItem: 'strawberry-sweet', gender: 'female' })] },
+    undefined,
+    undefined,
+    { isOnline: true, list: JSON.stringify(REAL_LIST), now: hourAt(12), chains: { milcery: chain, alcremie: chain } },
+  )
+  await until($, () => w.toasts.some(t => t.includes('Milcery is ready')))
+  expect(await cmd($, 'pokemon', 'evolve milcery into alcremie matcha cream strawberry')).toMatch(
+    /^Milcery evolves into Alcremie \(Matcha Cream Strawberry\) .*night/,
+  )
+  expect(w.saveNow().party[0]).toMatchObject({ species: 'milcery', heldItem: 'strawberry-sweet' })
 })
