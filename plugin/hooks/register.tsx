@@ -12,7 +12,7 @@ import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withA
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
-import { didYouMean, findMembers, formatChoices, isList, readLevel } from './members'
+import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
 import { guessItem, isSpacedOut, lookup, randomPick, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
@@ -22,6 +22,7 @@ import {
   bagFull,
   balanceOf,
   BOX_FULL,
+  boxPages,
   buy,
   displayName,
   emptySave,
@@ -1905,6 +1906,27 @@ async function play($: EngineInterface, args: string): Promise<string> {
   return `Playing ${name}.`
 }
 
+// `/pokemon box [name] [page]`: a page of the PC box, or of the ones a name picks out of it. A number after a name
+// is its page, unless the name without it names none there and with it some (`porygon 2`: Porygon2).
+async function showBox($: EngineInterface, args: string): Promise<string> {
+  await sync($)
+  const s = view()
+  if (!s.box?.length) return formatBox(s)
+  const tokens = args.trim().split(/\s+/).filter(Boolean)
+  const last = tokens[tokens.length - 1] ?? ''
+  const isNumber = /\d/.test(last) && /^[-+]?[\d.,]+$/.test(last)
+  const name = (isNumber ? tokens.slice(0, -1) : tokens).join(' ')
+  const picked = name ? inBox(s, name, 'box ') : null
+  const whole = isNumber && picked && 'error' in picked ? inBox(s, tokens.join(' '), 'box ') : null
+  const [found, typed] = whole && !('error' in whole) ? [whole, ''] : [picked, isNumber ? last : '']
+  if (found && 'error' in found) return found.error
+  const pages = boxPages(found ? found.at.length : s.box.length)
+  const page = typed ? (/^\d+$/.test(typed) ? Number(typed) : 0) : 1
+  if (page < 1 || page > pages)
+    return `There's no page ${typed}: ${pages === 1 ? 'it all fits on one' : `pages go from 1 to ${pages}`}.`
+  return formatBox(s, page, found ?? undefined)
+}
+
 // How long a naming command waits for a species list still downloading.
 const SPECIES_WAIT_MS = 2000
 // The `/pokemon` words that take no Pokémon's name.
@@ -1923,8 +1945,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       await sync($)
       return formatParty(view())
     case 'box':
-      await sync($)
-      return formatBox(view())
+      return showBox($, tail)
     case 'add':
       return addMember($, tail)
     case 'deposit':

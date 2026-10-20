@@ -4,7 +4,7 @@ import { itemName } from './items'
 import { isSpacedOut, lookup, slug, spell } from './lookup'
 import type { Lookup, Pick, Species } from './lookup'
 import { displayName, formatParty, nameOf } from './save'
-import type { Member, Save } from './save'
+import type { BoxPick, Member, Save } from './save'
 
 export type Place = 'party' | 'box'
 export type Spot = { place: Place; at: number; member: Member }
@@ -138,6 +138,33 @@ export function findMembers(
   // A shiny asked for, and only plain ones of the guess here.
   const plain = wantsShiny && guess ? reach(guess, false) : null
   return { error: none(plain ? `shiny ${displayName(plain.guess.species, plain.guess.form)}` : query.trim()) }
+}
+
+// The members of the PC box `query` names (`shiny` alone: every shiny one), by their places in it: a species named
+// plainly is every form of it there, a form only that form. Why none, or a suggestion naming `command`, when it names
+// none.
+export function inBox(s: Save, query: string, command: string): BoxPick | { error: string } {
+  const box = s.box ?? []
+  const words = wordsOf(query)
+  const wantsShiny = words.includes('shiny')
+  const named = words.filter(w => w !== 'shiny')
+  const none = { error: `No ${query.trim()} in your PC box.` }
+  const found = named.length && box.length ? lookup(namesOf(box), named) : null
+  const isSpaced = found && 'guess' in found && isSpacedOut(found.guess, named)
+  const pick = found && ('pick' in found ? found.pick : isSpaced && 'guess' in found ? found.guess : null)
+  if (named.length && !pick)
+    return found && 'guess' in found
+      ? { error: didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`) }
+      : none
+  const at = box.flatMap((m, i) =>
+    (!pick || (m.species === pick.species && (pick.form === 'regular' || m.form === pick.form))) &&
+    (!wantsShiny || m.isShiny)
+      ? [i]
+      : [],
+  )
+  if (!at.length) return none
+  const title = pick ? `${wantsShiny ? '✨ ' : ''}${displayName(pick.species, pick.form)}` : 'Shiny ones'
+  return { title, at, words: words.join(' ') }
 }
 
 // Whether an answer is the numbered list: a query whose number is past its end still names someone.

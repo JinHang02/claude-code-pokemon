@@ -371,3 +371,50 @@ test('a level narrows a name in every command, and a level none of yours is at n
   expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1'])
   expect(w.saveNow().box?.length).toBe(22)
 })
+
+test('/pokemon box shows 30 to a page, says which page, and how to see the next; a name narrows it', async ($, on) => {
+  const kinds = ['caterpie', 'eevee', 'pikachu']
+  const box = Array.from({ length: 75 }, (_, i) =>
+    member(kinds[i % 3] ?? 'caterpie', { id: `b${i + 1}`, isShiny: i === 4 || i === 70, next: [] }),
+  )
+  box.push(member('porygon2', { id: 'p2', next: [] }))
+  const list = JSON.stringify([
+    ...LIST,
+    { name: 'porygon', forms: ['regular'] },
+    { name: 'porygon2', forms: ['regular'] },
+  ])
+  await begin($, on, { ...emptySave(), party: [member('raichu', { next: [] })], box }, undefined, undefined, {
+    isOnline: true,
+    list,
+  })
+  const rows = (text: string) => text.split('\n').filter(l => /^ {2}\d+\. /.test(l))
+  const numbers = (text: string) => rows(text).map(l => Number(/\d+/.exec(l)?.[0]))
+  const first = await cmd($, 'pokemon', 'box')
+  expect(first.split('\n')[0]).toBe('Your PC box (76 / 960) · page 1 of 3:')
+  expect(numbers(first)).toEqual(Array.from({ length: 30 }, (_, i) => i + 1))
+  expect(first.split('\n').at(-1)).toBe('Next page: /pokemon box 2')
+  const last = await cmd($, 'pokemon', 'box 3')
+  expect(last.split('\n')[0]).toBe('Your PC box (76 / 960) · page 3 of 3:')
+  expect(numbers(last)).toEqual(Array.from({ length: 16 }, (_, i) => i + 61))
+  expect(last.split('\n').at(-1)).toMatch(/^ {2}76\. /)
+  for (const page of ['4', '0', '-1', '1.5', '+2'])
+    expect([page, await cmd($, 'pokemon', `box ${page}`)]).toEqual([
+      page,
+      `There's no page ${page}: pages go from 1 to 3.`,
+    ])
+  // A name: only those, each with its place in the box, paged the same way.
+  const eevees = await cmd($, 'pokemon', 'box eevee')
+  expect(eevees.split('\n')[0]).toBe('Eevee in your PC box (25 of 76):')
+  expect(numbers(eevees)).toEqual(Array.from({ length: 25 }, (_, i) => 3 * i + 2))
+  expect(eevees.split('\n').at(-1)).toMatch(/^ {2}74\. /)
+  const shiny = await cmd($, 'pokemon', 'box shiny')
+  expect(shiny.split('\n')[0]).toBe('Shiny ones in your PC box (2 of 76):')
+  expect(numbers(shiny)).toEqual([5, 71])
+  expect(numbers(await cmd($, 'pokemon', 'box shiny eevee'))).toEqual([5, 71])
+  expect(await cmd($, 'pokemon', 'box shiny pikachu')).toBe('No shiny pikachu in your PC box.')
+  expect(await cmd($, 'pokemon', 'box eevee 2')).toBe("There's no page 2: it all fits on one.")
+  expect(await cmd($, 'pokemon', 'box eeve')).toBe('Did you mean Eevee? Run /pokemon box eevee')
+  expect(await cmd($, 'pokemon', 'box mewtwo')).toBe('No mewtwo in your PC box.')
+  // `porygon 2` is Porygon2 when no Porygon is there to have a page 2.
+  expect(numbers(await cmd($, 'pokemon', 'box porygon 2'))).toEqual([76])
+})

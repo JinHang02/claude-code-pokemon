@@ -65,6 +65,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   Pokémon per line, the first ten only, then _"… and 15 more"_ with how to narrow them down. Any number still picks.
   A level narrows a name in every command that takes one: `/pokemon release eevee lv 30` (or `lv30`, `level 30`),
   and a number then picks among those. A level none of yours is at never catches a new one.
+- `/pokemon box` printed the whole box in one reply, up to 961 lines. It shows 30 to a page now, as a box in the
+  games holds: _"Your PC box (76 / 960) · page 1 of 3"_, and the next page is `/pokemon box 2`. A name shows only
+  those, each with its place in the box: `/pokemon box eevee`, `/pokemon box shiny`.
 
 ### Known limitations
 

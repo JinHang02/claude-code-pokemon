@@ -667,7 +667,7 @@ test('a full PC box refuses a new lead, a reroll and a deposit, and changes noth
     "There's no more room in your PC box! Eevee stays in your party. Make room with /pokemon release <name>.",
   )
   expect(JSON.stringify(w.saveNow())).toBe(before)
-  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(960 \/ 960\):\n/)
+  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(960 \/ 960\) · page 1 of 32:\n/)
   // A boxed one leading swaps places with the lead: the box stays at 960.
   expect(await cmd($, 'pokemon', 'charmander')).toBe(
     'Charmander (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
@@ -680,7 +680,7 @@ test('a full PC box refuses a new lead, a reroll and a deposit, and changes noth
 
 test('an older save with more than 960 in the PC box keeps them all; only adding is refused', async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], box: boxOf(1000) })
-  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1000 \/ 960\):\n/)
+  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1000 \/ 960\) · page 1 of 34:\n/)
   expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
   expect(w.saveNow().box).toHaveLength(999)
   expect(await cmd($, 'pokemon', 'raichu')).toMatch(/^There's no more room in your PC box!/)

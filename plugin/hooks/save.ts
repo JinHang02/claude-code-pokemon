@@ -588,12 +588,31 @@ export function formatBag(save: Save, cash: number): string {
   return lines.join('\n')
 }
 
-export function formatBox(save: Save): string {
+// Rows on one page of /pokemon box, as many as one of the games' boxes holds.
+export const BOX_PAGE = 30
+
+// Some of the PC box: what `/pokemon box <words>` names (`at`: their places in it) under its own title.
+export type BoxPick = { title: string; at: number[]; words: string }
+
+export const boxPages = (count: number) => Math.max(1, Math.ceil(count / BOX_PAGE))
+
+// One page of the PC box (from 1), or of `picked`; each row numbered by its place in the box, then where the next
+// page is.
+export function formatBox(save: Save, page = 1, picked?: BoxPick): string {
   const box = save.box ?? []
   if (!box.length) return 'Your PC box is empty.'
+  const at = picked?.at ?? box.map((_, i) => i)
+  const pages = boxPages(at.length)
+  const title = picked
+    ? `${picked.title} in your PC box (${at.length} of ${box.length})`
+    : `Your PC box (${box.length} / ${MAX_BOX})`
+  const rows = at
+    .slice((page - 1) * BOX_PAGE, page * BOX_PAGE)
+    .flatMap(i => (box[i] ? [[`${i + 1}.`, ...memberColumns(box[i])]] : []))
   return [
-    `Your PC box (${box.length} / ${MAX_BOX}):`,
-    ...lineUp(box.map((m, i) => [`${i + 1}.`, ...memberColumns(m)])),
+    `${title}${pages > 1 ? ` · page ${page} of ${pages}` : ''}:`,
+    ...lineUp(rows),
+    ...(page < pages ? [`Next page: /pokemon box ${picked ? `${picked.words} ` : ''}${page + 1}`] : []),
   ].join('\n')
 }
 
