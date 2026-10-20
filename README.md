@@ -134,7 +134,7 @@ Good to know:
 - **It waits for a wild visitor to leave** (caught, fled or let go), and the evolution is saved at once all the same. An open PokéMart closes for it. Several evolutions at once (twins, a Rare Candy chain) play one after another.
 - **The prompt keeps working while it plays.** The screen takes no keys or clicks, and one already playing finishes after a `/clear`. A command that evolves another Pokémon meanwhile answers at once, and its screen plays after this one. If what it does can't be worked out within a second, the reply says so (_"Giving the Water Stone to Eevee: what it does shows after the one on screen."_), and a stone it can't use is told in a toast when its turn comes.
 - **When Nincada evolves,** its screen shows Ninjask, and Shedinja joins when it ends (into the PC box if the party is full).
-- **It needs a band at least 8 rows tall.** Below that, the Pokémon flashes between white silhouettes in place, as before 1.5.0. On a narrow band the message shortens and keeps both names: _"CHARMANDER evolved into CHARMELEON!"_, then _"CHARMANDER → CHARMELEON!"_.
+- **It needs a band at least 8 rows tall.** Below that, the Pokémon flashes between white silhouettes in place, as before 1.5.0. On a narrow band the message shortens and always keeps the new form's name (the old one may be cut short): _"CHARMANDER evolved into CHARMELEON!"_, then _"CHARMANDER → CHARMELEON!"_.
 - **An evolution in another Claude Code window plays here too** if it's less than 30 seconds old. A window you open later doesn't replay it.
 
 `/pokemon party` says how long each one has been with you, what it holds and how it evolves:
@@ -461,6 +461,7 @@ Commands Claude runs through its shell tool: test runners like <code>pytest</cod
 - **No Gen 9:** the Pokémon end at Gen 8 (Enamorus), and Gen 9 items (the Gimmighoul Coin, Syrupy Apple, the Teacups...) aren't sold.
 - **Some evolutions keep a level:** 17 that need a move, steps or a battle in the games go by level ([FAQ](#faq)), and a Pokémon holding a level-up item, or Mantyke, evolves within a minute rather than at the level-up itself.
 - **Restart every open window after upgrading.** A window still running an older version writes the save its own way until it restarts. One on 1.2.0 erases your Bag, held items and ₽, and evolves by its old Lv 30 rule; one on 1.3.0 or 1.4.0 resets your evolution style. The [CHANGELOG](CHANGELOG.md) has the details.
+- **Commands you run while an evolution screen plays already use the new form:** the save has it from the start, so `/pokemon party` and `/pokedex` show it, and a command that names the Pokémon needs its new name (`/pokemon give rare candy charmeleon` while _"CHARMANDER is evolving!"_ is on screen).
 - **Drawn in the terminal only:** not in the Desktop app, the VS Code chat panel or the web (those sessions still earn XP).
 
 ## How it works

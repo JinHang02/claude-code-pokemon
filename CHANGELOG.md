@@ -123,7 +123,7 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 ### Known limitations
 
 - `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save
-  has it from the start.
+  has it from the start. A command that names the Pokémon needs its new name too.
 
 ### Upgrading
 
