@@ -77,6 +77,14 @@ export const catchChance = (rate: number) => Math.min(255, Math.max(0, rate)) / 
 // Wobbles before a Pokémon breaks free: up to 2, more likely the easier it is to catch.
 export const wobblesFor = (rate: number, rand = Math.random) => Math.min(2, Math.floor(rand() * 3 * catchChance(rate)))
 
+// Where a ball that hit the visitor comes to rest: its bottom on the ground row, in front of the visitor's middle, but
+// kept inside the band (the ball is 4 wide) so the drop, wobbles and break-free stay in sight when the visitor
+// stands at an edge.
+export function restSpot(left: number, width: number, total: number, height: number): Point {
+  const middle = left + width / 2
+  return { x: total < 4 ? total / 2 : Math.min(total - 2, Math.max(2, middle)), y: height - 3 }
+}
+
 export function startThrow(
   from: Point,
   to: Point,

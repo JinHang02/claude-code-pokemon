@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Mon } from '../types'
-import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
+import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, restSpot, startThrow, stepThrow, wildLook } from './catch'
 import type { Click, Throw, ThrowEvent } from './catch'
 import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
@@ -1472,7 +1472,7 @@ function throwAt($: EngineInterface, click: Click) {
   const isHit = ys.some(y => paintedBy(x, y) === 'wild')
   const to = { x, y: ys[ys.length - 1] ?? 0 }
   // The ball comes to rest with its bottom on the ground row, in front of the Pokémon's middle.
-  const rest = { x: place.left + place.img.width / 2, y: height - 3 }
+  const rest = restSpot(place.left, place.img.width, band.total, height)
   pitch = startThrow({ x: -3, y: height - 2 }, to, rest, isHit, wildRate ?? DEFAULT_RATE)
   if (isHit) status = holdWild(status, true)
 }

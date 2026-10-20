@@ -12,6 +12,7 @@ import {
   FLY,
   MISS,
   readClick,
+  restSpot,
   SHRINK,
   startThrow,
   stepThrow,
@@ -20,6 +21,16 @@ import {
   wobblesFor,
 } from '../hooks/catch'
 import type { Throw, ThrowEvent } from '../hooks/catch'
+
+test('the ball rests in front of the visitor, kept whole inside the band when it stands at an edge', () => {
+  // Whole in sight: in front of its middle, bottom on the ground row.
+  expect(restSpot(30, 8, 100, 40)).toEqual({ x: 34, y: 37 })
+  // Mostly off the left or right edge: the ball (4 wide, x-2 … x+1) still fits in the band.
+  expect(restSpot(-7, 8, 100, 40)).toEqual({ x: 2, y: 37 })
+  expect(restSpot(99, 8, 100, 40)).toEqual({ x: 98, y: 37 })
+  // A band too narrow for the ball keeps it centred.
+  expect(restSpot(0, 8, 3, 40).x).toBe(1.5)
+})
 
 const RED = 0xff0000
 // 3 wide, 4 tall, see-through at (1, 1) and (2, 3).
