@@ -70,6 +70,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   those, each with its place in the box: `/pokemon box eevee`, `/pokemon box shiny`.
 - `/pokemon bag` listed every holder, the PC box's too, on one unbroken line. It's one a line now: the party's, then
   ten of the box's and how many more.
+- XP kept raising the level past 100 (_"Lv 101 (794 xp to Lv 102)"_) while a Rare Candy said _"already Lv 100"_. The
+  level stops at 100 everywhere now, shown as _"Lv 100 (max level)"_.
 
 ### Known limitations
 

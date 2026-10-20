@@ -523,3 +523,15 @@ test('evolutionStyle: absent loads as rays, a valid one is kept, an invalid one 
   const written = JSON.parse(JSON.stringify({ ...loadSave(old), evolutionStyle: 'gradient' }))
   expect(loadSave(written).evolutionStyle).toBe('gradient')
 })
+
+test('the level stops at 100 everywhere it shows, however much XP comes after', () => {
+  expect(level(xpForLevel(100) - 1)).toBe(99)
+  expect(level(xpForLevel(100))).toBe(100)
+  expect(level(xpForLevel(100) + 5000)).toBe(100)
+  expect(level(1e12)).toBe(100)
+  const top = { ...emptySave(), party: [{ ...pikachu, xp: 40_010, next: [] }] }
+  expect(formatParty(top)).toBe(['Your party:', '  Lead  Pikachu  Lv 100  (max level)  · final form'].join('\n'))
+  expect(formatBox({ ...emptySave(), box: [{ ...pikachu, xp: 1e12 }] })).toBe(
+    ['Your PC box (1 / 960):', '  1.  Pikachu  Lv 100  (max level)'].join('\n'),
+  )
+})

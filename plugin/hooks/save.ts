@@ -324,7 +324,8 @@ export function foldLedger(save: Save, key: string, ledger: Ledger): Save {
   }
 }
 
-export const level = (xp: number) => 1 + Math.floor(Math.sqrt(xp / 4))
+// As in the games, no further than MAX_LEVEL: XP past it still counts, and changes nothing.
+export const level = (xp: number) => Math.min(MAX_LEVEL, 1 + Math.floor(Math.sqrt(xp / 4)))
 export const xpForLevel = (lv: number) => 4 * (lv - 1) ** 2
 
 // The level it evolves at by itself: the lowest level way; null when none is by level; undefined until looked up.
@@ -535,7 +536,7 @@ function memberColumns(m: Member): string[] {
   return [
     `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
-    `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})`,
+    lv < MAX_LEVEL ? `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})` : '(max level)',
     m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
     m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
     evolves ? `· ${evolves}` : '',
