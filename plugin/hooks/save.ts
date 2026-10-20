@@ -487,13 +487,37 @@ export const titleCase = (name: string) =>
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
 
-export const displayName = (species: string, form = 'regular') =>
-  titleCase(species) + (form === 'regular' ? '' : ` (${titleCase(form)})`)
+// The names the sprite list spells without the games' punctuation (every other one title-cases as it is).
+const SPECIES_NAMES: Record<string, string> = {
+  'nidoran-f': 'Nidoran♀',
+  'nidoran-m': 'Nidoran♂',
+  farfetchd: "Farfetch'd",
+  sirfetchd: "Sirfetch'd",
+  'mr-mime': 'Mr. Mime',
+  'mime-jr': 'Mime Jr.',
+  'mr-rime': 'Mr. Rime',
+  'ho-oh': 'Ho-Oh',
+  'porygon-z': 'Porygon-Z',
+  'type-null': 'Type: Null',
+  'jangmo-o': 'Jangmo-o',
+  'hakamo-o': 'Hakamo-o',
+  'kommo-o': 'Kommo-o',
+  flabebe: 'Flabébé',
+}
 
-// A member as its line in a numbered list names it, so an answer says which one went: "✨ Eevee ♂". The sign is
-// left out while its gender is unknown (a member saved before genders, or not looked up yet).
-export const nameOf = (m: Member) =>
-  `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''}`
+// A species as the games write it: "Mr. Mime", "Farfetch'd", "Ho-Oh".
+export const speciesName = (species: string) => SPECIES_NAMES[species] ?? titleCase(species)
+
+export const displayName = (species: string, form = 'regular') =>
+  speciesName(species) + (form === 'regular' ? '' : ` (${titleCase(form)})`)
+
+// " ♀" or " ♂" after a member's name; nothing while its gender is unknown (a member saved before genders, or not
+// looked up yet), or when the name says it already (Nidoran♀).
+const signOf = (m: Member) =>
+  /[♀♂]$/.test(speciesName(m.species)) ? '' : m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
+
+// A member as its line in a numbered list names it, so an answer says which one went: "✨ Eevee ♂".
+export const nameOf = (m: Member) => `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${signOf(m)}`
 
 const bar = (done: number, total: number, width = 10) => {
   const full = Math.round((done / total) * width)
@@ -508,7 +532,7 @@ function wayText(w: Way, m: Member): string {
     return `at Lv ${w.level}${when}${w.partyType ? ` with a ${titleCase(w.partyType)}-type in the party` : ''}`
   if (w.kind === 'item') return `with ${withArticle(itemName(w.item))}${when}`
   if (w.kind === 'hold') return `holding ${withArticle(itemName(w.item))}${when}`
-  if (w.kind === 'party') return `with ${titleCase(w.species)} in the party`
+  if (w.kind === 'party') return `with ${speciesName(w.species)} in the party`
   if (w.kind === 'friendship') {
     const ms = m.togetherMs ?? 0
     const left = FRIENDSHIP_MS - ms
@@ -532,9 +556,8 @@ export function evolvesText(m: Member): string {
 function memberColumns(m: Member): string[] {
   const lv = level(m.xp)
   const evolves = evolvesText(m)
-  const sign = m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
   return [
-    `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}${m.isCaught ? ' ◓' : ''}`,
+    `${nameOf(m)}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
     lv < MAX_LEVEL ? `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})` : '(max level)',
     m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
@@ -637,8 +660,8 @@ export function formatDex(save: Save, names: string[]): string {
   return [
     `Pokédex: ${seen.length} / ${names.length} seen · ${caught.length} caught · ${shinies.length} shiny`,
     ...gens,
-    `Shinies: ${shinies.length ? shinies.map(n => titleCase(n)).join(', ') : 'none yet'}`,
-    `Recently seen: ${save.recent.length ? save.recent.map(n => titleCase(n)).join(', ') : 'nothing yet'}`,
+    `Shinies: ${shinies.length ? shinies.map(speciesName).join(', ') : 'none yet'}`,
+    `Recently seen: ${save.recent.length ? save.recent.map(speciesName).join(', ') : 'nothing yet'}`,
   ].join('\n')
 }
 

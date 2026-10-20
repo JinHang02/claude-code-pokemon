@@ -1,6 +1,6 @@
 import { ITEMS } from './items'
 import type { Item } from './items'
-import { titleCase } from './save'
+import { speciesName } from './save'
 
 export type Species = { name: string; forms: string[] }
 
@@ -128,7 +128,7 @@ function closestPick(list: Species[], words: string[], typed = words.join(' ')):
         const forms = found.forms.filter(f => f !== 'regular')
         const form = findForm(forms, rest)
         if (form) return pickOf(list, dex, form)
-        const label = titleCase(found.name)
+        const label = speciesName(found.name)
         failure ??= forms.length
           ? `${label} has no "${rest.join(' ')}" form. Try: ${forms.join(', ')}.`
           : `${label} has no other forms.`

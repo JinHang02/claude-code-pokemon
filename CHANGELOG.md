@@ -72,6 +72,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   ten of the box's and how many more.
 - XP kept raising the level past 100 (_"Lv 101 (794 xp to Lv 102)"_) while a Rare Candy said _"already Lv 100"_. The
   level stops at 100 everywhere now, shown as _"Lv 100 (max level)"_.
+- Names lost their punctuation (_"Farfetchd"_, _"Mr Mime"_, _"Ho Oh"_, _"Nidoran F"_). They're written as in the
+  games now: Farfetch'd, Sirfetch'd, Mr. Mime, Mime Jr., Mr. Rime, Nidoran♀, Nidoran♂, Ho-Oh, Porygon-Z,
+  Type: Null, Jangmo-o, Hakamo-o, Kommo-o and Flabébé.
 
 ### Known limitations
 

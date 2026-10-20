@@ -53,11 +53,11 @@ import {
   recordCaught,
   recordSeen,
   releaseMember,
+  speciesName,
   spriteBudget,
   storeCaught,
   takeFromBag,
   TIME_TEXT,
-  titleCase,
   TOGETHER,
   togetherOf,
   withExtra,
@@ -1565,7 +1565,7 @@ function martProps(): MartProps {
     for (const m of party) {
       const into = (m.next ?? [])
         .filter(st => (st.way.kind === 'item' || st.way.kind === 'hold') && st.way.item === i.id)
-        .map(st => titleCase(st.species))
+        .map(st => speciesName(st.species))
       for (const species of new Set(into)) {
         const name = displayName(m.species, m.form)
         const key = `${name} → ${species}`

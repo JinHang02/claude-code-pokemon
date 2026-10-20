@@ -4,6 +4,7 @@ import {
   addTogether,
   balanceOf,
   buy,
+  displayName,
   earnInto,
   emptySave,
   evolveLevel,
@@ -22,6 +23,7 @@ import {
   loadSave,
   loadTogether,
   MAX_BOX,
+  nameOf,
   putInBag,
   recordCaught,
   recordSeen,
@@ -534,4 +536,54 @@ test('the level stops at 100 everywhere it shows, however much XP comes after', 
   expect(formatBox({ ...emptySave(), box: [{ ...pikachu, xp: 1e12 }] })).toBe(
     ['Your PC box (1 / 960):', '  1.  Pikachu  Lv 100  (max level)'].join('\n'),
   )
+})
+
+test("names keep the games' punctuation: Farfetch'd, Mr. Mime, Nidoran♀, Type: Null, Ho-Oh, Flabébé", () => {
+  const shown = (species: string, form?: string) => displayName(species, form)
+  expect(
+    [
+      'farfetchd',
+      'sirfetchd',
+      'mr-mime',
+      'mime-jr',
+      'mr-rime',
+      'nidoran-f',
+      'nidoran-m',
+      'type-null',
+      'ho-oh',
+      'porygon-z',
+      'porygon2',
+      'jangmo-o',
+      'hakamo-o',
+      'kommo-o',
+      'flabebe',
+      'tapu-koko',
+    ].map(n => shown(n)),
+  ).toEqual([
+    "Farfetch'd",
+    "Sirfetch'd",
+    'Mr. Mime',
+    'Mime Jr.',
+    'Mr. Rime',
+    'Nidoran♀',
+    'Nidoran♂',
+    'Type: Null',
+    'Ho-Oh',
+    'Porygon-Z',
+    'Porygon2',
+    'Jangmo-o',
+    'Hakamo-o',
+    'Kommo-o',
+    'Flabébé',
+    'Tapu Koko',
+  ])
+  expect(shown('mr-mime', 'galar')).toBe('Mr. Mime (Galar)')
+  expect(shown('farfetchd', 'galar')).toBe("Farfetch'd (Galar)")
+  // Nidoran's sign is its name: it isn't shown twice.
+  expect(nameOf({ ...pikachu, species: 'nidoran-f', gender: 'female' })).toBe('Nidoran♀')
+  expect(nameOf({ ...pikachu, species: 'nidoran-m', gender: 'male', isShiny: true })).toBe('✨ Nidoran♂')
+  const party = { ...emptySave(), party: [{ ...pikachu, species: 'nidoran-f', gender: 'female' as const }] }
+  expect(formatParty(party)).toContain('Lead  Nidoran♀  Lv 1')
+  const dex = recordSeen(recordSeen(emptySave(), 'ho-oh', true, 1), 'type-null', false, 2)
+  expect(formatDex(dex, ['ho-oh', 'type-null'])).toContain('Shinies: Ho-Oh\nRecently seen: Type: Null, Ho-Oh')
 })

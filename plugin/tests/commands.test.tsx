@@ -54,9 +54,9 @@ test('party: add up to three, twins too, remove any but the last', async ($, on)
   expect(await cmd($, 'pokemon', 'remove eevee')).toContain('Which Eevee?')
   expect(await said('remove eevee 1')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
   expect(w.saveNow().party.map(m => m.id)).toEqual([lead?.id, second?.id])
-  expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr Mime (Galar) joined your party!')
+  expect(await cmd($, 'pokemon', 'add galarian mr mime')).toContain('Mr. Mime (Galar) joined your party!')
   expect(await said('remove eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
-  expect(await said('release mr mime')).toBe('Bye bye, Mr Mime (Galar) (Lv 1, party)! It went back to the wild.')
+  expect(await said('release mr mime')).toBe('Bye bye, Mr. Mime (Galar) (Lv 1, party)! It went back to the wild.')
   expect(await cmd($, 'pokemon', 'remove pikachu')).toBe('Pick a new lead first.')
   expect(await cmd($, 'pokemon', 'remove vaporeon')).toContain('No vaporeon in your party')
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
@@ -1317,9 +1317,9 @@ test('a plain name never takes a regional form out of the PC box', async ($, on)
     party: [member('pikachu'), member('mr-mime')],
     box: [member('mr-mime', { form: 'galar', id: 'gal' })],
   })
-  expect(await cmd($, 'pokemon', 'mr mime')).toBe('Mr Mime leads the party again (Lv 1).')
+  expect(await cmd($, 'pokemon', 'mr mime')).toBe('Mr. Mime leads the party again (Lv 1).')
   // Not the boxed Galarian one: a new plain twin.
-  expect(await cmd($, 'pokemon', 'add mr mime')).toContain('Mr Mime joined your party!')
+  expect(await cmd($, 'pokemon', 'add mr mime')).toContain('Mr. Mime joined your party!')
   expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual([
     'mr-mime:regular',
     'pikachu:regular',
@@ -1628,12 +1628,12 @@ test('a boxed Pokémon comes out by name even when the party holds another form 
     box: [member('mr-mime', { id: 'boxed' })],
   })
   expect(await cmd($, 'pokemon', 'mr mime')).toBe(
-    'Mr Mime (Lv 1) came out of the PC box to lead your party. Mr Mime (Galar) (Lv 11) went into the PC box.',
+    'Mr. Mime (Lv 1) came out of the PC box to lead your party. Mr. Mime (Galar) (Lv 11) went into the PC box.',
   )
   expect(w.saveNow().party[0]?.id).toBe('boxed')
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['gal'])
   expect(await cmd($, 'pokemon', 'add galarian mr mime')).toBe(
-    'Mr Mime (Galar) came out of the PC box and joined your party!',
+    'Mr. Mime (Galar) came out of the PC box and joined your party!',
   )
   expect(w.saveNow().party.map(m => m.id)).toContain('gal')
 })
