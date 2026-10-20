@@ -342,6 +342,10 @@ test('earning: ₽ once per event, XP per member, a Lucky Egg holder gets half a
   const l = earnInto(loadLedger({}), party, 10, 7)
   expect(l).toEqual({ at: 7, xp: { a: 10, b: 15 }, money: 100 })
   expect(earnInto(l, party, 2, 8).money).toBe(120)
+  // Exactly half again, rounded down: a test run's 5 is 7, never 8.
+  expect(earnInto(loadLedger({}), party, 5, 9).xp).toEqual({ a: 5, b: 7 })
+  expect(earnInto(loadLedger({}), party, 50, 9).xp).toEqual({ a: 50, b: 75 })
+  expect(earnInto(loadLedger({}), party, 2, 9).xp.b).toBe(3)
 })
 
 test('₽ from two ledgers adds up, and a folded ledger is never counted twice', () => {

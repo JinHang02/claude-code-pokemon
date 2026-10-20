@@ -235,7 +235,12 @@ export function classify(
   if (tool !== 'Bash' || command === undefined) return { happenings: [], xp: 0, streak }
   const ran = deciders(command)
   const failed: Outcome = { happenings: ['tool-error'], xp: 0, streak: 0 }
-  const passed: Outcome = { happenings: ['cheer'], xp: XP.tests, streak: 0 }
+  // A passing test; when the same call also committed (`npm test && git commit`), both events count.
+  const passed: Outcome = {
+    happenings: ['cheer'],
+    xp: XP.tests + (!isError && ran.some(isCommit) ? XP.commit : 0),
+    streak: 0,
+  }
   const isTest = ran.some(isTestRun)
   const isHiddenTest = !isTest && split(command).some(p => expand(commandAt(p.text)).some(isTestRun))
   const verdict = output !== undefined && (isHiddenTest || (isTest && isError)) ? testVerdict(output) : null

@@ -220,6 +220,21 @@ test('tests that passed before a later command failed are not a failed test run'
   expect(xpFor('npm test && git commit -m x', true).happenings).toEqual(['tool-error'])
 })
 
+test('one call that passes a test and commits is both events: both XP, so ₽50 and ₽100', () => {
+  const both = { happenings: ['cheer'], xp: 15, streak: 0 }
+  expect(xpFor('npm test && git commit -m x')).toEqual(both)
+  expect(xpFor('git commit -m x && npm test')).toEqual(both)
+  expect(xpFor('cd api && pytest && git add . && git commit -m x')).toEqual(both)
+  // Two commits, or a lone test or commit, are one event each.
+  expect(xpFor('git commit -m a && git commit -m b').xp).toBe(10)
+  expect(xpFor('npm test').xp).toBe(5)
+  // A test that hides its result behind a pipe, passing, then a commit.
+  expect(classify('Bash', 'pytest | tail -3 && git commit -m x', false, 0, '5 passed in 0.1s').xp).toBe(15)
+  // The commit failing earns the test alone; a failed test earns nothing.
+  expect(classify('Bash', 'npm test && git commit -m x', true, 0, 'Tests: 5 passed, 5 total').xp).toBe(0)
+  expect(xpFor('npm test && git commit -m x', true).happenings).toEqual(['tool-error'])
+})
+
 test('a runner asked for its version, help or test list runs no tests', () => {
   for (const cmd of [
     'pytest --version',
