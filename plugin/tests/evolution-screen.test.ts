@@ -223,6 +223,10 @@ test('a narrow band shortens the message from the front, so the new name stays',
   }
   expect(draw('white', AT.hold, { columns: 40 }).text).toBe('EEVEE evolved into ESPEON!')
   expect(draw('white', AT.hold, { columns: 40, ...names }).text).toBe('CHARMANDER → CHARMELEON!')
+  // Two 12-letter names still both show at 30 columns, with the arrow closed up.
+  const crab = { fromName: 'Crabrawler', toName: 'Crabominable' }
+  for (const columns of [30, 31])
+    expect(draw('white', AT.hold, { columns, ...crab }).text).toBe('CRABRAWLER→CRABOMINABLE!')
   // Too narrow for both names: the end of the line survives.
   expect(draw('white', AT.hold, { columns: 18, ...names }).text).toBe('…CHARMELEON!')
   expect(draw('white', AT.flash, { columns: 40 }).text).toBe('What? EEVEE is evolving!')

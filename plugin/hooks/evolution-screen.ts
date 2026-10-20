@@ -221,7 +221,7 @@ export function evolutionFrame(o: {
   const evolving = fitFirst([`What? ${a} is evolving!`, `${a} is evolving!`], roomForText)
   // A narrow band drops words from the front, so the new form's name is the last thing to go.
   const evolved = fitFirst(
-    [`Congratulations! Your ${a} evolved into ${b}!`, `${a} evolved into ${b}!`, `${a} → ${b}!`],
+    [`Congratulations! Your ${a} evolved into ${b}!`, `${a} evolved into ${b}!`, `${a} → ${b}!`, `${a}→${b}!`],
     roomForText,
   )
   const text =

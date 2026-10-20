@@ -245,7 +245,10 @@ export function classify(
   const isHiddenTest = !isTest && split(command).some(p => expand(commandAt(p.text)).some(isTestRun))
   const verdict = output !== undefined && (isHiddenTest || (isTest && isError)) ? testVerdict(output) : null
   if (isTest && verdict !== 'passed') return isError ? failed : passed
-  if (isHiddenTest && verdict) return verdict === 'failed' ? failed : passed
+  if (isHiddenTest && verdict === 'passed') return passed
+  // A failed test pays nothing; a commit that went through after it (`npm test; git commit`) is still its own event.
+  if (isHiddenTest && verdict === 'failed')
+    return !isError && ran.some(isCommit) ? { happenings: ['cheer'], xp: XP.commit, streak: 0 } : failed
   if (isError && ran.some(c => BUILD.test(c))) return { happenings: ['tool-error'], xp: 0, streak: 0 }
   if (!isError && ran.some(isCommit)) return { happenings: ['cheer'], xp: XP.commit, streak: 0 }
   if (!isError) return { happenings: [], xp: 0, streak: 0 }
