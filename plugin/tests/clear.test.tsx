@@ -148,7 +148,7 @@ test(
     expect([...w.store.keys()].filter(k => k.startsWith('xp:'))).toEqual([key])
     expect(state.get('ledger')).toBe(key)
     expect(w.partyNow().map(m => m.xp)).toEqual([xp[0]! + 15, xp[1]! + 10])
-    expect(xp).toEqual([8, 5])
+    expect(xp).toEqual([7, 5])
     const party = await cmd($, 'pokemon', 'party')
     expect(party).toMatch(new RegExp(`Lead  Pikachu ♂ +Lv ${level(8 + 15)} .*together 2m`))
     expect(party).toMatch(new RegExp(`Vaporeon ♂ +Lv ${level(5 + 10)} .*together 2m`))

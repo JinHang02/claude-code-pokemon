@@ -40,6 +40,19 @@ function promptBox(on: On, isFilled = true) {
   return box
 }
 
+test('an open Mart follows the ₽ another window earns, with no other change to the save', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p' })] })
+  await cmd($, 'pokemon', 'party')
+  const band = (await mountBand($)) as Band
+  await cmd($, 'pokemon', 'mart')
+  expect((await martNow(band, true))?.balance).toBe(3000)
+  const before = w.band.invalidated
+  w.store.set('xp:other', { at: Date.now(), xp: { p: 10 }, money: 500 })
+  await w.clock.advance(10_500)
+  expect(w.band.invalidated).toBeGreaterThan(before)
+  expect((await martNow(band, true))?.balance).toBe(3500)
+})
+
 test('typing a command into the Mart closes it and puts what was typed in the prompt; nothing is bought', async ($, on) => {
   const box = promptBox(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 30_000 })

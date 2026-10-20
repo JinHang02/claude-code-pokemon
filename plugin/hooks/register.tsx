@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Mon } from '../types'
-import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, startThrow, stepThrow, wildLook } from './catch'
+import { ballOverlays, clickPixels, DEFAULT_RATE, readClick, restSpot, startThrow, stepThrow, wildLook } from './catch'
 import type { Click, Throw, ThrowEvent } from './catch'
 import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
@@ -459,13 +459,15 @@ async function sync($: EngineInterface) {
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     isNewParty = isOtherParty(latest, save)
-    isNewLook =
-      latest.size !== save.size ||
-      latest.isOff !== save.isOff ||
-      (mart.isOpen &&
-        JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== JSON.stringify([save.bag, balanceOf(save, cash)]))
+    const was = JSON.stringify([save.bag, balanceOf(save, cash)])
+    const [wasSize, wasOff] = [save.size, save.isOff]
     save = latest
     countLedgers(await readLedgers($))
+    // The wallet is judged after the ledgers are counted: another window's earnings change only those.
+    isNewLook =
+      latest.size !== wasSize ||
+      latest.isOff !== wasOff ||
+      (mart.isOpen && JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== was)
     times = loadTogether(await $.store.get(TOGETHER)).ms
   })
   if (isNewParty) await refreshParty($)
@@ -1572,7 +1574,7 @@ function throwAt($: EngineInterface, click: Click) {
   const isHit = ys.some(y => paintedBy(x, y) === 'wild')
   const to = { x, y: ys[ys.length - 1] ?? 0 }
   // The ball comes to rest with its bottom on the ground row, in front of the Pokémon's middle.
-  const rest = { x: place.left + place.img.width / 2, y: height - 3 }
+  const rest = restSpot(place.left, place.img.width, band.total, height)
   pitch = startThrow({ x: -3, y: height - 2 }, to, rest, isHit, wildRate ?? DEFAULT_RATE)
   if (isHit) status = holdWild(status, true)
 }

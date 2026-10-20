@@ -77,10 +77,12 @@ function fitInto(img: Pixels, maxWidth: number, maxHeight: number): Pixels {
 
 const chars = (s: string) => [...s]
 
-function cut(s: string, room: number): string {
-  const all = chars(s)
-  if (all.length <= room) return s
-  return room <= 0 ? '' : all.slice(0, room - 1).join('') + '…'
+// The first wording that fits; if none does, the last one with its start cut, keeping the end (the new name).
+function fitFirst(options: string[], room: number): string {
+  const fits = options.find(s => chars(s).length <= room)
+  if (fits !== undefined) return fits
+  const all = chars(options[options.length - 1] ?? '')
+  return room <= 0 ? '' : '…' + all.slice(all.length - room + 1).join('')
 }
 
 // Types the message out so it is complete before 85% of the phase, however long the names.
@@ -198,13 +200,16 @@ export function evolutionFrame(o: {
     // doesn't show on the off-white stage: there it is a pale blue with a darker ring at its edge.
     const [cx, cy] = [columns / 2, baseline - to.height / 2]
     const r = 4 + now.f * Math.max(columns / 2, height * 2)
+    // From its first frame the ellipse is at least as big as the one through the sprite's corners (the box's
+    // half-sides times root 2), so no part of the silhouette is left outside the light.
+    const [rx, ry] = [Math.max(r, (to.width / 2) * Math.SQRT2 + 1), Math.max(r / 2, (to.height / 2) * Math.SQRT2 + 1)]
     const strength = 1 - now.f * 0.6
     const [light, ring] = o.style === 'white' ? [0xd4e4fc, 0x7890c0] : [0xffffff, 0xffffff]
     for (let y = 0; y < height; y++)
       for (let x = 0; x < columns; x++) {
-        const d = Math.sqrt(((x + 0.5 - cx) / r) ** 2 + ((y + 0.5 - cy) / (r / 2)) ** 2)
+        const d = Math.sqrt(((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2)
         if (d > 1) continue
-        const edge = d * r > r - 2
+        const edge = d * rx > rx - 2
         pixels[y * columns + x] = mix(pixels[y * columns + x] ?? 0, edge ? ring : light, strength)
       }
   } else paint(to)
@@ -212,9 +217,11 @@ export function evolutionFrame(o: {
   if (boxRows > 0) textBox(pixels, columns, height, boxRows)
 
   const roomForText = columns - 2 * TEXT_COLUMN
-  const evolving = cut(`What? ${o.fromName.toUpperCase()} is evolving!`, roomForText)
-  const evolved = cut(
-    `Congratulations! Your ${o.fromName.toUpperCase()} evolved into ${o.toName.toUpperCase()}!`,
+  const [a, b] = [o.fromName.toUpperCase(), o.toName.toUpperCase()]
+  const evolving = fitFirst([`What? ${a} is evolving!`, `${a} is evolving!`], roomForText)
+  // A narrow band drops words from the front, so the new form's name is the last thing to go.
+  const evolved = fitFirst(
+    [`Congratulations! Your ${a} evolved into ${b}!`, `${a} evolved into ${b}!`, `${a} → ${b}!`, `${a}→${b}!`],
     roomForText,
   )
   const text =

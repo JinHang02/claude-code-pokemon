@@ -220,6 +220,36 @@ test('tests that passed before a later command failed are not a failed test run'
   expect(xpFor('npm test && git commit -m x', true).happenings).toEqual(['tool-error'])
 })
 
+test('one call that passes a test and commits is both events: both XP, so ₽50 and ₽100', () => {
+  const both = { happenings: ['cheer'], xp: 15, streak: 0 }
+  expect(xpFor('npm test && git commit -m x')).toEqual(both)
+  expect(xpFor('git commit -m x && npm test')).toEqual(both)
+  expect(xpFor('cd api && pytest && git add . && git commit -m x')).toEqual(both)
+  // Two commits, or a lone test or commit, are one event each.
+  expect(xpFor('git commit -m a && git commit -m b').xp).toBe(10)
+  expect(xpFor('npm test').xp).toBe(5)
+  // A test that hides its result behind a pipe, passing, then a commit.
+  expect(classify('Bash', 'pytest | tail -3 && git commit -m x', false, 0, '5 passed in 0.1s').xp).toBe(15)
+  // A test pays only when it passed.
+  const [P, F] = ['Tests: 5 passed, 5 total', 'Tests: 1 failed, 4 passed']
+  expect(classify('Bash', 'npm test; git commit -m x', false, 0, F)).toEqual({
+    happenings: ['cheer'],
+    xp: 10,
+    streak: 0,
+  })
+  expect(classify('Bash', 'npm test; git commit -m x', false, 0, P).xp).toBe(15)
+  expect(classify('Bash', 'npm test && git commit -m x', false, 0, P).xp).toBe(15)
+  expect(classify('Bash', 'git commit -m x && npm test', false, 0, P).xp).toBe(15)
+  // A passing test then a failing commit: with `;` the test is paid, with `&&` nothing is (as before).
+  expect(classify('Bash', 'npm test; git commit -m x', true, 0, P).xp).toBe(5)
+  expect(classify('Bash', 'npm test && git commit -m x', true, 0, P).xp).toBe(0)
+  // A failed test and a failed commit earn nothing.
+  expect(classify('Bash', 'npm test; git commit -m x', true, 0, F).xp).toBe(0)
+  // A failed test earns nothing.
+  expect(classify('Bash', 'npm test && git commit -m x', true, 0, 'Tests: 5 passed, 5 total').xp).toBe(0)
+  expect(xpFor('npm test && git commit -m x', true).happenings).toEqual(['tool-error'])
+})
+
 test('a runner asked for its version, help or test list runs no tests', () => {
   for (const cmd of [
     'pytest --version',

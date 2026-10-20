@@ -28,7 +28,7 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - Every real evolution gets the screen: by level, stone, trade item or Linking Cord, friendship, time of day, Rare
   Candy. When Nincada evolves, its screen shows Ninjask, and Shedinja joins when it ends, in the toast.
 - The sprites are scaled down to fit the stage when they're taller, nearest-neighbour so the pixels stay sharp. A
-  narrow band cuts the message with "…".
+  narrow band shortens the message from the front, keeping the new form's name.
 
 ### Changed
 
@@ -89,6 +89,18 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   ask _"Did you mean Vulpix (Alola)?"_ now. `/pokemon vulpix` and `add vulpix` still catch a plain one, as before.
 - `/pokemon help` (or `--help`, `?`) answered _"No Pokémon called "help""_. It lists every sub-command now, and the
   command's one-line description names `remove` too.
+- On a narrow band the evolution screen's message shortens from the front ("CHARMANDER evolved into CHARMELEON!",
+  then "CHARMANDER → CHARMELEON!") instead of cutting the new form's name off with "…".
+- In the `white` style the burst of light now covers the whole dark silhouette; its head, tail and feet no longer
+  stick out.
+- A ball thrown at a visitor standing at the band's edge comes to rest inside the band, so the drop, wobbles and
+  break-free can be seen.
+- The "!" over the tallest party member is whole during its startled hop, not cut off at the top of the band.
+- The PokéMart works from 40 columns: Buy, Max and the Other tab can be clicked and the price shows whole. Names get a
+  gap before their price.
+- An open PokéMart follows ₽ earned in another window: Max and the colour of Buy are right at once.
+- A Lucky Egg gives exactly half again, rounded down (a test run's 5 XP is 7, a commit's 10 is 15).
+- `npm test && git commit` in one call earns both: 5 XP and ₽50 for the test, 10 XP and ₽100 for the commit.
 
 ### Known limitations
 

@@ -346,7 +346,7 @@ export const earnInto = (ledger: Ledger, party: Member[], amount: number, now: n
       party.map(m => [
         m.id,
         (Object.hasOwn(ledger.xp, m.id) ? (ledger.xp[m.id] ?? 0) : 0) +
-          (m.heldItem === 'lucky-egg' ? Math.round(amount * 1.5) : amount),
+          (m.heldItem === 'lucky-egg' ? Math.floor(amount * 1.5) : amount),
       ]),
     ),
   ),
