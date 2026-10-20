@@ -611,7 +611,8 @@ function wrapSegments(segments: string[], width: number): string[] {
 function fitRows(rows: string[][], columns: number): string[] {
   const wide = lineUp(rows)
   const room = columns - REPLY_INDENT
-  if (wide.every(line => widthOf(line) <= room)) return wide
+  // An unknown width (or not a positive number) keeps every row on one line.
+  if (!(columns > 0) || wide.every(line => widthOf(line) <= room)) return wide
   const withXp = lineUp(rows.map(r => r.slice(0, 4)))
   const isXpKept = withXp.every(line => widthOf(line) <= room)
   const heads = isXpKept ? withXp : lineUp(rows.map(r => r.slice(0, 3)))
@@ -650,7 +651,7 @@ export function formatBag(save: Save, cash: number): string {
     if (items.length) lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ×${save.bag?.[i.id]}`).join(' · ')}`)
   }
   const holding = (where: string) => (m: Member) =>
-    m.heldItem ? [`${displayName(m.species, m.form)}${where}: ${itemName(m.heldItem)}`] : []
+    m.heldItem ? [`${displayName(m.species, m.form)}${where} holds ${withArticle(itemName(m.heldItem))}`] : []
   const boxed = (save.box ?? []).flatMap(holding(' (box)'))
   const more = boxed.length - BAG_BOX_HOLDERS
   const held = [

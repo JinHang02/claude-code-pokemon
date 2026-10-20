@@ -1971,7 +1971,7 @@ test('holding: one item each, a new one sends the old back to the Bag; take puts
     'Pikachu is now holding a Soothe Bell. Its Lucky Egg went back to your Bag.',
   )
   expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1 })
-  expect(await cmd($, 'pokemon', 'bag')).toContain('  Held        Pikachu: Soothe Bell')
+  expect(await cmd($, 'pokemon', 'bag')).toContain('  Held        Pikachu holds a Soothe Bell')
   expect(await cmd($, 'pokemon', 'take pikachu')).toBe("Pikachu's Soothe Bell went back to your Bag.")
   expect(await cmd($, 'pokemon', 'take pikachu')).toBe("Pikachu isn't holding anything.")
   expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1, 'soothe-bell': 1 })
@@ -1992,9 +1992,9 @@ test('take reaches a PC box member holding an item; of two holders it asks which
   await cmd($, 'pokemon', 'party')
   expect(await cmd($, 'pokemon', 'bag')).toContain(
     [
-      '  Held        Pikachu: Lucky Egg',
-      '              Eevee (box): Soothe Bell',
-      '              Pikachu (box): Metal Coat',
+      '  Held        Pikachu holds a Lucky Egg',
+      '              Eevee (box) holds a Soothe Bell',
+      '              Pikachu (box) holds a Metal Coat',
     ].join('\n'),
   )
   expect(await cmd($, 'pokemon', 'take eevee')).toBe("Eevee's Soothe Bell went back to your Bag.")

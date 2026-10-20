@@ -461,7 +461,7 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
       '  Stones      Fire Stone ×2 · Thunder Stone ×1',
       '  Hold items  Metal Coat ×1',
       '  Other       Rare Candy ×3',
-      '  Held        Eevee: Soothe Bell',
+      '  Held        Eevee holds a Soothe Bell',
     ].join('\n'),
   )
   expect(formatBag(loadSave({}), 0)).toBe('Bag · ₽3,000\n  Empty. Buy items at the PokéMart: /pokemon mart')
@@ -471,7 +471,9 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
     box: [m({ id: 'b', species: 'pichu' }), m({ id: 'c', heldItem: 'soothe-bell' })],
   })
   expect(formatBag(boxed, 0)).toBe(
-    ['Bag · ₽3,000', '  Held        Eevee: Lucky Egg', '              Eevee (box): Soothe Bell'].join('\n'),
+    ['Bag · ₽3,000', '  Held        Eevee holds a Lucky Egg', '              Eevee (box) holds a Soothe Bell'].join(
+      '\n',
+    ),
   )
   // One holder a line: the party's, then ten of the PC box's and how many more.
   const many = loadSave({
@@ -480,8 +482,8 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
   })
   expect(formatBag(many, 0).split('\n')).toEqual([
     'Bag · ₽3,000',
-    '  Held        Eevee: Lucky Egg',
-    ...Array.from({ length: 10 }, () => '              Pichu (box): Everstone'),
+    '  Held        Eevee holds a Lucky Egg',
+    ...Array.from({ length: 10 }, () => '              Pichu (box) holds an Everstone'),
     '              … and 4 more in the PC box.',
   ])
 })
@@ -640,4 +642,16 @@ test('in a narrow terminal each row keeps its name and level on one line, the re
     '  1.  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
     "      together 3h · holds a King's Rock",
   ])
+})
+
+test('a width that is not a positive number keeps the wide layout; a Type: Null holder reads one way', () => {
+  const thunder = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as const
+  const save = {
+    ...emptySave(),
+    party: [{ ...pikachu, heldItem: 'kings-rock', next: [thunder], togetherMs: 3 * 3_600_000 }],
+  }
+  for (const columns of [Number.NaN, 0, -10])
+    expect([columns, formatParty(save, columns)]).toEqual([columns, formatParty(save)])
+  const nulls = { ...emptySave(), party: [{ ...pikachu, species: 'type-null', heldItem: 'kings-rock' }] }
+  expect(formatBag(nulls, 0)).toContain("Held        Type: Null holds a King's Rock")
 })

@@ -91,6 +91,24 @@ function findForm(forms: string[], rest: string[]): string | undefined {
 
 export type Lookup = { pick: Pick } | { guess: Pick } | { error: string }
 
+// The tokens of `typed` outside its words `from` to `to` (the species), as typed, so `unown 1.5` says "1.5", not
+// "15". Null when `typed` doesn't split into `words` along its tokens.
+function typedOutside(typed: string, words: string[], from: number, to: number): string | null {
+  const kept: string[] = []
+  let at = 0
+  for (const token of typed.trim().split(/\s+/).filter(Boolean)) {
+    const start = at
+    at += slug(token).split('-').filter(Boolean).length
+    if (at === start) continue
+    if (start >= from && at <= to) continue
+    if (start < to && at > from) return null
+    kept.push(token)
+  }
+  return at === words.length && words.join('-') === slug(typed).split('-').filter(Boolean).join('-')
+    ? kept.join(' ')
+    : null
+}
+
 const sameWords = (a: string[], b: string[]) => a.length === b.length && a.every(w => b.includes(w))
 
 // The species and form a query names, spelled right: a run of its words is exactly a species and the
@@ -129,8 +147,9 @@ function closestPick(list: Species[], words: string[], typed = words.join(' ')):
         const form = findForm(forms, rest)
         if (form) return pickOf(list, dex, form)
         const label = speciesName(found.name)
+        const asTyped = typedOutside(typed, words, at, at + len) ?? rest.join(' ')
         failure ??= forms.length
-          ? `${label} has no "${rest.join(' ')}" form. Try: ${forms.join(', ')}.`
+          ? `${label} has no "${asTyped}" form. Try: ${forms.join(', ')}.`
           : `${label} has no other forms.`
       }
   return failure ?? `No Pokémon called "${typed}".`

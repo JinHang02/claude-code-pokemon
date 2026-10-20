@@ -154,31 +154,45 @@ export function findMembers(
   return { error: none(plain ? `shiny ${displayName(plain.guess.species, plain.guess.form)}` : query.trim()) }
 }
 
-// The members of the PC box `query` names (`shiny` alone: every shiny one), by their places in it: a species named
-// plainly is every form of it there, a form only that form. Why none, or a suggestion naming `command`, when it names
-// none.
-export function inBox(s: Save, query: string, command: string): BoxPick | { error: string } {
+// The members of the PC box `query` names (`shiny` alone: every shiny one; `lv 5`: those at that level, by `levelOf`),
+// by their places in it: a species named plainly is every form of it there, a form only that form. Why none, or a
+// suggestion naming `command`, when it names none; words of symbols only name no Pokémon.
+export function inBox(
+  s: Save,
+  query: string,
+  command: string,
+  levelOf: (m: Member) => number,
+): BoxPick | { error: string } {
   const box = s.box ?? []
-  const words = wordsOf(query)
+  const { level: atLevel, rest } = readLevel(query)
+  const words = wordsOf(rest)
   const wantsShiny = words.includes('shiny')
   const named = words.filter(w => w !== 'shiny')
+  const lv = atLevel === undefined ? '' : `lv ${atLevel}`
+  if (!words.length && !lv) return { error: `No Pokémon called "${query.trim()}" in your PC box.` }
   const none = { error: `No ${query.trim()} in your PC box.` }
   const found = named.length && box.length ? lookup(namesOf(box), named) : null
   const isSpaced = found && 'guess' in found && isSpacedOut(found.guess, named)
   const pick = found && ('pick' in found ? found.pick : isSpaced && 'guess' in found ? found.guess : null)
   if (named.length && !pick)
     return found && 'guess' in found
-      ? { error: didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`) }
+      ? { error: didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}${lv ? `${lv} ` : ''}`) }
       : none
   const at = box.flatMap((m, i) =>
     (!pick || (m.species === pick.species && (pick.form === 'regular' || m.form === pick.form))) &&
-    (!wantsShiny || m.isShiny)
+    (!wantsShiny || m.isShiny) &&
+    (atLevel === undefined || levelOf(m) === atLevel)
       ? [i]
       : [],
   )
   if (!at.length) return none
-  const title = pick ? `${wantsShiny ? '✨ ' : ''}${displayName(pick.species, pick.form)}` : 'Shiny ones'
-  return { title, at, words: words.join(' ') }
+  const who = pick
+    ? `${wantsShiny ? '✨ ' : ''}${displayName(pick.species, pick.form)}`
+    : wantsShiny
+      ? 'Shiny ones'
+      : 'Pokémon'
+  const title = `${who}${atLevel === undefined ? '' : ` at Lv ${atLevel}`}`
+  return { title, at, words: [...(wantsShiny ? ['shiny'] : []), ...(lv ? [lv] : []), ...named].join(' ') }
 }
 
 // Whether an answer is the numbered list: a query whose number is past its end still names someone.
@@ -187,35 +201,48 @@ export const isList = (text: string) => text.startsWith('Which ')
 // The longest numbered list shown; any number still picks.
 export const LIST_MAX = 10
 
-// "Which Eevee?", a line per one (up to LIST_MAX, then how to narrow them down), and the hint to type:
+// "Which Eevee?", a line per one, and the hint to type:
 //   1. Eevee ♀ Lv 24 (party)
 //   2. ✨ Eevee ♂ Lv 3 (PC box)
 // Add the number: /pokemon release eevee 2
+// Past LIST_MAX, the rest are counted, with the ways to narrow them that still leave a list (`shiny`, a level two or
+// more share), so a hint typed back never acts on one the list didn't show. A lone shiny past the first ten gets its
+// own numbered line instead. The number in the hint is one on screen.
 export function formatChoices(choices: Spot[], query: string, command: string, levelOf: (m: Member) => number): string {
   const first = choices[0]?.member
   const isOneForm = choices.every(c => c.member.form === first?.form)
-  const shown = choices.slice(0, LIST_MAX)
-  const digits = String(shown.length).length
-  const lines = shown.map(({ place, member: m }, i) => {
+  const words = wordsOf(query)
+  const typed = words.join(' ')
+  const hint = (text: string) => `/pokemon ${command}${text}`
+  const shinies = choices.filter(c => c.member.isShiny)
+  const isShinyNarrowing = !words.includes('shiny') && shinies.length < choices.length
+  const lone = isShinyNarrowing && shinies.length === 1 ? choices.indexOf(shinies[0] as Spot) : -1
+  const at = choices.flatMap((_, i) => (i < LIST_MAX || i === lone ? [i] : []))
+  const digits = String((at[at.length - 1] ?? 0) + 1).length
+  const lines = at.map(i => {
+    const { place, member: m } = choices[i] as Spot
     const held = m.heldItem ? ` holding ${itemName(m.heldItem)}` : ''
     const where = place === 'party' ? 'party' : 'PC box'
     return `  ${`${i + 1}.`.padStart(digits + 1)} ${nameOf(m)} Lv ${levelOf(m)}${held} (${where})`
   })
-  const typed = wordsOf(query).join(' ')
-  const name = first ? displayName(first.species, isOneForm ? first.form : 'regular') : typed
-  const hint = (words: string) => `/pokemon ${command}${words}`
-  const more = choices.length - shown.length
+  const more = choices.length - at.length
   if (more) {
-    const words = wordsOf(query)
-    const isShinyMixed = choices.some(c => c.member.isShiny) && choices.some(c => !c.member.isShiny)
-    const next = choices[LIST_MAX]?.member
     const isLevelled = words.some(w => /^(lv|level)\d*$/.test(w))
-    const isLevelMixed = !isLevelled && choices.some(c => levelOf(c.member) !== levelOf(choices[0]?.member ?? c.member))
+    const sharing = (lv: number) => choices.filter(c => levelOf(c.member) === lv).length
+    // The level of the first one not shown that another shares, unless every one is at it.
+    const level = isLevelled
+      ? undefined
+      : choices
+          .filter((_, i) => !at.includes(i))
+          .map(c => levelOf(c.member))
+          .find(lv => sharing(lv) >= 2 && sharing(lv) < choices.length)
     const ways = [
-      ...(isShinyMixed && !words.includes('shiny') ? [hint(`shiny ${typed}`)] : []),
-      ...(isLevelMixed && next ? [hint(`${typed} lv ${levelOf(next)}`)] : []),
+      ...(isShinyNarrowing && shinies.length >= 2 ? [hint(`shiny ${typed}`)] : []),
+      ...(level === undefined ? [] : [hint(`${typed} lv ${level}`)]),
     ]
     lines.push(`  … and ${more} more.${ways.length ? ' Fewer:' : ''}`, ...ways.map(way => `    ${way}`))
   }
-  return [`Which ${name}?`, ...lines, `Add the number: ${hint(typed)} ${choices.length}`].join('\n')
+  const name = first ? displayName(first.species, isOneForm ? first.form : 'regular') : typed
+  const example = more ? LIST_MAX : choices.length
+  return [`Which ${name}?`, ...lines, `Add the number: ${hint(typed)} ${example}`].join('\n')
 }

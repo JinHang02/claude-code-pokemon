@@ -447,13 +447,84 @@ test('a long list shows the first ten, says how many more, and how to narrow the
       '  … and 15 more. Fewer:',
       '    /pokemon release shiny eevee',
       '    /pokemon release eevee lv 1',
-      'Add the number: /pokemon release eevee 25',
+      'Add the number: /pokemon release eevee 10',
     ].join('\n'),
   )
   expect(ids(findMembers(s, 'eevee 25', both, 'release ', levelOf))).toBe(box[24]?.id)
   // Nothing to narrow by: just how many more.
   const same = { ...emptySave(), box: Array.from({ length: 12 }, () => member('eevee')) }
   expect(ids(findMembers(same, 'eevee 99', both, 'release ', levelOf))).toMatch(
-    /\n {2}… and 2 more\.\nAdd the number: \/pokemon release eevee 12$/,
+    /\n {2}… and 2 more\.\nAdd the number: \/pokemon release eevee 10$/,
   )
+})
+
+test('every hint a long list prints, typed back, acts on the very one its line shows or lists again', () => {
+  const m = member
+  const at = (lv: number, extra: Partial<Member> = {}) => m('eevee', { xp: 4 * (lv - 1) ** 2, ...extra })
+  const saves: Save[] = [
+    // Lv 5 ×7, then Lv 8 to 14, one of each; a shiny lead.
+    {
+      ...emptySave(),
+      party: [at(24, { isShiny: true })],
+      box: [...Array.from({ length: 7 }, () => at(5)), ...Array.from({ length: 7 }, (_, i) => at(8 + i))],
+    },
+    // One shiny, past the first ten.
+    { ...emptySave(), box: [...Array.from({ length: 13 }, () => at(5)), at(6, { isShiny: true })] },
+    // Two shinies past the first ten, each at a level of its own.
+    {
+      ...emptySave(),
+      box: [...Array.from({ length: 12 }, () => at(5)), at(6, { isShiny: true }), at(7, { isShiny: true })],
+    },
+    // Every level different: no level narrows.
+    { ...emptySave(), box: Array.from({ length: 14 }, (_, i) => at(i + 1)) },
+  ]
+  let checked = 0
+  for (const s of saves)
+    for (const query of ['eevee', 'eevee 99', 'shiny eevee 99', 'eevee lv 5 99', 'eevee -1']) {
+      const found = findMembers(s, query, both, 'release ', levelOf, NAMES)
+      const text = 'choices' in found ? formatChoices(found.choices, query, 'release ', levelOf) : ids(found)
+      if (typeof text !== 'string' || !isList(text)) continue
+      const lines = text.split('\n')
+      const typed = /^Add the number: \/pokemon release (.*) (\d+)$/.exec(lines[lines.length - 1] ?? '')
+      expect([query, typed !== null]).toEqual([query, true])
+      const listed = findMembers(s, typed?.[1] ?? '', both, 'release ', levelOf, NAMES)
+      if (!('choices' in listed)) continue
+      const shown = lines.flatMap(l => {
+        const n = /^ +(\d+)\. /.exec(l)?.[1]
+        return n ? [Number(n)] : []
+      })
+      // The number in the hint is on screen, and each numbered line picks the one it shows.
+      expect([query, shown.includes(Number(typed?.[2]))]).toEqual([query, true])
+      for (const n of shown) {
+        checked++
+        expect([query, n, ids(findMembers(s, `${typed?.[1]} ${n}`, both, 'release ', levelOf, NAMES))]).toEqual([
+          query,
+          n,
+          listed.choices[n - 1]?.member.id,
+        ])
+      }
+      // A way to narrow them, typed back, lists again: never one picked at once.
+      for (const way of lines.flatMap(l => /^ {4}\/pokemon release (.*)$/.exec(l)?.[1] ?? [])) {
+        checked++
+        const again = findMembers(s, way, both, 'release ', levelOf, NAMES)
+        expect([query, way, 'choices' in again && again.choices.length >= 2]).toEqual([query, way, true])
+      }
+    }
+  expect(checked).toBeGreaterThan(60)
+})
+
+test('a narrowing that would leave one is never offered: a lone shiny gets its own line', () => {
+  const at = (lv: number, extra: Partial<Member> = {}) => member('eevee', { xp: 4 * (lv - 1) ** 2, ...extra })
+  const box = [...Array.from({ length: 13 }, () => at(5)), at(6, { isShiny: true, id: 'lone' })]
+  const found = findMembers({ ...emptySave(), box }, 'eevee', both, 'release ', levelOf)
+  const text = 'choices' in found ? formatChoices(found.choices, 'eevee', 'release ', levelOf) : ''
+  // No `shiny` hint (it would release that one at once); `lv 5` still lists thirteen.
+  expect(text.split('\n').slice(-5)).toEqual([
+    '  10. Eevee Lv 5 (PC box)',
+    '  14. ✨ Eevee Lv 6 (PC box)',
+    '  … and 3 more. Fewer:',
+    '    /pokemon release eevee lv 5',
+    'Add the number: /pokemon release eevee 10',
+  ])
+  expect(ids(findMembers({ ...emptySave(), box }, 'eevee 14', both, 'release ', levelOf))).toBe('lone')
 })

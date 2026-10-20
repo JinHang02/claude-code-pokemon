@@ -144,6 +144,9 @@ const viewOf = (s: Save) => withTogether(withExtra(s, extra), times)
 const view = () => viewOf(save)
 // How wide the terminal is for the command running now, so a party or a box fits it; unknown in a test.
 let replyColumns = Infinity
+// A terminal width as the engine reports it; anything but a positive number is unknown (no wrapping).
+const columnsOf = (columns: number | undefined) =>
+  columns !== undefined && Number.isFinite(columns) && columns > 0 ? columns : Infinity
 // The ledgers' XP and ₽ not yet folded into the save, counted against the save's own marks.
 function countLedgers(ledgers: Record<string, Ledger>) {
   extra = extraXp(ledgers, save.folded, save.foldedXp)
@@ -1911,8 +1914,8 @@ async function play($: EngineInterface, args: string): Promise<string> {
   return `Playing ${name}.`
 }
 
-// `/pokemon box [name] [page]`: a page of the PC box, or of the ones a name picks out of it. A number after a name
-// is its page, unless the name without it names none there and with it some (`porygon 2`: Porygon2).
+// `/pokemon box [name] [page]`: a page of the PC box, or of the ones a name picks out of it. A last number is first
+// read as part of the name (`zygarde 10`, `porygon 2`: Porygon2) when that names some there, else as the page.
 async function showBox($: EngineInterface, args: string): Promise<string> {
   await sync($)
   const s = view()
@@ -1921,9 +1924,11 @@ async function showBox($: EngineInterface, args: string): Promise<string> {
   const last = tokens[tokens.length - 1] ?? ''
   const isNumber = /\d/.test(last) && /^[-+]?[\d.,]+$/.test(last)
   const name = (isNumber ? tokens.slice(0, -1) : tokens).join(' ')
-  const picked = name ? inBox(s, name, 'box ') : null
-  const whole = isNumber && picked && 'error' in picked ? inBox(s, tokens.join(' '), 'box ') : null
-  const [found, typed] = whole && !('error' in whole) ? [whole, ''] : [picked, isNumber ? last : '']
+  const whole = isNumber && name ? inBox(s, tokens.join(' '), 'box ', levelNow) : null
+  const picked = name ? inBox(s, name, 'box ', levelNow) : null
+  // The number of a level (`eevee lv 30`) is never a page.
+  const isLevel = readLevel(tokens.join(' ')).level !== undefined && readLevel(name).level === undefined
+  const [found, typed] = whole && (isLevel || !('error' in whole)) ? [whole, ''] : [picked, isNumber ? last : '']
   if (found && 'error' in found) return found.error
   const pages = boxPages(found ? found.at.length : s.box.length)
   const page = typed ? (/^\d+$/.test(typed) ? Number(typed) : 0) : 1
@@ -2157,7 +2162,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'pokedex' }, async ($, e) => {
-    replyColumns = e.presentation?.columns ?? Infinity
+    replyColumns = columnsOf(e.presentation?.columns)
     try {
       await ready
       await settled($)
@@ -2176,7 +2181,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'pokemon' }, async ($, e) => {
     feel('activity')
-    replyColumns = e.presentation?.columns ?? Infinity
+    replyColumns = columnsOf(e.presentation?.columns)
     try {
       await ready
       await settled($)
