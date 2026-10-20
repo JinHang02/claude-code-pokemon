@@ -74,6 +74,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   those, each with its place in the box: `/pokemon box eevee`, `/pokemon box shiny`, `/pokemon box eevee lv 5`.
 - `/pokemon bag` listed every holder, the PC box's too, on one unbroken line. It's one a line now: the party's, then
   ten of the box's and how many more.
+- Claude Code renders a reply as Markdown, so the `/pokemon box` rows (`1.`, `2.` …) and a _"Which Eevee?"_ list
+  became a numbered list: from `10.` on, the rows sat one column right of the first nine, and the _"Next page"_ or
+  _"Add the number"_ line was indented under the last row. They're labelled `#1`, `#10` now and line up; the number
+  you add is the same: `/pokemon release eevee 2`.
 - In a narrow terminal, `/pokemon party`, `/pokemon box` and `/pokedex` broke their rows mid-column, leaving
   _"· final form"_ alone on a line. Where a row doesn't fit, its name and level now share a line, and the rest wraps
   beneath the name, without the XP to the next level when even that doesn't fit.

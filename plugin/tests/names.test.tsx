@@ -79,7 +79,7 @@ test(
     })
     const list = await cmd($, 'pokemon', 'release eevee 3 shiny')
     expect(list).toBe(
-      'Which Eevee?\n  1. ✨ Eevee Lv 1 (party)\n  2. ✨ Eevee Lv 1 (PC box)\nAdd the number: /pokemon release shiny eevee 2',
+      'Which Eevee?\n  #1 ✨ Eevee Lv 1 (party)\n  #2 ✨ Eevee Lv 1 (PC box)\nAdd the number: /pokemon release shiny eevee 2',
     )
     expect(await cmd($, 'pokemon', hintOf(list, 2))).toBe('Bye bye, ✨ Eevee (Lv 1, PC box)! It went back to the wild.')
     expect(where(w.saveNow())).toEqual([['p:-', 's1:-', 'p1:-'], []])
@@ -98,7 +98,7 @@ test('a number below 1 with `shiny` after it lists them and releases no one', KI
   for (const query of ['eevee -1 shiny', 'eevee 0 shiny', 'shiny eevee -1', 'eevee shiny -2'])
     expect([query, await cmd($, 'pokemon', `release ${query}`)]).toEqual([
       query,
-      'Which Eevee?\n  1. ✨ Eevee Lv 1 (party)\n  2. ✨ Eevee Lv 1 (party)\nAdd the number: /pokemon release shiny eevee 2',
+      'Which Eevee?\n  #1 ✨ Eevee Lv 1 (party)\n  #2 ✨ Eevee Lv 1 (party)\nAdd the number: /pokemon release shiny eevee 2',
     ])
   expect(where(w.saveNow())).toEqual([['p:-', 's1:-', 's2:-'], []])
 })
@@ -121,7 +121,7 @@ test(
     ]
     const list = await cmd($, 'pokemon', 'take eevee')
     expect(list).toBe(
-      'Which Eevee?\n  1. Eevee Lv 1 holding Everstone (party)\n  2. Eevee Lv 1 holding Soothe Bell (PC box)\n  3. Eevee Lv 1 holding Lucky Egg (PC box)\nAdd the number: /pokemon take eevee 3',
+      'Which Eevee?\n  #1 Eevee Lv 1 holding Everstone (party)\n  #2 Eevee Lv 1 holding Soothe Bell (PC box)\n  #3 Eevee Lv 1 holding Lucky Egg (PC box)\nAdd the number: /pokemon take eevee 3',
     )
     expect(await cmd($, 'pokemon', 'take eevee 4')).toBe(list)
     expect(await cmd($, 'pokemon', hintOf(list, 2))).toBe("Eevee's Soothe Bell went back to your Bag.")
@@ -149,13 +149,13 @@ test('give and take with a number past the end answer with the list, even of one
     bag: { 'water-stone': 1 },
   })
   expect(await cmd($, 'pokemon', 'give water stone eevee 2')).toBe(
-    'Which Eevee?\n  1. Eevee Lv 1 holding Lucky Egg (party)\nAdd the number: /pokemon give water-stone eevee 1',
+    'Which Eevee?\n  #1 Eevee Lv 1 holding Lucky Egg (party)\nAdd the number: /pokemon give water-stone eevee 1',
   )
   expect(await cmd($, 'pokemon', 'take eevee 3')).toBe(
-    'Which Eevee?\n  1. Eevee Lv 1 holding Lucky Egg (party)\n  2. Eevee Lv 1 (PC box)\nAdd the number: /pokemon take eevee 2',
+    'Which Eevee?\n  #1 Eevee Lv 1 holding Lucky Egg (party)\n  #2 Eevee Lv 1 (PC box)\nAdd the number: /pokemon take eevee 2',
   )
   expect(await cmd($, 'pokemon', 'deposit eevee 2')).toBe(
-    'Which Eevee?\n  1. Eevee Lv 1 holding Lucky Egg (party)\nAdd the number: /pokemon deposit eevee 1',
+    'Which Eevee?\n  #1 Eevee Lv 1 holding Lucky Egg (party)\nAdd the number: /pokemon deposit eevee 1',
   )
 })
 
@@ -177,7 +177,7 @@ test(
     )
     const list = await cmd($, 'pokemon', 'release zygarde 3')
     expect(list).toBe(
-      'Which Zygarde?\n  1. Zygarde Lv 1 (PC box)\n  2. Zygarde Lv 1 (PC box)\nAdd the number: /pokemon release zygarde 2',
+      'Which Zygarde?\n  #1 Zygarde Lv 1 (PC box)\n  #2 Zygarde Lv 1 (PC box)\nAdd the number: /pokemon release zygarde 2',
     )
     expect(await cmd($, 'pokemon', 'release zygarde 10')).toMatch(/^No zygarde 10 in your party or PC box\./)
     expect((await cmd($, 'pokemon', 'zygarde 10')).replace(/^✨ /, '')).toBe(
@@ -391,11 +391,11 @@ test(
     expect(await cmd($, 'pokemon', 'release eevee lv 3')).toBe(
       [
         'Which Eevee?',
-        '  1. Eevee Lv 3 (PC box)',
-        '  2. Eevee Lv 3 (PC box)',
-        '  3. Eevee Lv 3 (PC box)',
-        '  4. Eevee Lv 3 (PC box)',
-        '  5. ✨ Eevee Lv 3 (PC box)',
+        '  #1 Eevee Lv 3 (PC box)',
+        '  #2 Eevee Lv 3 (PC box)',
+        '  #3 Eevee Lv 3 (PC box)',
+        '  #4 Eevee Lv 3 (PC box)',
+        '  #5 ✨ Eevee Lv 3 (PC box)',
         'Add the number: /pokemon release eevee lv 3 5',
       ].join('\n'),
     )
@@ -433,7 +433,7 @@ test(
       isOnline: true,
       list,
     })
-    const rows = (text: string) => text.split('\n').filter(l => /^ {2}\d+\. /.test(l))
+    const rows = (text: string) => text.split('\n').filter(l => /^ {2}#\d+ /.test(l))
     const numbers = (text: string) => rows(text).map(l => Number(/\d+/.exec(l)?.[0]))
     const first = await cmd($, 'pokemon', 'box')
     expect(first.split('\n')[0]).toBe('Your PC box (76 / 960) · page 1 of 3:')
@@ -442,7 +442,7 @@ test(
     const last = await cmd($, 'pokemon', 'box 3')
     expect(last.split('\n')[0]).toBe('Your PC box (76 / 960) · page 3 of 3:')
     expect(numbers(last)).toEqual(Array.from({ length: 16 }, (_, i) => i + 61))
-    expect(last.split('\n').at(-1)).toMatch(/^ {2}76\. /)
+    expect(last.split('\n').at(-1)).toMatch(/^ {2}#76 /)
     for (const page of ['4', '0', '-1', '1.5', '+2'])
       expect([page, await cmd($, 'pokemon', `box ${page}`)]).toEqual([
         page,
@@ -452,7 +452,7 @@ test(
     const eevees = await cmd($, 'pokemon', 'box eevee')
     expect(eevees.split('\n')[0]).toBe('Eevee in your PC box (25 of 76):')
     expect(numbers(eevees)).toEqual(Array.from({ length: 25 }, (_, i) => 3 * i + 2))
-    expect(eevees.split('\n').at(-1)).toMatch(/^ {2}74\. /)
+    expect(eevees.split('\n').at(-1)).toMatch(/^ {2}#74 /)
     const shiny = await cmd($, 'pokemon', 'box shiny')
     expect(shiny.split('\n')[0]).toBe('Shiny ones in your PC box (2 of 76):')
     expect(numbers(shiny)).toEqual([5, 71])
@@ -583,7 +583,7 @@ test(
       list,
     })
     const numbers = (text: string) =>
-      text.split('\n').flatMap(l => (/^ {2}(\d+)\. /.exec(l)?.[1] ? [Number(/\d+/.exec(l)?.[0])] : []))
+      text.split('\n').flatMap(l => (/^ {2}#(\d+) /.exec(l)?.[1] ? [Number(/\d+/.exec(l)?.[0])] : []))
     expect((await cmd($, 'pokemon', 'box zygarde 10')).split('\n')[0]).toBe('Zygarde (10) in your PC box (1 of 11):')
     expect(numbers(await cmd($, 'pokemon', 'box porygon 2'))).toEqual([3])
     expect(numbers(await cmd($, 'pokemon', 'box porygon'))).toEqual([2])

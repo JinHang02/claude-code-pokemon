@@ -48,7 +48,7 @@ test('a name that fits several lists them, party first; a number picks one', () 
     spot: { place: 'party', at: 1, member: girl },
   })
   const out = findMembers(s, 'eevee 3', both, 'release ', levelOf)
-  expect('error' in out && out.error).toContain('1. Eevee ♀ Lv 24 (party)\n  2. ✨ Eevee ♂ Lv 3 (PC box)')
+  expect('error' in out && out.error).toContain('#1 Eevee ♀ Lv 24 (party)\n  #2 ✨ Eevee ♂ Lv 3 (PC box)')
   expect(findMembers(s, 'pikachu', both, 'release ', levelOf)).toEqual({
     spot: { place: 'party', at: 0, member: s.party[0] },
   })
@@ -113,11 +113,11 @@ test('the numbered list: gender, shiny, level, what it holds and where it is', (
     { place: 'box', at: 0, member: boy },
   ]
   expect(formatChoices(choices, 'eevee', 'release ', levelOf)).toBe(
-    'Which Eevee?\n  1. Eevee ♀ Lv 24 (party)\n  2. ✨ Eevee ♂ Lv 3 (PC box)\nAdd the number: /pokemon release eevee 2',
+    'Which Eevee?\n  #1 Eevee ♀ Lv 24 (party)\n  #2 ✨ Eevee ♂ Lv 3 (PC box)\nAdd the number: /pokemon release eevee 2',
   )
   const held = [{ ...choices[0], member: { ...girl, heldItem: 'everstone' } } as Spot, choices[1] as Spot]
   expect(formatChoices(held, 'eevee', 'give water-stone ', levelOf)).toBe(
-    'Which Eevee?\n  1. Eevee ♀ Lv 24 holding Everstone (party)\n  2. ✨ Eevee ♂ Lv 3 (PC box)\nAdd the number: /pokemon give water-stone eevee 2',
+    'Which Eevee?\n  #1 Eevee ♀ Lv 24 holding Everstone (party)\n  #2 ✨ Eevee ♂ Lv 3 (PC box)\nAdd the number: /pokemon give water-stone eevee 2',
   )
 })
 
@@ -146,7 +146,7 @@ test('a number that is part of a name stays in the name; a suggestion keeps a nu
   )
   expect(ids(findMembers(lone, 'porygon 2', ['box'], 'add ', levelOf, NAMES))).toBe('No porygon 2 in your PC box.')
   expect(ids(findMembers(lone, 'porygon 3', owned, '', levelOf, NAMES))).toBe(
-    'Which Porygon?\n  1. Porygon Lv 1 (PC box)\nAdd the number: /pokemon porygon 1',
+    'Which Porygon?\n  #1 Porygon Lv 1 (PC box)\nAdd the number: /pokemon porygon 1',
   )
   expect(ids(findMembers(lone, 'porygon 1', owned, '', levelOf, NAMES))).toBe('lone')
   const zygarde = { ...emptySave(), party: [member('zygarde', { id: 'plain' })] }
@@ -170,7 +170,7 @@ test('a number below 1 picks no one: it answers with the list', () => {
   for (const query of ['eevee -1', 'eevee 0', 'eevee -2']) {
     const found = findMembers(two, query, ['party'], 'remove ', levelOf)
     expect('error' in found && found.error).toBe(
-      'Which Eevee?\n  1. Eevee Lv 1 (party)\n  2. Eevee Lv 1 (party)\nAdd the number: /pokemon remove eevee 2',
+      'Which Eevee?\n  #1 Eevee Lv 1 (party)\n  #2 Eevee Lv 1 (party)\nAdd the number: /pokemon remove eevee 2',
     )
   }
 })
@@ -179,7 +179,7 @@ test('a list of several forms names the species, and each line its form', () => 
   const unowns = { ...emptySave(), party: [member('unown', { form: 'b' }), member('unown', { form: 'a' })] }
   const found = findMembers(unowns, 'unown', ['party'], 'remove ', levelOf)
   expect('choices' in found && formatChoices(found.choices, 'unown', 'remove ', levelOf)).toBe(
-    'Which Unown?\n  1. Unown (B) Lv 1 (party)\n  2. Unown (A) Lv 1 (party)\nAdd the number: /pokemon remove unown 2',
+    'Which Unown?\n  #1 Unown (B) Lv 1 (party)\n  #2 Unown (A) Lv 1 (party)\nAdd the number: /pokemon remove unown 2',
   )
 })
 
@@ -263,7 +263,7 @@ test('`shiny` anywhere, a number before or after it: the list is of shiny ones a
   for (const query of ['eevee 3 shiny', 'shiny eevee 3', 'eevee shiny 3'])
     expect([query, ids(findMembers(s, query, both, 'release ', levelOf))]).toEqual([
       query,
-      'Which Eevee?\n  1. ✨ Eevee Lv 1 (party)\n  2. ✨ Eevee Lv 1 (PC box)\nAdd the number: /pokemon release shiny eevee 2',
+      'Which Eevee?\n  #1 ✨ Eevee Lv 1 (party)\n  #2 ✨ Eevee Lv 1 (PC box)\nAdd the number: /pokemon release shiny eevee 2',
     ])
   for (const query of ['eevee 2 shiny', 'shiny eevee 2', 'eevee shiny 2'])
     expect([query, ids(findMembers(s, query, both, 'release ', levelOf))]).toEqual([query, 's2'])
@@ -295,7 +295,7 @@ test('a suggestion is only of someone it then finds: another form only in the PC
 test('a number past the end of one answers with the list of one', () => {
   const s = { ...emptySave(), party: [member('pikachu'), member('eevee')], box: [member('eevee')] }
   expect(ids(findMembers(s, 'eevee 2', ['party'], 'give water-stone ', levelOf, NAMES))).toBe(
-    'Which Eevee?\n  1. Eevee Lv 1 (party)\nAdd the number: /pokemon give water-stone eevee 1',
+    'Which Eevee?\n  #1 Eevee Lv 1 (party)\nAdd the number: /pokemon give water-stone eevee 1',
   )
 })
 
@@ -452,7 +452,7 @@ test('a long list shows the first ten, says how many more, and how to narrow the
   expect(text).toBe(
     [
       'Which Eevee?',
-      ...box.slice(0, 10).map((_, i) => `  ${`${i + 1}.`.padStart(3)} Eevee Lv ${(i % 5) + 1} (PC box)`),
+      ...box.slice(0, 10).map((_, i) => `  ${`#${i + 1}`.padStart(3)} Eevee Lv ${(i % 5) + 1} (PC box)`),
       '  … and 15 more. Fewer:',
       '    /pokemon release shiny eevee',
       '    /pokemon release eevee lv 1',
@@ -502,7 +502,7 @@ test(
         const listed = findMembers(s, typed?.[1] ?? '', both, 'release ', levelOf, NAMES)
         if (!('choices' in listed)) continue
         const shown = lines.flatMap(l => {
-          const n = /^ +(\d+)\. /.exec(l)?.[1]
+          const n = /^ +#(\d+) /.exec(l)?.[1]
           return n ? [Number(n)] : []
         })
         // The number in the hint is on screen, and each numbered line picks the one it shows.
@@ -526,6 +526,16 @@ test(
   },
 )
 
+test('a long "Which …?" list is labelled #1 … #10, which Claude Code doesn\'t render as a Markdown list', () => {
+  const box = Array.from({ length: 14 }, (_, i) => member('eevee', { xp: 4 * i * i }))
+  const found = findMembers({ ...emptySave(), box }, 'eevee', both, 'release ', levelOf)
+  const lines = ('choices' in found ? formatChoices(found.choices, 'eevee', 'release ', levelOf) : '').split('\n')
+  expect(lines.filter(l => /^ {0,3}\d{1,9}[.)]( |\t|$)/.test(l))).toEqual([])
+  expect(lines.slice(1, 3)).toEqual(['   #1 Eevee Lv 1 (PC box)', '   #2 Eevee Lv 2 (PC box)'])
+  expect(lines[10]).toBe('  #10 Eevee Lv 10 (PC box)')
+  expect(lines.at(-1)).toBe('Add the number: /pokemon release eevee 10')
+})
+
 test('a narrowing that would leave one is never offered: a lone shiny gets its own line', () => {
   const at = (lv: number, extra: Partial<Member> = {}) => member('eevee', { xp: 4 * (lv - 1) ** 2, ...extra })
   const box = [...Array.from({ length: 13 }, () => at(5)), at(6, { isShiny: true, id: 'lone' })]
@@ -533,8 +543,8 @@ test('a narrowing that would leave one is never offered: a lone shiny gets its o
   const text = 'choices' in found ? formatChoices(found.choices, 'eevee', 'release ', levelOf) : ''
   // No `shiny` hint (it would release that one at once); `lv 5` still lists thirteen.
   expect(text.split('\n').slice(-5)).toEqual([
-    '  10. Eevee Lv 5 (PC box)',
-    '  14. ✨ Eevee Lv 6 (PC box)',
+    '  #10 Eevee Lv 5 (PC box)',
+    '  #14 ✨ Eevee Lv 6 (PC box)',
     '  … and 3 more. Fewer:',
     '    /pokemon release eevee lv 5',
     'Add the number: /pokemon release eevee 10',

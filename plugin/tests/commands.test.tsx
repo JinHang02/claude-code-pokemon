@@ -1358,7 +1358,7 @@ test(
       party: [member('pikachu', { xp: 100 }), member('charmander')],
       box: [member('eevee', { xp: 40, isCaught: true })],
     })
-    expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1 \/ 960\):\n {2}1\. {2}Eevee ◓ {2}Lv 4 /)
+    expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1 \/ 960\):\n {2}#1 {2}Eevee ◓ {2}Lv 4 /)
     expect(await cmd($, 'pokemon', 'eevee')).toBe(
       'Eevee (Lv 4) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
     )
@@ -1449,7 +1449,7 @@ test(
       box: [member('eevee', { id: 'boxed' }), member('raichu', { id: 'boxed-raichu' })],
     })
     expect(await cmd($, 'pokemon', 'eevee')).toMatch(
-      /^Which Eevee\?\n {2}1\. Eevee.* Lv 1 \(party\)\n {2}2\. Eevee.* Lv 1 \(PC box\)\nAdd the number: \/pokemon eevee 2$/,
+      /^Which Eevee\?\n {2}#1 Eevee.* Lv 1 \(party\)\n {2}#2 Eevee.* Lv 1 \(PC box\)\nAdd the number: \/pokemon eevee 2$/,
     )
     expect(await cmd($, 'pokemon', 'eevee 1')).toBe('Eevee leads the party again (Lv 1).')
     expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
@@ -1463,7 +1463,7 @@ test('/pokemon add <name> with that Pokémon in the party adds a twin', KIT, asy
   const party = w.saveNow().party
   expect(party.map(m => m.species)).toEqual(['eevee', 'eevee'])
   expect(party[1]?.id).not.toBe('e1')
-  expect(await cmd($, 'pokemon', 'eevee')).toContain('Which Eevee?\n  1. Eevee')
+  expect(await cmd($, 'pokemon', 'eevee')).toContain('Which Eevee?\n  #1 Eevee')
   expect(w.saveNow().party.map(m => m.id)).toEqual(party.map(m => m.id))
 })
 
@@ -1477,7 +1477,7 @@ test('a name that fits two members asks which and changes nothing; the number pi
   const before = JSON.stringify(w.saveNow())
   const asked = await cmd($, 'pokemon', 'give water stone eevee')
   expect(asked).toMatch(
-    /^Which Eevee\?\n {2}1\. Eevee.* Lv 1 \(party\)\n {2}2\. .*\n {2}3\. .*\(party\)\nAdd the number: /,
+    /^Which Eevee\?\n {2}#1 Eevee.* Lv 1 \(party\)\n {2}#2 .*\n {2}#3 .*\(party\)\nAdd the number: /,
   )
   expect(asked).toMatch(/\/pokemon give water-stone eevee 3$/)
   expect(JSON.stringify(w.saveNow())).toBe(before)
@@ -1504,7 +1504,7 @@ test('everstone, take, deposit, a lead and add each act on the one the number pi
   expect(held()).toEqual(['', '', 'everstone'])
   expect(await cmd($, 'pokemon', 'everstone eevee 1')).toBe("Eevee holds an everstone: it won't evolve.")
   expect(await cmd($, 'pokemon', 'take eevee')).toMatch(
-    /1\. Eevee.* Lv 1 holding Everstone \(party\)\n {2}2\. Eevee.* Lv 1 holding Everstone \(party\)\nAdd /,
+    /#1 Eevee.* Lv 1 holding Everstone \(party\)\n {2}#2 Eevee.* Lv 1 holding Everstone \(party\)\nAdd /,
   )
   expect(await cmd($, 'pokemon', 'take eevee 2')).toBe('Eevee dropped its everstone and can evolve again.')
   expect(held()).toEqual(['', 'everstone', ''])
@@ -1513,7 +1513,7 @@ test('everstone, take, deposit, a lead and add each act on the one the number pi
   expect(ids()).toEqual([['p', 'e1'], ['e2']])
   // Party first, then the PC box.
   expect(await cmd($, 'pokemon', 'eevee')).toMatch(
-    /1\. Eevee.* holding Everstone \(party\)\n {2}2\. Eevee.* Lv 1 \(PC box\)/,
+    /#1 Eevee.* holding Everstone \(party\)\n {2}#2 Eevee.* Lv 1 \(PC box\)/,
   )
   expect(await cmd($, 'pokemon', 'eevee 2')).toBe(
     'Eevee (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
@@ -2134,7 +2134,7 @@ test(
     expect(await cmd($, 'pokemon', 'take eevee')).toBe("Eevee's Soothe Bell went back to your Bag.")
     expect(w.saveNow().box?.map(m => m.heldItem)).toEqual([undefined, undefined, 'metal-coat', undefined])
     expect(await cmd($, 'pokemon', 'take pikachu')).toBe(
-      'Which Pikachu?\n  1. Pikachu Lv 1 holding Lucky Egg (party)\n  2. Pikachu Lv 1 holding Metal Coat (PC box)\nAdd the number: /pokemon take pikachu 2',
+      'Which Pikachu?\n  #1 Pikachu Lv 1 holding Lucky Egg (party)\n  #2 Pikachu Lv 1 holding Metal Coat (PC box)\nAdd the number: /pokemon take pikachu 2',
     )
     expect(await cmd($, 'pokemon', 'take pikachu 1')).toBe("Pikachu's Lucky Egg went back to your Bag.")
     expect(w.saveNow().box?.[2]?.heldItem).toBe('metal-coat')
@@ -3034,7 +3034,7 @@ test('twins: release asks which one; the number releases that one', KIT, async (
     box: [member('eevee', { id: 'e2', gender: 'male' })],
   })
   expect(await cmd($, 'pokemon', 'release eevee')).toBe(
-    'Which Eevee?\n  1. Eevee Lv 1 (party)\n  2. Eevee ♂ Lv 1 (PC box)\nAdd the number: /pokemon release eevee 2',
+    'Which Eevee?\n  #1 Eevee Lv 1 (party)\n  #2 Eevee ♂ Lv 1 (PC box)\nAdd the number: /pokemon release eevee 2',
   )
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['e2'])
   expect(await cmd($, 'pokemon', 'release eevee 2')).toBe('Bye bye, Eevee ♂ (Lv 1, PC box)! It went back to the wild.')

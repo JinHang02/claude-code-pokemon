@@ -626,7 +626,8 @@ function fitRows(rows: string[][], columns: number): string[] {
   ])
 }
 
-// One row per member, every column lined up, for a terminal `columns` wide.
+// One row per member, every column lined up, for a terminal `columns` wide. `2.` stays: after the Lead row Markdown
+// starts no numbered list (only a `1.` can break into a paragraph).
 export function formatParty(save: Save, columns = Infinity): string {
   if (!save.party.length) return 'Your party is empty. /pokemon <name> picks a lead.'
   return [
@@ -674,7 +675,7 @@ export type BoxPick = { title: string; at: number[]; words: string }
 export const boxPages = (count: number) => Math.max(1, Math.ceil(count / BOX_PAGE))
 
 // One page of the PC box (from 1), or of `picked`, for a terminal `columns` wide; each row numbered by its place in
-// the box, then where the next page is.
+// the box (`#1`: Claude Code would render `1.` as a Markdown list, see members.ts), then where the next page is.
 export function formatBox(save: Save, page = 1, picked?: BoxPick, columns = Infinity): string {
   const box = save.box ?? []
   if (!box.length) return 'Your PC box is empty.'
@@ -685,7 +686,7 @@ export function formatBox(save: Save, page = 1, picked?: BoxPick, columns = Infi
     : `Your PC box (${box.length} / ${MAX_BOX})`
   const rows = at
     .slice((page - 1) * BOX_PAGE, page * BOX_PAGE)
-    .flatMap(i => (box[i] ? [[`${i + 1}.`, ...memberColumns(box[i])]] : []))
+    .flatMap(i => (box[i] ? [[`#${i + 1}`, ...memberColumns(box[i])]] : []))
   return [
     `${title}${pages > 1 ? ` · page ${page} of ${pages}` : ''}:`,
     ...fitRows(rows, columns),

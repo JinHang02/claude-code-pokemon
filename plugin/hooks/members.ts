@@ -202,9 +202,11 @@ export const isList = (text: string) => text.startsWith('Which ')
 export const LIST_MAX = 10
 
 // "Which Eevee?", a line per one, and the hint to type:
-//   1. Eevee ♀ Lv 24 (party)
-//   2. ✨ Eevee ♂ Lv 3 (PC box)
+//   #1 Eevee ♀ Lv 24 (party)
+//   #2 ✨ Eevee ♂ Lv 3 (PC box)
 // Add the number: /pokemon release eevee 2
+// `#1`, not `1.`: Claude Code renders a reply as Markdown, and `1.` would start a numbered list, dropping the padding
+// (`10.` one column right of `9.`) and indenting the hint under the last line.
 // Past LIST_MAX, the rest are counted, with the ways to narrow them that still leave a list (`shiny`, a level two or
 // more share), so a hint typed back never acts on one the list didn't show. A lone shiny past the first ten gets its
 // own numbered line instead. The number in the hint is one on screen.
@@ -223,7 +225,7 @@ export function formatChoices(choices: Spot[], query: string, command: string, l
     const { place, member: m } = choices[i] as Spot
     const held = m.heldItem ? ` holding ${itemName(m.heldItem)}` : ''
     const where = place === 'party' ? 'party' : 'PC box'
-    return `  ${`${i + 1}.`.padStart(digits + 1)} ${nameOf(m)} Lv ${levelOf(m)}${held} (${where})`
+    return `  ${`#${i + 1}`.padStart(digits + 1)} ${nameOf(m)} Lv ${levelOf(m)}${held} (${where})`
   })
   const more = choices.length - at.length
   if (more) {

@@ -277,7 +277,7 @@ test('the PC box lists its Pokémon like the party; ◓ marks the ones caught wi
   const boxed: Member = { ...pikachu, id: 'b1', species: 'eevee', xp: 40, isCaught: true }
   const save = { ...emptySave(), party: [{ ...pikachu, isCaught: true as const }], box: [boxed] }
   expect(formatParty(save)).toContain('Lead  Pikachu ◓  Lv 1')
-  expect(formatBox(save)).toBe(['Your PC box (1 / 960):', '  1.  Eevee ◓  Lv 4  (24 xp to Lv 5)'].join('\n'))
+  expect(formatBox(save)).toBe(['Your PC box (1 / 960):', '  #1  Eevee ◓  Lv 4  (24 xp to Lv 5)'].join('\n'))
   expect(formatBox(emptySave())).toBe('Your PC box is empty.')
   expect(withExtra(save, { b1: 24 }).box?.[0]?.xp).toBe(64)
   const names = ['bulbasaur', 'eevee', ...Array.from({ length: 903 }, (_, i) => `mon-${i}`)]
@@ -540,7 +540,7 @@ test('the level stops at 100 everywhere it shows, however much XP comes after', 
   const top = { ...emptySave(), party: [{ ...pikachu, xp: 40_010, next: [] }] }
   expect(formatParty(top)).toBe(['Your party:', '  Lead  Pikachu  Lv 100  (max level)  · final form'].join('\n'))
   expect(formatBox({ ...emptySave(), box: [{ ...pikachu, xp: 1e12 }] })).toBe(
-    ['Your PC box (1 / 960):', '  1.  Pikachu  Lv 100  (max level)'].join('\n'),
+    ['Your PC box (1 / 960):', '  #1  Pikachu  Lv 100  (max level)'].join('\n'),
   )
 })
 
@@ -643,9 +643,27 @@ test('in a narrow terminal each row keeps its name and level on one line, the re
   const box = { ...emptySave(), box: save.party }
   expect(formatBox(box, 1, undefined, 60).split('\n').slice(0, 3)).toEqual([
     'Your PC box (2 / 960):',
-    '  1.  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    '  #1  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
     "      together 3h · holds a King's Rock",
   ])
+})
+
+// A line Markdown takes for a numbered list item (CommonMark: up to three spaces, up to nine digits, `.` or `)`).
+const LIST_ITEM = /^ {0,3}\d{1,9}[.)]( |\t|$)/
+
+test("the PC box rows are labelled #1, #10, which Claude Code doesn't render as a Markdown list", () => {
+  const box = Array.from({ length: 31 }, (_, i) => ({ ...pikachu, id: `b${i}`, xp: 40 }))
+  const save = { ...emptySave(), box }
+  for (const columns of [Infinity, 60])
+    for (const page of [1, 2]) {
+      const lines = formatBox(save, page, undefined, columns).split('\n')
+      expect([columns, page, lines.filter(l => LIST_ITEM.test(l))]).toEqual([columns, page, []])
+    }
+  const lines = formatBox(save).split('\n')
+  expect(lines.slice(1, 3)).toEqual(['  #1   Pikachu  Lv 4  (24 xp to Lv 5)', '  #2   Pikachu  Lv 4  (24 xp to Lv 5)'])
+  // Every name starts in the same column, #10 and on too.
+  expect(new Set(lines.slice(1, 31).map(l => l.indexOf('Pikachu')))).toEqual(new Set([7]))
+  expect(lines.at(-1)).toBe('Next page: /pokemon box 2')
 })
 
 test('a width that is not a positive number keeps the wide layout; a Type: Null holder reads one way', () => {
