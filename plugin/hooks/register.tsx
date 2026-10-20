@@ -2130,12 +2130,13 @@ export const register: Register = on => {
       })
     background($, $.ui.close({ id: 'pokemon' }))
     $.clock.every(TICK_MS, () => background($, tick($)))
-    $.clock.every(SYNC_MS, () =>
-      background(
-        $,
-        started.then(() => retry($)),
-      ),
-    )
+    // A beat while the last retry still runs (a first catch waiting on a slow download) is skipped: two at once
+    // would catch two first Pokémon, the first going to the PC box.
+    let retrying: Promise<void> | null = null
+    $.clock.every(SYNC_MS, () => {
+      retrying ??= started.then(() => retry($)).finally(() => (retrying = null))
+      background($, retrying)
+    })
     $.clock.every(TOGETHER_EVERY_MS, () =>
       background(
         $,

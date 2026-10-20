@@ -68,6 +68,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   whose write was overwritten anyway makes its change again on the newer save, within ten seconds.
 - A save write the store refuses (another window holding its lock) is no longer shown as done: the ₽, the Bag and the
   party drawn stay as stored, and the command says it couldn't reach the Pokémon.
+- A first start offline, then a slow network, catches one first Pokémon. Retries could overlap and catch two, the
+  first going into the PC box unasked.
 
 ### Upgrading
 
