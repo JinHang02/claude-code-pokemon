@@ -203,6 +203,135 @@ test(
   },
 )
 
+test(
+  'a preview waiting behind a visitor, then a Rare Candy evolution of the same lead: the old form walks, and each screen starts from it',
+  SLOW,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      {
+        ...emptySave(),
+        party: [
+          member('charmander', { id: 'a', xp: xpForLevel(16) - 1, gender: 'male', next: [lv('charmeleon', 16)] }),
+        ],
+        bag: { 'rare-candy': 1 },
+      },
+      ART,
+      undefined,
+      netWith(),
+    )
+    await cmd($, 'pokemon', 'party')
+    const band = await mount($)
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
+    expect(await cmd($, 'pokemon-play', 'evolve')).toMatch(/plays once it has gone\.$/)
+    expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
+    for (let i = 0; i < 30 && w.saveNow().party[0]?.species !== 'charmeleon'; i++) await w.clock.advance(100)
+    expect(w.saveNow().party[0]?.species).toBe('charmeleon')
+    // Anything that draws the party again while the visitor is out.
+    await cmd($, 'pokemon', 'add pikachu')
+    const out = await watch(w, band, 3000)
+    expect(out.some(l => l.isScreen)).toBe(false)
+    expect(out.filter(l => l.colors.has(CHARMELEON))).toHaveLength(0)
+    const seen = await watch(w, band, 90_000, 250)
+    expect(messages(seen)).toEqual([
+      'What? CHARMANDER is evolving!',
+      'Congratulations! Your CHARMANDER evolved into CHARMELEON!',
+      'What? CHARMANDER is evolving!',
+      'Congratulations! Your CHARMANDER evolved into CHARMELEON!',
+    ])
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Charmander evolved into Charmeleon!'])
+  },
+)
+
+test(
+  'an evolution while the party is off plays nothing after /pokemon on: it comes back evolved',
+  SLOW,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('eevee', { id: 'e', gender: 'male' })], bag: { 'water-stone': 1 } },
+      ART,
+      undefined,
+      netWith(),
+    )
+    await until($, () => w.saveNow().party[0]?.next !== undefined)
+    const band = await mount($)
+    await w.clock.advance(500)
+    await cmd($, 'pokemon', 'off')
+    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('Eevee evolved into Vaporeon!')
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
+    await w.clock.advance(5000)
+    await cmd($, 'pokemon', 'on')
+    const seen = await watch(w, band, 6000)
+    expect(seen.filter(l => l.colors.has(EEVEE))).toHaveLength(0)
+    expect(seen.filter(l => l.colors.has(0xffffff))).toHaveLength(0)
+    expect(seen.filter(l => l.colors.has(VAPOREON)).length).toBeGreaterThan(0)
+    expect(evolvedToasts(w.toasts)).toHaveLength(1)
+  },
+)
+
+test(
+  'a terminal made too short mid-screen ends the screen there, with its toast, and the band goes on',
+  SLOW,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('eevee', { id: 'e', gender: 'male' })], bag: { 'water-stone': 1 } },
+      ART,
+      undefined,
+      netWith(),
+    )
+    await until($, () => w.saveNow().party[0]?.next !== undefined)
+    let band = await mount($)
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
+    const tall = await watch(w, band, 1500)
+    expect(tall.some(l => l.isScreen)).toBe(true)
+    expect(w.toasts).toEqual([])
+    band = await mount($, 6)
+    const short = await watch(w, band, 1500)
+    expect(short.some(l => l.isScreen)).toBe(false)
+    expect(short.every(l => l.rows <= 6)).toBe(true)
+    // Told at once, and drawn evolved.
+    expect(evolvedToasts(w.toasts)).toEqual(['What? Eevee evolved into Vaporeon!'])
+    expect(short.at(-1)?.colors.has(VAPOREON)).toBe(true)
+    expect(short.at(-1)?.colors.has(EEVEE)).toBe(false)
+    band = await mount($)
+    const back = await watch(w, band, 12_000, 250)
+    expect(back.some(l => l.isScreen)).toBe(false)
+    expect(evolvedToasts(w.toasts)).toHaveLength(1)
+  },
+)
+
+test(
+  '/pokemon-play evolve [style] says when nothing can be shown, and when the style needs more room',
+  SLOW,
+  async ($, on) => {
+    await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('charmander', { id: 'a', gender: 'male' })] },
+      ART,
+      undefined,
+      netWith(),
+    )
+    await cmd($, 'pokemon', 'party')
+    await mount($, 6)
+    await cmd($, 'pokemon', 'off')
+    expect(await cmd($, 'pokemon-play', 'evolve white')).toBe(
+      'Your Pokémon are resting in their Poké Balls: there is nothing to show. /pokemon on brings them back.',
+    )
+    await cmd($, 'pokemon', 'on')
+    expect(await cmd($, 'pokemon-play', 'evolve white')).toBe(
+      'No room for the white screen here. Previewing Charmander evolving into Charmeleon; it changes back in a few seconds.',
+    )
+  },
+)
+
 test('two retries on a slow network after an offline start catch one first Pokémon only', SLOW, async ($, on) => {
   const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
   await w.clock.advance(30_000)

@@ -1359,8 +1359,9 @@ async function evolveNow(
     const shows: Screen | null =
       drawn && canScreen() ? { key: member.id, from: drawn, to: mon, style: style ?? styleOf(save), isPreview } : null
     if (!shows) {
-      // Another's screen still to finish (its band gone for now): this one simply changes, the screen plays on.
-      const isInPlace = drawnAt >= 0 && !screen
+      // Another's screen still to finish (its band gone for now): this one simply changes, the screen plays on. With
+      // no band drawn (the party off, a survey up) nothing plays, now or later.
+      const isInPlace = drawnAt >= 0 && !screen && Boolean(band) && !save.isOff
       evolveFrom = (isInPlace && fitted?.lefts[drawnAt]) || null
       await update($, party, list => list.map(m => (m.key === member.id ? mon : m)))
       evolving = member.id
@@ -1380,7 +1381,9 @@ async function evolveNow(
     }
     if (isPreview) {
       $.clock.after(EVOLVE * TICK_MS + 3000, () => background($, refreshParty($)))
-      return { text: `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`, isShown: true }
+      const text = `Previewing ${name} evolving into ${newName}; it changes back in a few seconds.`
+      // The style asked for needs the screen.
+      return { text: style ? `No room for the ${style} screen here. ${text}` : text, isShown: true }
     }
     // Shedinja comes along when Nincada evolves by level, with Nincada's level and shininess, and counts as caught.
     const shed = next.way.kind === 'level' ? stages.find(s => s.way.kind === 'shed') : undefined
@@ -1875,6 +1878,23 @@ async function endScreen($: EngineInterface) {
   startScreen($)
 }
 
+// The screen playing stops short (its band too short now, while drawing): the evolution is told now, and drawn evolved
+// from the next frame. The party is published again, outside the drawing.
+function cutScreen($: EngineInterface) {
+  const done = screen
+  if (!done) return
+  screen = null
+  lastCells = ''
+  if (status.mood?.isScreen) status = { ...status, mood: null }
+  const at = fitted?.keys.indexOf(done.key) ?? -1
+  if (fitted && at >= 0 && !done.isPreview) {
+    const { budget } = fitted
+    fitted = { ...fitted, lefts: fitted.lefts.map((l, i) => (i === at ? fit(done.to, budget) : l)) }
+  }
+  if (done.said) $.ui.toast(done.said)
+  background($, refreshParty($))
+}
+
 // A screen that won't play: the evolution is told now, and the party drawn evolved.
 function skipScreen($: EngineInterface, s: Screen) {
   if (s.said) $.ui.toast(s.said)
@@ -1995,6 +2015,8 @@ async function play($: EngineInterface, args: string): Promise<string> {
   } else if (words[0] === 'evolve') {
     const style = words[1]
     if (words.length > 2 || (style && !isEvolutionStyle(style))) return unknownStyle(style ?? '', styleOf(save))
+    if (save.isOff)
+      return 'Your Pokémon are resting in their Poké Balls: there is nothing to show. /pokemon on brings them back.'
     const lead = save.party[0]
     const asked = style && isEvolutionStyle(style) ? style : undefined
     const name = lead ? `${displayName(lead.species, lead.form)}'s` : 'the'
@@ -2379,6 +2401,8 @@ export const register: Register = on => {
       }
       if (wild) wild = { ...wild, left: fitWild(wild.mon) }
     }
+    // Too short now for the screen playing (the terminal shrank): it ends here, with its toast, and the band goes on.
+    if (screen && e.props.maxRows < SCREEN_MIN_ROWS) cutScreen($)
     const fits = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)
     // A screen keeps the band's height while it plays, however the party changes under it.
     const rows = screen ? Math.min(e.props.maxRows, Math.max(fits, screen.rows)) : fits
