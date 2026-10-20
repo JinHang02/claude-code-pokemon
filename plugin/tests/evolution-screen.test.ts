@@ -153,6 +153,15 @@ test('on the white stage the burst is a pale blue light with a darker ring, plai
   }
 })
 
+test('on the white stage no dark silhouette sticks out of the burst of light', () => {
+  const wide: Img = { pixels: Array<number>(30 * 24).fill(TO_C), width: 30, height: 24 }
+  for (const to of [TO, wide])
+    for (let ms = 6200; ms < 6700; ms += 25) {
+      const px = stage(draw('white', ms, { to, rows: 16 }).img)
+      expect(px.filter(c => c === 0x30303a).length).toBe(0)
+    }
+})
+
 test('a stage at the minimum height gives the sprite all its pixels', () => {
   const tall: Img = { pixels: Array<number>(35 * 29).fill(TO_C), width: 35, height: 29 }
   const { img } = draw('white', AT.hold, { to: tall, rows: SCREEN_MIN_ROWS })
@@ -204,15 +213,21 @@ test('the messages type out in the intro and the outro, names in capitals', () =
   expect(long).toBe('Congratulations! Your ALOLAN NINETALES evolved into ALOLAN NINETALES!')
 })
 
-test('a narrow band cuts the message with an ellipsis', () => {
-  const { text } = draw('white', AT.hold, { columns: 40 })
-  expect([...text].length).toBe(40 - 2 * TEXT_COLUMN)
-  expect(text.endsWith('…')).toBe(true)
-  expect(text.startsWith('Congratulations! Your EEVEE')).toBe(true)
+test('a narrow band shortens the message from the front, so the new name stays', () => {
+  const names = { fromName: 'Charmander', toName: 'Charmeleon' }
+  for (const columns of [40, 50, 60, 80]) {
+    const text = draw('white', AT.hold, { columns, ...names }).text
+    expect([...text].length).toBeLessThanOrEqual(columns - 2 * TEXT_COLUMN)
+    expect(text).toContain('CHARMELEON!')
+    expect(draw('white', AT.flash, { columns, ...names }).text).toContain('CHARMANDER')
+  }
+  expect(draw('white', AT.hold, { columns: 40 }).text).toBe('EEVEE evolved into ESPEON!')
+  expect(draw('white', AT.hold, { columns: 40, ...names }).text).toBe('CHARMANDER → CHARMELEON!')
+  // Too narrow for both names: the end of the line survives.
+  expect(draw('white', AT.hold, { columns: 18, ...names }).text).toBe('…CHARMELEON!')
   expect(draw('white', AT.flash, { columns: 40 }).text).toBe('What? EEVEE is evolving!')
-  // Cut first, then typed: the typed part is always a prefix of what will be shown.
   const half = draw('white', 7300, { columns: 40 }).text
-  expect(text.startsWith(half)).toBe(true)
+  expect('EEVEE evolved into ESPEON!'.startsWith(half)).toBe(true)
 })
 
 test('a tall sprite shrinks to fit a five-row stage, nearest-neighbour and keeping its shape', () => {
