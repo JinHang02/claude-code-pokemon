@@ -1,4 +1,5 @@
-// Two Claude Code windows on one store, writing at the same moment: neither undoes the other. The window under test
+// Two Claude Code windows on one store, writing at the same moment: neither undoes the other, and no change is ever
+// made twice. Two writes within one store round trip may still lose one change, as accepted. The window under test
 // is the kit's; the other is this file's own copy of the plugin (a module of its own, with its own save in memory)
 // driven through its hooks, over the same store.
 import type { Register } from 'claude-code'
@@ -11,8 +12,9 @@ import { ART, begin, cmd, LIST, member, mountBand } from './world'
 import type { Net } from './world'
 
 type Handler = (...args: unknown[]) => Promise<unknown>
-// Gates on the other window's store: a write held until let go, a read answered late with what it read.
-type Gates = { set?: Promise<void>; get?: Promise<void> }
+// Gates on the other window's store: its writes held until let go (`set`), or its `at`-th read of the save from now
+// held and answered late, with what it read then (`read`).
+type Gates = { set?: Promise<void>; read?: { at: number; until: Promise<void> } }
 
 // The other window, over `store`: its commands, and the gates its store calls wait at.
 async function otherWindow(store: Map<string, unknown>) {
@@ -33,8 +35,8 @@ async function otherWindow(store: Map<string, unknown>) {
       store: {
         get: async (key: string) => {
           const value = store.get(key)
-          const gate = gates.get
-          if (gate) await gate
+          const held = key === 'save' && gates.read && --gates.read.at === 0 ? gates.read.until : undefined
+          if (held) await held
           return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
         },
         set: async (key: string, value: unknown) => {
@@ -97,26 +99,38 @@ const saved = (): Save => ({
   earned: 10_000,
 })
 
+// The other window runs `line`, its `at`-th read of the save held until `mine` has run in this window (`w`).
+async function readBefore(
+  w: { clock: { settle: () => Promise<void> } },
+  other: Awaited<ReturnType<typeof otherWindow>>,
+  line: string,
+  at: number,
+  mine: () => Promise<unknown>,
+) {
+  const held = gate()
+  other.gates.read = { at, until: held.shut }
+  const [command = '', ...args] = line.split(' ')
+  const theirs = other.run(command, args.join(' '))
+  for (let i = 0; i < 20 && other.gates.read.at > 0; i++) await w.clock.settle()
+  // Held at the read asked for: it read before this window's change.
+  expect(other.gates.read.at).toBe(0)
+  await mine()
+  held.open()
+  return theirs
+}
+
 test(
-  "/pokemon on here while the other window's /pokemon everstone writes from an older read: both stand",
+  "/pokemon on here while the other window's /pokemon everstone read the save before it: both stand",
   { timeoutMs: 30_000 },
   async ($, on) => {
     const w = await begin($, on, saved())
     expect(await cmd($, 'pokemon', 'off')).toMatch(/resting/)
     const other = await otherWindow(w.store)
-    // The other window reads the save (off) and stalls before it writes.
-    const held = gate()
-    other.gates.set = held.shut
-    const everstone = other.run('pokemon', 'everstone eevee')
-    await w.clock.settle()
-    expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!')
-    expect(w.saveNow().isOff).toBeUndefined()
-    other.gates.set = undefined
-    held.open()
+    // Its sync, then the read its write is made from.
+    const everstone = readBefore(w, other, 'pokemon everstone eevee', 2, async () =>
+      expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!'),
+    )
     expect(await everstone).toMatch(/holds an everstone/)
-    // This window's next sync finds its write undone, and makes it again on the other window's save.
-    await w.clock.advance(10_000)
-    await cmd($, 'pokemon', 'party')
     expect(w.saveNow().isOff).toBeUndefined()
     expect(w.saveNow().party.find(m => m.id === 'e')?.heldItem).toBe('everstone')
   },
@@ -129,36 +143,27 @@ test(
     const w = await begin($, on, saved())
     expect(await cmd($, 'pokemon', 'off')).toMatch(/resting/)
     const other = await otherWindow(w.store)
-    const held = gate()
-    other.gates.get = held.shut
-    const small = other.run('pokemon', 'size small')
-    await w.clock.settle()
-    expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!')
-    other.gates.get = undefined
-    held.open()
+    const small = readBefore(w, other, 'pokemon size small', 1, async () =>
+      expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!'),
+    )
     expect(await small).toBe('Pokémon size: small.')
-    // At once, with no sync of this window's.
     expect(w.saveNow().isOff).toBeUndefined()
     expect(w.saveNow().size).toBe('small')
   },
 )
 
 test(
-  "a buy here while the other window's catch writes from an older read: the Fire Stone and the new Pokémon both stay",
+  "a buy here while the other window's catch was made from an older read: the Fire Stone and the new Pokémon both stay",
   { timeoutMs: 30_000 },
   async ($, on) => {
     const w = await begin($, on, saved())
     await cmd($, 'pokemon', 'party')
     const other = await otherWindow(w.store)
-    const held = gate()
-    other.gates.set = held.shut
-    const caught = other.run('pokemon', 'add caterpie')
-    for (let i = 0; i < 20; i++) await w.clock.settle()
-    expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Bought a Fire Stone!/)
-    other.gates.set = undefined
-    held.open()
+    // Its sync, its look in the PC box, then the read the catch is made from.
+    const caught = readBefore(w, other, 'pokemon add caterpie', 3, async () =>
+      expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Bought a Fire Stone!/),
+    )
     expect(await caught).toMatch(/Caterpie joined your party!/)
-    await w.clock.advance(10_000)
     await cmd($, 'pokemon', 'party')
     expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'caterpie'])
     expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
@@ -167,27 +172,82 @@ test(
 )
 
 test(
-  "the other window's buy while this window catches, its write landing last: both stay, and the ₽ is spent once",
+  "the other window's buy made from an older read while this window catches: both stay, and the ₽ is spent once",
   { timeoutMs: 30_000 },
   async ($, on) => {
     const w = await begin($, on, saved())
     await cmd($, 'pokemon', 'party')
     const other = await otherWindow(w.store)
-    const held = gate()
-    other.gates.set = held.shut
-    const bought = other.run('pokemon', 'buy fire stone')
-    for (let i = 0; i < 20; i++) await w.clock.settle()
-    expect(await cmd($, 'pokemon', 'add caterpie')).toMatch(/Caterpie joined your party!/)
-    other.gates.set = undefined
-    held.open()
+    const bought = readBefore(w, other, 'pokemon buy fire stone', 2, async () =>
+      expect(await cmd($, 'pokemon', 'add caterpie')).toMatch(/Caterpie joined your party!/),
+    )
     expect(await bought).toMatch(/^Bought a Fire Stone!/)
     await w.clock.advance(10_000)
     await cmd($, 'pokemon', 'party')
-    // And the other window, at its next command, keeps it all too.
     await other.run('pokemon', 'party')
     expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee', 'caterpie'])
     expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
     expect(w.saveNow().spent).toBe(3000)
+  },
+)
+
+test(
+  'two writes within one store round trip: the later one stands, and nothing is made twice afterwards',
+  { timeoutMs: 30_000 },
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [
+        member('eevee', { id: 'e1', next: [], gender: 'male' }),
+        member('eevee', { id: 'e2', next: [], gender: 'male' }),
+        member('eevee', { id: 'e3', next: [], gender: 'male' }),
+      ],
+      earned: 10_000,
+    })
+    await cmd($, 'pokemon', 'party')
+    const other = await otherWindow(w.store)
+    // Its write held after its last read: past every check, as two windows writing at the same moment are.
+    const held = gate()
+    other.gates.set = held.shut
+    const theirs = other.run('pokemon', 'release eevee 1')
+    for (let i = 0; i < 20; i++) await w.clock.settle()
+    expect(await cmd($, 'pokemon', 'release eevee 2')).toMatch(/^Bye bye, Eevee/)
+    other.gates.set = undefined
+    held.open()
+    expect(await theirs).toMatch(/^Bye bye, Eevee/)
+    for (let i = 0; i < 3; i++) {
+      await w.clock.advance(10_000)
+      await cmd($, 'pokemon', 'party')
+      await other.run('pokemon', 'party')
+    }
+    // This window's release was lost in the race; e3, which nobody named, is still there.
+    expect(w.saveNow().party.map(m => m.id)).toEqual(['e2', 'e3'])
+  },
+)
+
+// A window of an older version writes the save: what it read, less the fields it doesn't know (such as the write
+// stamps of an earlier 1.5.0 build), with its own change.
+function olderWindowWrites(store: Map<string, unknown>, change: (s: Record<string, unknown>) => void) {
+  const s = JSON.parse(JSON.stringify(store.get('save'))) as Record<string, unknown>
+  delete s.revs
+  change(s)
+  store.set('save', s)
+}
+
+test(
+  'a buy here, a write by an older window, more writes here: the Fire Stone is bought once',
+  { timeoutMs: 30_000 },
+  async ($, on) => {
+    const w = await begin($, on, saved())
+    await cmd($, 'pokemon', 'party')
+    expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Bought a Fire Stone!/)
+    olderWindowWrites(w.store, s => (s.size = 'small'))
+    expect(await cmd($, 'pokemon', 'everstone pikachu')).toMatch(/everstone/)
+    await w.clock.advance(10_000)
+    await cmd($, 'pokemon', 'party')
+    expect(w.saveNow().spent).toBe(3000)
+    expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+    expect(w.saveNow().size).toBe('small')
   },
 )
 

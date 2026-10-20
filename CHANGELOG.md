@@ -68,8 +68,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 - Two Claude Code windows changing the save at the same moment no longer undo each other. A `/pokemon on` in one
   window could be reverted by a `/pokemon everstone` in the other, and a purchase, a catch or an evolution could be
-  lost the same way. Each write is now stamped: a window reads the save again just before it writes, and a window
-  whose write was overwritten anyway makes its change again on the newer save, within ten seconds.
+  lost the same way. A window now reads the save again just before it writes, and makes its change on what another
+  window wrote meanwhile. Two writes within the same few milliseconds can still lose one of the changes; none is ever
+  made twice.
 - A save write the store refuses (another window holding its lock) is no longer shown as done: the ₽, the Bag and the
   party drawn stay as stored, and the command says it couldn't reach the Pokémon.
 - Every command answers within a few seconds, whatever it waits on. Commands queued behind evolutions or a stalled
