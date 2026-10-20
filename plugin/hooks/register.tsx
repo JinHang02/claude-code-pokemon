@@ -1207,6 +1207,7 @@ function evolveMember(
 const ANSWER_MS = 1000
 async function answerSoon($: EngineInterface, run: Promise<Evolved>, later: string): Promise<string> {
   const early = await Promise.race([run, $.clock.sleep(ANSWER_MS).then(() => null)])
+  if (early?.isShown) shownAnswers.add(early.text)
   if (early) return early.text
   background(
     $,
@@ -1216,6 +1217,9 @@ async function answerSoon($: EngineInterface, run: Promise<Evolved>, later: stri
   )
   return later
 }
+// Answers their evolution has told already (its screen, its animation or its toast): a command answering late doesn't
+// toast them again.
+const shownAnswers = new Set<string>()
 // When an evolution asked for now will show: after the screen or the animation playing or waiting, else at once.
 const isEvolutionAhead = () => Boolean(screen || screensDue.length || status.mood?.kind === 'evolve')
 const whenShown = () => (isEvolutionAhead() ? 'after the one on screen' : 'in a moment')
@@ -2117,17 +2121,21 @@ async function load($: EngineInterface) {
 
 // Claude Code gives a command ten seconds, then drops its answer (and unloads a plugin that keeps overrunning). A
 // command not done by this time (a stalled download another one started, a store held up) answers that it is still
-// at it; when it's done, a one-line answer (what it changed) is told in a toast, and a list isn't.
+// at it. When it's done, what it changed is told in a toast; a list says it's ready to be asked for again.
 const COMMAND_MS = 6000
-const STILL_WORKING = "Still working on it: a download is slow. Anything this changes is told when it's done."
-async function promptly($: EngineInterface, work: () => Promise<string>): Promise<string> {
+const STILL_WORKING = "Still working on it… What comes of it is told in a notification when it's done."
+async function promptly($: EngineInterface, line: string, work: () => Promise<string>): Promise<string> {
   const run = work()
   const answer = await Promise.race([run, $.clock.sleep(COMMAND_MS).then(() => null)])
-  if (answer !== null) return answer
+  if (answer !== null) {
+    shownAnswers.delete(answer)
+    return answer
+  }
   background(
     $,
     run.then(text => {
-      if (text && !text.includes('\n')) $.ui.toast(text)
+      if (shownAnswers.delete(text) || !text) return
+      $.ui.toast(text.includes('\n') ? `Pokémon: ${line} is ready. Run it again to see it.` : text)
     }),
   )
   return STILL_WORKING
@@ -2200,7 +2208,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'pokemon-play' }, async ($, e) => ({
-    text: await promptly($, async () => {
+    text: await promptly($, `/pokemon-play ${e.args}`.trim(), async () => {
       try {
         await ready
         await settled($)
@@ -2212,7 +2220,7 @@ export const register: Register = on => {
   }))
 
   on('command.run', { command: 'pokedex' }, async $ => ({
-    text: await promptly($, async () => {
+    text: await promptly($, '/pokedex', async () => {
       try {
         await ready
         await settled($)
@@ -2231,7 +2239,7 @@ export const register: Register = on => {
   on('command.run', { command: 'pokemon' }, async ($, e) => {
     feel('activity')
     return {
-      text: await promptly($, async () => {
+      text: await promptly($, `/pokemon ${e.args}`.trim(), async () => {
         try {
           await ready
           await settled($)

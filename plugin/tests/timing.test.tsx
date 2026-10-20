@@ -9,6 +9,7 @@ import { ART, begin, cmd, hourAt, LIST, lv, member, until } from './world'
 import type { Net } from './world'
 
 const SLOW = { timeoutMs: 120_000 }
+const STILL_WORKING = "Still working on it… What comes of it is told in a notification when it's done."
 const CHARMANDER = 0x010203
 const CHARMELEON = 0x070809
 const EEVEE = 0x0a0b0c
@@ -361,11 +362,76 @@ test(
     for (let t = 0; t < 100 && reply.text === undefined; t++) await w.clock.advance(100)
     expect(reply.ms).toBeLessThanOrEqual(7000)
     expect(reply.realMs).toBeLessThan(5000)
-    expect(reply.text).toBe("Still working on it: a download is slow. Anything this changes is told when it's done.")
+    expect(reply.text).toBe(STILL_WORKING)
     net.stall = undefined
     release()
     for (let t = 0; t < 20 && !w.toasts.includes('Eevee joined your party!'); t++) await w.clock.advance(100)
     expect(w.toasts.filter(t => t === 'Eevee joined your party!')).toHaveLength(1)
     expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'eevee'])
+  },
+)
+
+test(
+  'a list that comes back after the command has answered says it is ready to be asked for again',
+  SLOW,
+  async ($, on) => {
+    let release = () => {}
+    const net = netWith({ stall: new Promise<void>(resolve => (release = resolve)) })
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })] }, ART, undefined, net)
+    const reply = asked(w, cmd($, 'pokedex'))
+    for (let t = 0; t < 100 && reply.text === undefined; t++) await w.clock.advance(100)
+    expect(reply.text).toBe(STILL_WORKING)
+    net.stall = undefined
+    release()
+    const ready = 'Pokémon: /pokedex is ready. Run it again to see it.'
+    for (let t = 0; t < 20 && !w.toasts.includes(ready); t++) await w.clock.advance(100)
+    expect(w.toasts.filter(t => t === ready)).toHaveLength(1)
+  },
+)
+
+test('a command answering late whose evolution plays in place is told once, by the evolution', SLOW, async ($, on) => {
+  let release = () => {}
+  const net = netWith({ stall: new Promise<void>(resolve => (release = resolve)) })
+  // The party never gets drawn: start-up waits on Eevee's sprite.
+  net.artStall = file => (file === 'eevee' ? new Promise<void>(() => {}) : undefined)
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), party: [member('eevee', { id: 'e', gender: 'male' })], bag: { 'water-stone': 1 } },
+    ART,
+    undefined,
+    net,
+  )
+  const reply = asked(w, cmd($, 'pokemon', 'give water stone eevee'))
+  for (let t = 0; t < 100 && reply.text === undefined; t++) await w.clock.advance(100)
+  expect(reply.text).toBe(STILL_WORKING)
+  net.stall = undefined
+  release()
+  for (let t = 0; t < 30 && w.saveNow().party[0]?.species !== 'vaporeon'; t++) await w.clock.advance(100)
+  await w.clock.advance(2000)
+  expect(w.saveNow().party[0]?.species).toBe('vaporeon')
+  expect(w.toasts).toEqual(['What? Eevee evolved into Vaporeon!'])
+})
+
+test(
+  "a retry waiting on a slow first catch doesn't hold up the sync: another window's change is picked up",
+  SLOW,
+  async ($, on) => {
+    const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
+    await w.clock.advance(30_000)
+    let release = () => {}
+    w.net.stall = new Promise<void>(resolve => (release = resolve))
+    w.net.isOnline = true
+    // A retry starts a first catch, which waits on the stalled download.
+    await w.clock.advance(10_000)
+    w.store.set('save', { ...emptySave(), evolutionStyle: 'white' })
+    await w.clock.advance(10_000)
+    // Read from what this window holds, with no sync of its own.
+    expect(await cmd($, 'pokemon', 'evolution bogus')).toMatch(/white: .* \(current\)/)
+    release()
+    w.net.stall = undefined
+    await w.clock.advance(2_000)
+    expect(w.saveNow().party).toHaveLength(1)
+    expect(w.saveNow().evolutionStyle).toBe('white')
   },
 )

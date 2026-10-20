@@ -76,7 +76,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - Every command answers within a few seconds, whatever it waits on. Commands queued behind evolutions or a stalled
   download could run past Claude Code's ten seconds for a command: their answers were lost, and after a few the plugin
   was unloaded until a restart, the band gone. A command still waiting after six seconds now answers _"Still working
-  on it: a download is slow. Anything this changes is told when it's done."_, and what it then does comes as a toast.
+  on it… What comes of it is told in a notification when it's done."_ What it then does comes as a toast, and a list
+  (`/pokedex`, `/pokemon party`) says it's ready to be run again.
 - An evolution while the party is off no longer plays its in-place animation when `/pokemon on` brings the party
   back: it comes back evolved, as the toast already said.
 - `/pokemon-play evolve` while the party is off says there is nothing to show, instead of promising a preview that
