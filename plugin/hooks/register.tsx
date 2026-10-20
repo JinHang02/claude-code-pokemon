@@ -12,7 +12,7 @@ import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withA
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
-import { didYouMean, findMembers, formatChoices, isList } from './members'
+import { didYouMean, findMembers, formatChoices, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
 import { guessItem, isSpacedOut, lookup, randomPick, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
@@ -587,6 +587,8 @@ const pickIn = (s: Save, query: string, places: Place[], command: string) =>
   spotOf(find(s, query, places, command), query, command)
 // A query that names none of `places`: a number past the end of the list still names some.
 const isNoneIn = (found: Found) => 'error' in found && !isList(found.error)
+// A query naming a level (`eevee lv 30`) is about one you have: it never catches a new one.
+const isLevelled = (query: string) => readLevel(query).level !== undefined
 
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
 // box comes out; a new one leads, and the old lead goes into the PC box with its level and what it holds. `shiny`
@@ -656,7 +658,7 @@ async function leadOwned($: EngineInterface, query: string): Promise<string | nu
   let isMoved = false
   await mutate($, s => {
     const found = find(s, query, ['party', 'box'], '')
-    if (isNoneIn(found)) return s
+    if (isNoneIn(found) && !isLevelled(query)) return s
     const spot = spotOf(found, query, '')
     if (typeof spot === 'string') {
       text = spot
@@ -694,7 +696,7 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
   let isMoved = false
   await mutate($, s => {
     const found = find(s, query, ['box'], 'add ')
-    if (s.party.length >= MAX_PARTY || isNoneIn(found)) return s
+    if (s.party.length >= MAX_PARTY || (isNoneIn(found) && !isLevelled(query))) return s
     const spot = spotOf(found, query, 'add ')
     if (typeof spot === 'string') {
       text = spot

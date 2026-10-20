@@ -61,6 +61,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   as in `release`, and anything else answers with the numbered list. A fraction is no pick anywhere now
   (`release eevee 1.5` no longer releases the 15th), and the answer quotes what you typed: _"No -1 in your party"_,
   where it said _"No 1"_.
+- The numbered _"Which Eevee?"_ list was one long line, and with a full box of them a wall of text. Now it's one
+  Pokémon per line, the first ten only, then _"… and 15 more"_ with how to narrow them down. Any number still picks.
+  A level narrows a name in every command that takes one: `/pokemon release eevee lv 30` (or `lv30`, `level 30`),
+  and a number then picks among those. A level none of yours is at never catches a new one.
 
 ### Known limitations
 
