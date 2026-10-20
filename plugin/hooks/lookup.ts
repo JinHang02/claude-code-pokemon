@@ -145,6 +145,30 @@ export function lookup(list: Species[], words: string[], typed?: string): Lookup
   return typeof guess === 'string' ? { error: guess } : { guess }
 }
 
+// What a query names among every species and form, read one way by every command that catches or summons one:
+// `shiny` anywhere asks for a shiny one; words spelling a name right but spaced apart (`porygon 2`) are that name; a
+// near miss is a guess to confirm. No name (nothing, or `shiny` alone) leaves the pick to the caller (null); words of
+// symbols only name no Pokémon. An answer quotes the query as typed.
+export function readName(
+  list: Species[],
+  query: string,
+): { pick: Pick | null; wantsShiny: boolean } | { guess: Pick; wantsShiny: boolean } | { error: string } {
+  const words = slug(query).split('-').filter(Boolean)
+  const wantsShiny = words.includes('shiny')
+  const named = words.filter(w => w !== 'shiny')
+  if (!words.length && query.trim()) return { error: `No Pokémon called "${query.trim()}".` }
+  if (!named.length) return { pick: null, wantsShiny }
+  const typed = query
+    .trim()
+    .split(/\s+/)
+    .filter(t => slug(t) !== 'shiny')
+    .join(' ')
+  const found = lookup(list, named, typed)
+  if ('error' in found) return found
+  if ('guess' in found && !isSpacedOut(found.guess, named)) return { guess: found.guess, wantsShiny }
+  return { pick: 'pick' in found ? found.pick : found.guess, wantsShiny }
+}
+
 // The item a give most likely meant when none is spelled exactly (`thunderstone`, `upgrade`, `fire ston`): a run of
 // words at the front or the back a near miss of an item's id or name, the closest one, and the words left over for
 // the Pokémon. Null when nothing is close.

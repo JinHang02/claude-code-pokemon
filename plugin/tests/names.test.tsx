@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { emptySave, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
-import { ART, begin, cmd, LIST, member } from './world'
+import { ART, begin, cmd, LIST, member, mountBand } from './world'
 
 const NUMBERED = [...LIST, { name: 'zygarde', forms: ['regular', '10', 'complete'] }]
 const numbered = { isOnline: true, list: JSON.stringify(NUMBERED) }
@@ -417,4 +417,68 @@ test('/pokemon box shows 30 to a page, says which page, and how to see the next;
   expect(await cmd($, 'pokemon', 'box mewtwo')).toBe('No mewtwo in your PC box.')
   // `porygon 2` is Porygon2 when no Porygon is there to have a page 2.
   expect(numbers(await cmd($, 'pokemon', 'box porygon 2'))).toEqual([76])
+})
+
+const PORYGONS = JSON.stringify([
+  ...LIST,
+  { name: 'porygon', forms: ['regular'] },
+  { name: 'porygon2', forms: ['regular'] },
+])
+
+test('/pokemon-play wild reads a name as /pokemon does: spaced apart, and symbols or a number name no one', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('raichu')] }, undefined, undefined, {
+    isOnline: true,
+    list: PORYGONS,
+  })
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild 🔥')).toBe('No Pokémon called "🔥".')
+  expect(await cmd($, 'pokemon-play', 'wild 1.5')).toBe('No Pokémon called "1.5".')
+  expect(await cmd($, 'pokemon-play', 'wild shiny pikchu')).toBe(
+    'Did you mean Pikachu? Run /pokemon-play wild shiny pikachu',
+  )
+  expect(w.toasts.filter(t => t.includes('appeared'))).toEqual([])
+  expect(await cmd($, 'pokemon-play', 'wild porygon 2')).toBe('A wild Porygon2 wanders by.')
+})
+
+test('/pokemon-play wild shiny <name> brings a shiny one, as /pokemon shiny <name> does', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('raichu')] })
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild pikachu shiny')).toBe('A wild Pikachu wanders by.')
+  expect(w.toasts).toContain('✨ A wild Pikachu appeared!')
+  expect(w.saveNow().dex.pikachu?.shiny).toBe(1)
+})
+
+test('a full PC box answers a misspelt name with a suggestion before it refuses a new lead', async ($, on) => {
+  const box = Array.from({ length: 960 }, (_, i) => member('caterpie', { id: `b${i}`, next: [] }))
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], box })
+  await cmd($, 'pokemon', 'party')
+  const before = JSON.stringify(w.saveNow())
+  expect(await cmd($, 'pokemon', 'charmandr')).toBe('Did you mean Charmander? Run /pokemon charmander')
+  expect(await cmd($, 'pokemon', 'agumon')).toBe('No Pokémon called "agumon".')
+  expect(await cmd($, 'pokemon', 'charmander')).toMatch(/^There's no more room in your PC box! Pikachu /)
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+})
+
+test('a plain name with only another form of it in the PC box points at that one; a lead still catches a new one', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: [member('rattata', { id: 'a1', form: 'alola' }), member('rattata', { id: 'a2', form: 'alola' })],
+  })
+  expect(await cmd($, 'pokemon', 'release rattata')).toBe(
+    'Did you mean Rattata (Alola)? Run /pokemon release rattata alola',
+  )
+  expect(await cmd($, 'pokemon', 'take rattata')).toBe('Did you mean Rattata (Alola)? Run /pokemon take rattata alola')
+  expect(await cmd($, 'pokemon', 'release rattata 2')).toBe(
+    'Did you mean Rattata (Alola)? Run /pokemon release rattata alola 2',
+  )
+  expect(await cmd($, 'pokemon', 'release rattata alola 2')).toBe(
+    'Bye bye, Rattata (Alola) (Lv 1, PC box)! It went back to the wild.',
+  )
+  expect((await cmd($, 'pokemon', 'rattata')).replace(/^✨ /, '')).toMatch(
+    /^A wild Rattata appeared! It's your new lead\./,
+  )
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['a1', 'p'])
 })

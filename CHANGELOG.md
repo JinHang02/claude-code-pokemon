@@ -75,6 +75,11 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - Names lost their punctuation (_"Farfetchd"_, _"Mr Mime"_, _"Ho Oh"_, _"Nidoran F"_). They're written as in the
   games now: Farfetch'd, Sirfetch'd, Mr. Mime, Mime Jr., Mr. Rime, Nidoran♀, Nidoran♂, Ho-Oh, Porygon-Z,
   Type: Null, Jangmo-o, Hakamo-o, Kommo-o and Flabébé.
+- `/pokemon-play wild` reads a name as `/pokemon` does: `wild porygon 2` brings Porygon2, `wild shiny pikachu` a shiny
+  Pikachu, and `wild 🔥` answers _"No Pokémon called "🔥""_ instead of bringing a random visitor.
+- With the PC box full, a misspelt `/pokemon <name>` gets its _"Did you mean …?"_ before the box-full refusal.
+- `/pokemon release vulpix`, `take` and the like, with only an Alolan Vulpix in the PC box, said there was none. They
+  ask _"Did you mean Vulpix (Alola)?"_ now. `/pokemon vulpix` and `add vulpix` still catch a plain one, as before.
 
 ### Known limitations
 

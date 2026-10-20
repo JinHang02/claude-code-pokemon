@@ -109,9 +109,6 @@ export function findMembers(
   if (only) return { spot: only }
   const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
   const none = (name: string) => `No ${name} in your ${where}.${places.includes('party') ? ` ${formatParty(s)}` : ''}`
-  // A name of its own that none of yours is (`zygarde 10`, `porygon 2`): no list, and no guess at another one.
-  if (isName(names, named)) return { error: none(query.trim()) }
-  if (listed.length) return { error: formatChoices(listed, `${keep}${named.slice(0, -1).join(' ')}`, command, levelOf) }
   // What a guess finds typed back as suggested: the guess, or else another form of it that is here (a plain name never
   // takes one out of the PC box), and how many.
   const reach = (guess: Pick, isShiny: boolean) => {
@@ -121,9 +118,23 @@ export function findMembers(
     }
     return null
   }
+  const inRange = (many: number) => isNumbered && many > 1 && nth > 0 && nth <= many
+  // A species of yours spelled right, with only another form of it here, in the PC box (`vulpix`, an Alolan one
+  // boxed): that form, with the number when it is in that one's list. A lead or an add still catches the plain one.
+  for (const [found, words, number] of [
+    [whole, named, ''],
+    [before, named.slice(0, -1), ` ${last}`],
+  ] as const) {
+    const exactly = Array.isArray(found) && pool.length ? lookup(namesOf(pool.map(p => p.member)), [...words]) : null
+    const other = exactly && 'pick' in exactly ? reach(exactly.pick, wantsShiny) : null
+    if (other && exactly && 'pick' in exactly && other.guess.form !== exactly.pick.form)
+      return { error: `${didYouMean(other.guess, `${command}${keep}`)}${number && inRange(other.many) ? number : ''}` }
+  }
+  // A name of its own that none of yours is (`zygarde 10`, `porygon 2`): no list, and no guess at another one.
+  if (isName(names, named)) return { error: none(query.trim()) }
+  if (listed.length) return { error: formatChoices(listed, `${keep}${named.slice(0, -1).join(' ')}`, command, levelOf) }
   const guessOf = (found: Spot[] | Lookup | null) => (found && 'guess' in found ? found.guess : undefined)
   const [early, full] = [guessOf(before), guessOf(whole)]
-  const inRange = (many: number) => isNumbered && many > 1 && nth > 0 && nth <= many
   // The whole query guessing another name took the number for part of it (`porygn 2`: Porygon2), unless the words
   // before it guess a list the number is in, as `porygon 2` with two Porygon picks the second.
   const isPartOfName = Boolean(

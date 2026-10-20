@@ -14,7 +14,7 @@ import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, isSpacedOut, lookup, randomPick, slug, spell, typedRest } from './lookup'
+import { guessItem, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -549,27 +549,27 @@ async function refreshParty($: EngineInterface) {
   }
 }
 
-// A new party member from a query (a random one when empty), spelled exactly; `shiny` anywhere forces a
-// shiny. A near miss resolves a suggestion naming `command` ('' or 'add ').
-async function catchOne($: EngineInterface, query: string, command = ''): Promise<Member | string> {
+// What a new party member from `query` would be (a random one when it names none), spelled exactly, with `shiny`
+// anywhere forcing a shiny; or the answer instead: a suggestion naming `command` ('' or 'add '), or that no Pokémon is
+// called that. Downloads no sprite.
+async function newPick($: EngineInterface, query: string, command = ''): Promise<Wanted | string> {
   const list = await loadSpecies($)
-  const words = slug(query).split('-').filter(Boolean)
-  const wantsShiny = words.includes('shiny')
-  const named = words.filter(w => w !== 'shiny')
-  if (!words.length && query.trim()) return `No Pokémon called "${query.trim()}".`
-  const typed = query
-    .trim()
-    .split(/\s+/)
-    .filter(t => slug(t) !== 'shiny')
-    .join(' ')
-  const found = named.length ? lookup(list, named, typed) : { pick: randomPick(list) }
-  if ('error' in found) return found.error
-  // Spelt right but spaced apart (`porygon 2`) is that one.
-  if ('guess' in found && !isSpacedOut(found.guess, named))
-    return didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`)
-  const pick = 'pick' in found ? found.pick : found.guess
+  const named = readName(list, query)
+  if ('error' in named) return named.error
+  if ('guess' in named) return didYouMean(named.guess, `${command}${named.wantsShiny ? 'shiny ' : ''}`)
+  return { pick: named.pick ?? randomPick(list), wantsShiny: named.wantsShiny }
+}
+type Wanted = { pick: Pick; wantsShiny: boolean }
+
+// The new member `wanted` names, its sprite downloaded.
+async function catchPick($: EngineInterface, { pick, wantsShiny }: Wanted): Promise<Member> {
   const { isShiny } = await fetchArt($, fileOf(pick), wantsShiny || Math.random() < SHINY_ODDS)
   return { id: newId(), species: pick.species, form: pick.form, isShiny, xp: 0, evolutions: 0 }
+}
+
+async function catchOne($: EngineInterface, query: string, command = ''): Promise<Member | string> {
+  const wanted = await newPick($, query, command)
+  return typeof wanted === 'string' ? wanted : catchPick($, wanted)
 }
 
 const levelNow = (m: Member) => level(m.xp)
@@ -597,11 +597,13 @@ const isLevelled = (query: string) => readLevel(query).level !== undefined
 async function setLead($: EngineInterface, query: string): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
-  // Before any download: the save write checks again.
+  // A misspelt name gets its suggestion first, a full box its refusal before the sprite's download; the save write
+  // checks again.
+  const wanted = await newPick($, query)
+  if (typeof wanted === 'string') return wanted
   const lead = save.party[0]
   if (lead && isBoxFull(save)) return noRoomForLead(lead)
-  const caught = await catchOne($, query)
-  if (typeof caught === 'string') return caught
+  const caught = await catchPick($, wanted)
   let text = ''
   let isCaught = false
   await mutate($, latest => {
@@ -1416,21 +1418,22 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
   if (screen) return 'No wild Pokémon comes by while an evolution is on screen.'
   try {
     const list = await loadSpecies($)
-    const words = slug(query).split('-').filter(Boolean)
-    const held = words.length ? null : wildHeld
+    const isAsked = Boolean(query.trim())
+    const named = readName(list, query)
+    if ('error' in named) return named.error
+    const shiny = named.wantsShiny ? 'shiny ' : ''
+    if ('guess' in named)
+      return `Did you mean ${displayName(named.guess.species, named.guess.form)}? Run /pokemon-play wild ${shiny}${spell(named.guess)}`
+    const held = isAsked ? null : wildHeld
     wildHeld = null
-    const found = words.length
-      ? lookup(list, words)
-      : { pick: held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex }) }
-    if ('error' in found) return found.error
-    if ('guess' in found)
-      return `Did you mean ${displayName(found.guess.species, found.guess.form)}? Run /pokemon-play wild ${spell(found.guess)}`
-    const pick = found.pick
-    const { art, isShiny } = await fetchArt($, fileOf(pick), held?.isShiny ?? Math.random() < SHINY_ODDS)
+    const pick =
+      named.pick ?? held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex })
+    const wantsShiny = named.wantsShiny || (held?.isShiny ?? Math.random() < SHINY_ODDS)
+    const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
     if (!band || !fitted || status.wild || pitch) return null
     if (screen) {
-      if (words.length) return 'No wild Pokémon comes by while an evolution is on screen.'
+      if (isAsked) return 'No wild Pokémon comes by while an evolution is on screen.'
       // The timer's visitor isn't lost: the first tick after the screen brings it.
       wildHeld = { pick, isShiny }
       wildDue = 0

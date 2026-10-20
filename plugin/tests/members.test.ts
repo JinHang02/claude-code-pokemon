@@ -91,10 +91,19 @@ test('only the places a command allows; a near miss gets a suggestion naming the
   )
 })
 
-test('a plain name reaches another form in the party only, never in the PC box', () => {
+test('a plain name reaches another form in the party only; one in the PC box it points at, picking none', () => {
   const alolan = member('vulpix', { form: 'alola' })
   expect(ids(findMembers({ ...emptySave(), party: [alolan] }, 'vulpix', ['party'], '', levelOf))).toBe(alolan.id)
-  expect(ids(findMembers({ ...emptySave(), box: [alolan] }, 'vulpix', ['box'], '', levelOf))).toMatch(/^No vulpix/)
+  expect(ids(findMembers({ ...emptySave(), box: [alolan] }, 'vulpix', ['box'], 'release ', levelOf))).toBe(
+    'Did you mean Vulpix (Alola)? Run /pokemon release vulpix alola',
+  )
+  const shiny = { ...emptySave(), party: [member('vulpix')], box: [{ ...alolan, isShiny: true }] }
+  expect(ids(findMembers(shiny, 'shiny vulpix', both, 'release ', levelOf))).toBe(
+    'Did you mean Vulpix (Alola)? Run /pokemon release shiny vulpix alola',
+  )
+  expect(ids(findMembers({ ...emptySave(), box: [alolan] }, 'shiny vulpix', both, 'release ', levelOf))).toMatch(
+    /^No shiny vulpix/,
+  )
 })
 
 test('the numbered list: gender, shiny, level, what it holds and where it is', () => {
@@ -275,8 +284,12 @@ test('a suggestion is only of someone it then finds: another form only in the PC
   expect(ids(findMembers(s, 'shiny eevve', both, 'release ', levelOf, NAMES))).toMatch(
     /^No shiny Eevee in your party or PC box\. Your party:/,
   )
+  // Spelled right, with only another form boxed: that one is pointed at (an add goes on to catch a plain one).
+  expect(ids(findMembers(s, 'typhlosion', ['box'], 'add ', levelOf, NAMES))).toBe(
+    'Did you mean Typhlosion (Hisui)? Run /pokemon add typhlosion hisui',
+  )
   // A name of its own that none of yours is: no guess at another one.
-  expect(ids(findMembers(s, 'typhlosion', ['box'], 'add ', levelOf, NAMES))).toBe('No typhlosion in your PC box.')
+  expect(ids(findMembers(s, 'pikachu', ['box'], 'add ', levelOf, NAMES))).toBe('No pikachu in your PC box.')
 })
 
 test('a number past the end of one answers with the list of one', () => {
