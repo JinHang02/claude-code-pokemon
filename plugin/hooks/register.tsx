@@ -505,13 +505,17 @@ async function foldLedgers($: EngineInterface) {
     })
 }
 
-// The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites.
+// The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites. That retry
+// runs one at a time: one still waiting on a slow download isn't started again (two at once would catch two first
+// Pokémon, the first going to the PC box), while the syncs go on.
+let retrying: Promise<unknown> | null = null
 async function retry($: EngineInterface) {
   await sync($)
   if (++syncs % FOLD_EVERY === 0) await foldLedgers($)
-  if (save.isOff) return
-  if (!save.party.length) await setLead($, '')
-  else if (isPartyStale) await refreshParty($)
+  if (save.isOff || retrying) return
+  if (!save.party.length) retrying = setLead($, '')
+  else if (isPartyStale) retrying = refreshParty($)
+  if (retrying) await retrying.finally(() => (retrying = null))
 }
 
 // A save from before the `together` key kept time together in itself (`raw`, read just before): it seeds the key
@@ -2169,13 +2173,12 @@ export const register: Register = on => {
       })
     background($, $.ui.close({ id: 'pokemon' }))
     $.clock.every(TICK_MS, () => background($, tick($)))
-    // A beat while the last retry still runs (a first catch waiting on a slow download) is skipped: two at once
-    // would catch two first Pokémon, the first going to the PC box.
-    let retrying: Promise<void> | null = null
-    $.clock.every(SYNC_MS, () => {
-      retrying ??= started.then(() => retry($)).finally(() => (retrying = null))
-      background($, retrying)
-    })
+    $.clock.every(SYNC_MS, () =>
+      background(
+        $,
+        started.then(() => retry($)),
+      ),
+    )
     $.clock.every(TOGETHER_EVERY_MS, () =>
       background(
         $,
