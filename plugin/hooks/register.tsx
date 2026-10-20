@@ -433,13 +433,15 @@ async function sync($: EngineInterface) {
   await queued(async () => {
     const latest = loadSave(await $.store.get('save'))
     isNewParty = isOtherParty(latest, save)
-    isNewLook =
-      latest.size !== save.size ||
-      latest.isOff !== save.isOff ||
-      (mart.isOpen &&
-        JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== JSON.stringify([save.bag, balanceOf(save, cash)]))
+    const was = JSON.stringify([save.bag, balanceOf(save, cash)])
+    const [wasSize, wasOff] = [save.size, save.isOff]
     save = latest
     countLedgers(await readLedgers($))
+    // The wallet is judged after the ledgers are counted: another window's earnings change only those.
+    isNewLook =
+      latest.size !== wasSize ||
+      latest.isOff !== wasOff ||
+      (mart.isOpen && JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== was)
     times = loadTogether(await $.store.get(TOGETHER)).ms
   })
   if (isNewParty) await refreshParty($)
