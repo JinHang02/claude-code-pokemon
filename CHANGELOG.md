@@ -80,6 +80,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - With the PC box full, a misspelt `/pokemon <name>` gets its _"Did you mean …?"_ before the box-full refusal.
 - `/pokemon release vulpix`, `take` and the like, with only an Alolan Vulpix in the PC box, said there was none. They
   ask _"Did you mean Vulpix (Alola)?"_ now. `/pokemon vulpix` and `add vulpix` still catch a plain one, as before.
+- `/pokemon help` (or `--help`, `?`) answered _"No Pokémon called "help""_. It lists every sub-command now, and the
+  command's one-line description names `remove` too.
 
 ### Known limitations
 

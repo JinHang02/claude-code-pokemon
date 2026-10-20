@@ -1933,7 +1933,35 @@ async function showBox($: EngineInterface, args: string): Promise<string> {
 // How long a naming command waits for a species list still downloading.
 const SPECIES_WAIT_MS = 2000
 // The `/pokemon` words that take no Pokémon's name.
-const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on'])
+const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
+const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
+
+// `/pokemon help`: every sub-command, one a line, narrow enough for a 60-column terminal.
+const HELP = [
+  'Pokémon Journey · /pokemon …',
+  ...(
+    [
+      ['<name>', 'lead with it; shiny <name>'],
+      ['add [name]', 'join the party'],
+      ['release <name> [n]', 'back to the wild; or remove'],
+      ['deposit <name>', 'into the PC box'],
+      ['party', 'your party'],
+      ['box [name] [page]', 'the PC box, 30 a page'],
+      ['bag', 'your items and ₽'],
+      ['give <item> <name>', 'evolve, level up or hold'],
+      ['take <name>', 'take back what it holds'],
+      ['everstone <name>', 'stop it evolving, or not'],
+      ['mart', 'the PokéMart, by mouse'],
+      ['buy <item> [count]', 'the PokéMart, by typing'],
+      ['size <size>', 'small, normal or auto'],
+      ['evolution <style>', 'rays, white or gradient'],
+      ['on, off', 'out, or back in their balls'],
+      ['help', 'this list'],
+    ] as const
+  ).map(([typed, what]) => `  ${typed.padEnd(19)}  ${what}`),
+  'Several of one? Add a number, shiny or lv <n>.',
+  'Also: /pokedex, and /pokemon-play to try things out.',
+].join('\n')
 
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
@@ -1943,6 +1971,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
   // name is read the plain way.
   if (!species && !UNNAMED.has(head.toLowerCase()))
     await Promise.race([loadSpecies($).catch(() => null), $.clock.sleep(SPECIES_WAIT_MS)])
+  if (HELP_WORDS.has(head.toLowerCase())) return HELP
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
@@ -2073,7 +2102,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release <name> [n] from your party or PC box · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
