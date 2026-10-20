@@ -54,7 +54,12 @@ export type Save = {
   spent?: number
   earned?: number
   foldedMoney?: Record<string, number>
+  // A stamp for each of the latest writes, newest last (REVS_KEPT of them): a window can tell from it whether the
+  // save it reads was written over one of its own writes without it.
+  revs?: string[]
 }
+
+export const REVS_KEPT = 32
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
 // side can't lose each other's XP. `at`: when it last wrote.
@@ -202,6 +207,9 @@ export function loadSave(raw: unknown): Save {
   const foldedMoney: Record<string, number> = {}
   for (const [key, n] of Object.entries(isObject(s.foldedMoney) ? s.foldedMoney : {}))
     if (folded.includes(key) && count(n)) foldedMoney[key] = count(n)
+  const revs = (
+    Array.isArray(s.revs) ? s.revs.filter((r): r is string => typeof r === 'string' && r.length <= 40) : []
+  ).slice(-REVS_KEPT)
   const dex: Record<string, DexEntry> = {}
   for (const [name, e] of Object.entries(isObject(s.dex) ? s.dex : {}))
     if (isName(name) && isObject(e))
@@ -225,6 +233,7 @@ export function loadSave(raw: unknown): Save {
     ...(count(s.spent) ? { spent: count(s.spent) } : {}),
     ...(count(s.earned) ? { earned: count(s.earned) } : {}),
     ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
+    ...(revs.length ? { revs } : {}),
   }
 }
 

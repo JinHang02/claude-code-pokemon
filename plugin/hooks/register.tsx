@@ -50,6 +50,7 @@ import {
   newId,
   putInBag,
   recordCaught,
+  REVS_KEPT,
   recordSeen,
   releaseMember,
   spriteBudget,
@@ -402,21 +403,83 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
   return run
 }
 
-// Applies `change` to the latest save (another Claude Code session may have written since), then stores
-// and adopts the result, so sessions running side by side never undo each other.
-function mutate($: EngineInterface, change: (s: Save) => Save) {
-  let isRedrawn = false
-  const run = queued(async () => {
+// This window's writes of the save in the last WRITTEN_MS, each with its stamp and its change. The store has no
+// compare-and-set: another window may write from a save it read before one of these landed, and so undo it. Every
+// read of the save looks for that, and makes the change again on what is there.
+type Written = { rev: string; at: number; change: (s: Save) => Save }
+let written: Written[] = []
+// By then no write made from a read before it can still land.
+const WRITTEN_MS = 30_000
+const stamp = (at: number) => `${at.toString(36)}.${newId()}`
+const stampedAt = (rev: string) => parseInt(rev.split('.')[0] ?? '', 36)
+// This window's writes that `latest` was written without. A save with no stamps (from an older version) can't
+// tell, and one whose stamps all came after a write has no word on it: nothing is made again then.
+function undone(latest: Save): Written[] {
+  const now = Date.now()
+  written = written.filter(w => now - w.at < WRITTEN_MS)
+  const revs = latest.revs ?? []
+  if (!revs.length) return []
+  const first = revs.length >= REVS_KEPT ? stampedAt(revs[0] ?? '') : 0
+  return written.filter(w => !revs.includes(w.rev) && w.at >= first)
+}
+// Whether two reads of the store's save are the same write.
+function isSameWrite(a: unknown, b: unknown) {
+  const revOf = (raw: unknown) => {
+    const revs = (raw as { revs?: unknown } | undefined)?.revs
+    return Array.isArray(revs) ? (revs.at(-1) as unknown) : undefined
+  }
+  const [x, y] = [revOf(a), revOf(b)]
+  return x !== undefined || y !== undefined ? x === y : JSON.stringify(a) === JSON.stringify(b)
+}
+
+// Inside the queue: `change` made on the store's latest save and stored, after any change of this window's that
+// another window's write undid, made again. Read again just before the write: when another window wrote meanwhile,
+// it is all made again on that (a few times at most). Nothing is written when nothing changes. Resolves the save
+// read with the undone changes made again (`redone`), and the save as it now stands (`next`).
+async function writeSave($: EngineInterface, change: (s: Save) => Save = s => s) {
+  for (let tries = 1; ; tries++) {
     const raw = await $.store.get('save')
     await seedTogether($, raw)
     const latest = loadSave(raw)
-    const next = change(latest)
-    isRedrawn = isOtherParty(latest, save)
+    const lost = undone(latest)
+    const redone = lost.reduce((s, w) => w.change(s), latest)
+    const made = change(redone)
+    if (made === latest || JSON.stringify(made) === JSON.stringify(latest)) {
+      written = written.filter(w => !lost.includes(w))
+      return { redone: latest, next: latest }
+    }
+    const at = Date.now()
+    const rev = stamp(at)
+    const next: Save = { ...made, revs: [...(latest.revs ?? []), rev].slice(-REVS_KEPT) }
+    if (tries < 4 && !isSameWrite(await $.store.get('save'), raw)) continue
+    await $.store.set('save', next)
+    const redo = lost.map(w => w.change)
+    written = [
+      ...written.filter(w => !lost.includes(w)),
+      { rev, at, change: s => change(redo.reduce((t, c) => c(t), s)) },
+    ]
+    return { redone, next }
+  }
+}
+
+// Applies `change` to the latest save (another Claude Code session may have written since), then stores
+// and adopts the result, so sessions running side by side never undo each other. A write the store refuses (another
+// window holding its lock) changes nothing here: the save and the party drawn are read again from the store.
+function mutate($: EngineInterface, change: (s: Save) => Save) {
+  let isRedrawn = false
+  const run = queued(async () => {
+    const { redone, next } = await writeSave($, change)
+    isRedrawn = isOtherParty(redone, save)
     save = next
-    await $.store.set('save', save)
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
     countLedgers(await readLedgers($))
   })
+  run.catch(() =>
+    background(
+      $,
+      sync($).then(() => refreshParty($)),
+    ),
+  )
   // In the background: a stalled download never holds up the command.
   return run.then(() => {
     if (isRedrawn) background($, refreshParty($))
@@ -425,13 +488,14 @@ function mutate($: EngineInterface, change: (s: Save) => Save) {
   })
 }
 
-// Picks up what other sessions changed: party, levels, Pokédex, size, on/off.
+// Picks up what other sessions changed: party, levels, Pokédex, size, on/off. A change of this session's another
+// one's write undid is made again.
 async function sync($: EngineInterface) {
   let isNewParty = false
   let isNewLook = false
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
-    const latest = loadSave(await $.store.get('save'))
+    const { next: latest } = await writeSave($)
     isNewParty = isOtherParty(latest, save)
     isNewLook =
       latest.size !== save.size ||
@@ -597,6 +661,7 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
   let text = ''
   let isCaught = false
   await mutate($, latest => {
+    isCaught = false
     const gone = latest.party[0]
     if (gone && isBoxFull(latest)) {
       text = noRoomForLead(gone)
@@ -632,8 +697,9 @@ async function addMember($: EngineInterface, query: string): Promise<string> {
   const caught = await catchOne($, query, 'add ')
   if (typeof caught === 'string') return caught
   const name = displayName(caught.species, caught.form)
-  let text = `${caught.isShiny ? '✨ ' : ''}${name} joined your party!`
+  let text = ''
   await mutate($, s => {
+    text = `${caught.isShiny ? '✨ ' : ''}${name} joined your party!`
     if (s.party.length >= MAX_PARTY)
       text = `Your party is full (${MAX_PARTY}). Make room with /pokemon deposit <name> or remove <name>.`
     else return { ...recordSeen(s, caught.species, caught.isShiny, Date.now()), party: [...s.party, caught] }
@@ -650,6 +716,8 @@ async function leadOwned($: EngineInterface, query: string): Promise<string | nu
   let text = ''
   let isMoved = false
   await mutate($, s => {
+    text = ''
+    isMoved = false
     const found = find(s, query, ['party', 'box'], '')
     if (isNoneIn(found)) return s
     const spot = spotOf(found, query, '')
@@ -688,6 +756,8 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
   let text = ''
   let isMoved = false
   await mutate($, s => {
+    text = ''
+    isMoved = false
     const found = find(s, query, ['box'], 'add ')
     if (s.party.length >= MAX_PARTY || isNoneIn(found)) return s
     const spot = spotOf(found, query, 'add ')
@@ -717,6 +787,7 @@ async function releaseOne($: EngineInterface, query: string, command: string): P
   let text = ''
   let isPartyChanged = false
   await mutate($, s => {
+    isPartyChanged = false
     const spot = pickIn(s, query, ['party', 'box'], `${command} `)
     const done = typeof spot === 'string' ? spot : releaseMember(s, spot, query, levelWithLedger)
     if (typeof done === 'string') {
@@ -828,6 +899,7 @@ async function takeItem($: EngineInterface, query: string, places: Place[] = ['p
   let text = ''
   let isDropped = false
   await mutate($, s => {
+    isDropped = false
     const found = find(s, query, places, 'take ')
     const holders = 'choices' in found ? found.choices.filter(c => c.member.heldItem) : []
     const spot = holders[0] && holders.length === 1 ? holders[0] : spotOf(found, query, 'take ')
@@ -881,6 +953,7 @@ async function feedCandy($: EngineInterface, query: string, item: Item): Promise
   let text = ''
   let grew = false
   await mutate($, s => {
+    grew = false
     const spot = pickIn(s, query, ['party'], `give ${item.id} `)
     if (typeof spot === 'string') {
       text = spot
@@ -1281,6 +1354,7 @@ async function evolveNow(
     let outcome = ''
     const evolvedAt = await $.clock.now()
     await mutate($, s => {
+      shedText = ''
       const i = s.party.findIndex(m => m.id === member.id && m.species === member.species)
       const latest = s.party[i]
       if (!latest) {
@@ -1356,7 +1430,7 @@ async function earn($: EngineInterface, amount: number) {
   let isPaid = false
   let isRedrawn = false
   await queued(async () => {
-    const latest = loadSave(await $.store.get('save'))
+    const { next: latest } = await writeSave($)
     // Off in another session since this one last synced: no XP either.
     if (latest.isOff) return
     const before = withExtra(latest, extra).party.map(m => level(m.xp))
@@ -1502,10 +1576,8 @@ async function keepCatch($: EngineInterface) {
   let isInParty = false
   let isStored = true
   await mutate($, s => {
-    if (isNoRoom(s)) {
-      isStored = false
-      return s
-    }
+    isStored = !isNoRoom(s)
+    if (!isStored) return s
     const kept = storeCaught(recordCaught(s, pick.species, Date.now()), caught)
     isInParty = kept.isInParty
     return kept.save
@@ -2005,6 +2077,7 @@ async function load($: EngineInterface) {
     cacheDir = await findCacheDir($)
     const fresh = `${LEDGER}${newId()}${newId()}`
     ledgerKey = (await update($, ledger, key => key ?? fresh)) ?? fresh
+    written = []
     await queued(async () => {
       const raw = await $.store.get('save')
       await seedTogether($, raw)

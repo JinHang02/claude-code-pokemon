@@ -60,6 +60,15 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save
   has it from the start.
 
+### Fixed
+
+- Two Claude Code windows changing the save at the same moment no longer undo each other. A `/pokemon on` in one
+  window could be reverted by a `/pokemon everstone` in the other, and a purchase, a catch or an evolution could be
+  lost the same way. Each write is now stamped: a window reads the save again just before it writes, and a window
+  whose write was overwritten anyway makes its change again on the newer save, within ten seconds.
+- A save write the store refuses (another window holding its lock) is no longer shown as done: the ₽, the Bag and the
+  party drawn stay as stored, and the command says it couldn't reach the Pokémon.
+
 ### Upgrading
 
 - **Restart every open Claude Code window after installing 1.5.0.** A window still running 1.4.0 drops the new save
