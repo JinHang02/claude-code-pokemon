@@ -587,3 +587,57 @@ test("names keep the games' punctuation: Farfetch'd, Mr. Mime, Nidoran♀, Type:
   const dex = recordSeen(recordSeen(emptySave(), 'ho-oh', true, 1), 'type-null', false, 2)
   expect(formatDex(dex, ['ho-oh', 'type-null'])).toContain('Shinies: Ho-Oh\nRecently seen: Type: Null, Ho-Oh')
 })
+
+test('in a narrow terminal each row keeps its name and level on one line, the rest wrapped beneath', () => {
+  const thunder = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as const
+  const save = {
+    ...emptySave(),
+    party: [
+      {
+        ...pikachu,
+        xp: 400,
+        gender: 'female' as const,
+        heldItem: 'kings-rock',
+        next: [thunder],
+        togetherMs: 3 * 3_600_000,
+      },
+      { ...pikachu, id: 'p2', species: 'charizard', form: 'mega-x', isShiny: true, xp: 40_010, next: [] },
+    ],
+  }
+  // At 100 the XP to the next level still fits beside the level.
+  expect(formatParty(save, 100).split('\n').slice(1, 3)).toEqual([
+    '  Lead  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    "        together 3h · holds a King's Rock · evolves with a Thunder Stone",
+  ])
+  const wide = formatParty(save, 150)
+  expect(wide).toBe(formatParty(save))
+  expect(wide.split('\n')).toHaveLength(3)
+  expect(formatParty(save, 60).split('\n')).toEqual([
+    'Your party:',
+    '  Lead  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    "        together 3h · holds a King's Rock",
+    '        evolves with a Thunder Stone',
+    '  2.    ✨ Charizard (Mega X)  Lv 100  (max level)',
+    '        final form',
+  ])
+  // Narrower still, the XP to the next level is left out: the level says enough.
+  expect(formatParty(save, 50).split('\n').slice(1, 4)).toEqual([
+    '  Lead  Pikachu ♀              Lv 11',
+    "        together 3h · holds a King's Rock",
+    '        evolves with a Thunder Stone',
+  ])
+  // Every line fits the 60 columns less the 5 the reply is indented by.
+  for (const columns of [40, 60, 80])
+    for (const line of formatParty(save, columns).split('\n'))
+      expect([columns, line, [...line].length + (line.includes('✨') ? 1 : 0) <= Math.max(columns - 5, 40)]).toEqual([
+        columns,
+        line,
+        true,
+      ])
+  const box = { ...emptySave(), box: save.party }
+  expect(formatBox(box, 1, undefined, 60).split('\n').slice(0, 3)).toEqual([
+    'Your PC box (2 / 960):',
+    '  1.  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    "      together 3h · holds a King's Rock",
+  ])
+})

@@ -583,12 +583,57 @@ function lineUp(rows: string[][]): string[] {
   )
 }
 
-// One row per member, every column lined up.
-export function formatParty(save: Save): string {
+// Claude Code indents a command's reply this many columns (under its "⎿").
+const REPLY_INDENT = 5
+
+// `segments` joined with " · ", broken between them (a segment longer than `width` between its words) so each line
+// fits `width`.
+function wrapSegments(segments: string[], width: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const segment of segments)
+    if (line && widthOf(`${line} · ${segment}`) <= width) line = `${line} · ${segment}`
+    else {
+      if (line) lines.push(line)
+      line = ''
+      for (const word of segment.split(' '))
+        if (line && widthOf(`${line} ${word}`) > width) {
+          lines.push(line)
+          line = word
+        } else line = line ? `${line} ${word}` : word
+    }
+  return line ? [...lines, line] : lines
+}
+
+// Rows of a label and a member's columns, lined up; where that is wider than a terminal of `columns`, each row's
+// label, name and level lined up on a line of their own (with the XP to the next level where it fits, else without)
+// and the rest wrapped beneath the name.
+function fitRows(rows: string[][], columns: number): string[] {
+  const wide = lineUp(rows)
+  const room = columns - REPLY_INDENT
+  if (wide.every(line => widthOf(line) <= room)) return wide
+  const withXp = lineUp(rows.map(r => r.slice(0, 4)))
+  const isXpKept = withXp.every(line => widthOf(line) <= room)
+  const heads = isXpKept ? withXp : lineUp(rows.map(r => r.slice(0, 3)))
+  const indent = ' '.repeat(2 + Math.max(...rows.map(r => widthOf(r[0] ?? ''))) + 2)
+  return rows.flatMap((r, i) => [
+    heads[i] ?? '',
+    ...wrapSegments(
+      r.slice(4).flatMap(text => (text ? [text.replace(/^· /, '')] : [])),
+      Math.max(room - indent.length, 20),
+    ).map(line => indent + line),
+  ])
+}
+
+// One row per member, every column lined up, for a terminal `columns` wide.
+export function formatParty(save: Save, columns = Infinity): string {
   if (!save.party.length) return 'Your party is empty. /pokemon <name> picks a lead.'
   return [
     'Your party:',
-    ...lineUp(save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)])),
+    ...fitRows(
+      save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)]),
+      columns,
+    ),
   ].join('\n')
 }
 
@@ -627,9 +672,9 @@ export type BoxPick = { title: string; at: number[]; words: string }
 
 export const boxPages = (count: number) => Math.max(1, Math.ceil(count / BOX_PAGE))
 
-// One page of the PC box (from 1), or of `picked`; each row numbered by its place in the box, then where the next
-// page is.
-export function formatBox(save: Save, page = 1, picked?: BoxPick): string {
+// One page of the PC box (from 1), or of `picked`, for a terminal `columns` wide; each row numbered by its place in
+// the box, then where the next page is.
+export function formatBox(save: Save, page = 1, picked?: BoxPick, columns = Infinity): string {
   const box = save.box ?? []
   if (!box.length) return 'Your PC box is empty.'
   const at = picked?.at ?? box.map((_, i) => i)
@@ -642,7 +687,7 @@ export function formatBox(save: Save, page = 1, picked?: BoxPick): string {
     .flatMap(i => (box[i] ? [[`${i + 1}.`, ...memberColumns(box[i])]] : []))
   return [
     `${title}${pages > 1 ? ` · page ${page} of ${pages}` : ''}:`,
-    ...lineUp(rows),
+    ...fitRows(rows, columns),
     ...(page < pages ? [`Next page: /pokemon box ${picked ? `${picked.words} ` : ''}${page + 1}`] : []),
   ].join('\n')
 }

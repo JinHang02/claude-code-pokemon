@@ -70,6 +70,9 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   those, each with its place in the box: `/pokemon box eevee`, `/pokemon box shiny`.
 - `/pokemon bag` listed every holder, the PC box's too, on one unbroken line. It's one a line now: the party's, then
   ten of the box's and how many more.
+- In a narrow terminal, `/pokemon party`, `/pokemon box` and `/pokedex` broke their rows mid-column, leaving
+  _"· final form"_ alone on a line. Where a row doesn't fit, its name and level now share a line, and the rest wraps
+  beneath the name, without the XP to the next level when even that doesn't fit.
 - XP kept raising the level past 100 (_"Lv 101 (794 xp to Lv 102)"_) while a Rare Candy said _"already Lv 100"_. The
   level stops at 100 everywhere now, shown as _"Lv 100 (max level)"_.
 - Names lost their punctuation (_"Farfetchd"_, _"Mr Mime"_, _"Ho Oh"_, _"Nidoran F"_). They're written as in the

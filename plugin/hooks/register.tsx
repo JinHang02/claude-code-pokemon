@@ -142,6 +142,8 @@ let times = loadTogether(undefined).ms
 // only.
 const viewOf = (s: Save) => withTogether(withExtra(s, extra), times)
 const view = () => viewOf(save)
+// How wide the terminal is for the command running now, so a party or a box fits it; unknown in a test.
+let replyColumns = Infinity
 // The ledgers' XP and ₽ not yet folded into the save, counted against the save's own marks.
 function countLedgers(ledgers: Record<string, Ledger>) {
   extra = extraXp(ledgers, save.folded, save.foldedXp)
@@ -578,7 +580,7 @@ const levelWithLedger = (m: Member) => level(m.xp + (extra[m.id] ?? 0))
 // The members `query` names in `places` of `s`, with their levels as the party stands. A spot's `at` is its place in
 // `s` too.
 const find = (s: Save, query: string, places: Place[], command: string) =>
-  findMembers(viewOf(s), query, places, command, levelNow, species ?? [])
+  findMembers(viewOf(s), query, places, command, levelNow, species ?? [], replyColumns)
 // The one member found, or the answer instead: which one (numbered), a suggestion, or who is there.
 function spotOf(found: Found, query: string, command: string): Spot | string {
   if ('spot' in found) return found.spot
@@ -1927,7 +1929,7 @@ async function showBox($: EngineInterface, args: string): Promise<string> {
   const page = typed ? (/^\d+$/.test(typed) ? Number(typed) : 0) : 1
   if (page < 1 || page > pages)
     return `There's no page ${typed}: ${pages === 1 ? 'it all fits on one' : `pages go from 1 to ${pages}`}.`
-  return formatBox(s, page, found ?? undefined)
+  return formatBox(s, page, found ?? undefined, replyColumns)
 }
 
 // How long a naming command waits for a species list still downloading.
@@ -1975,7 +1977,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
-      return formatParty(view())
+      return formatParty(view(), replyColumns)
     case 'box':
       return showBox($, tail)
     case 'add':
@@ -2154,7 +2156,8 @@ export const register: Register = on => {
     }
   })
 
-  on('command.run', { command: 'pokedex' }, async $ => {
+  on('command.run', { command: 'pokedex' }, async ($, e) => {
+    replyColumns = e.presentation?.columns ?? Infinity
     try {
       await ready
       await settled($)
@@ -2164,7 +2167,7 @@ export const register: Register = on => {
         text: `${formatDex(
           save,
           (species ?? []).map(s => s.name),
-        )}\n\n${formatParty(view())}`,
+        )}\n\n${formatParty(view(), replyColumns)}`,
       }
     } catch (err) {
       return { text: `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}` }
@@ -2173,6 +2176,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'pokemon' }, async ($, e) => {
     feel('activity')
+    replyColumns = e.presentation?.columns ?? Infinity
     try {
       await ready
       await settled($)
