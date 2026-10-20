@@ -92,6 +92,23 @@ test('a band too narrow for the picture and the actions side by side shows the â
   expect(hitAt(p, p.state, 'buy')).toBeDefined()
 })
 
+test('from 40 columns every control is a hit, in every tab and at any quantity, and the price shows whole', () => {
+  for (const rows of [7, 9])
+    for (let columns = 40; columns <= 62; columns += columns < 52 ? 1 : 5)
+      for (const [tab, sel, qty] of [[0, 0, 1], [0, 0, 12], [1, 0, 99], [3, 0, 999], [3, 1, 999], [2, 0, 999]] as const) {
+        const p = props({ columns, rows, balance: 5_000_000 })
+        const s = { tab, sel, top: 0, qty }
+        const { hits, lines } = martRows(p, s)
+        const acts = hits.map(h => JSON.stringify(h.act))
+        for (const a of ['"close"', '{"tab":0}', '{"tab":1}', '{"tab":2}', '{"tab":3}', '"less"', '"more"', '"max"', '"buy"'])
+          expect(acts).toContain(a)
+        const item = p.items.filter(i => i.tab === TABS[tab])[sel]!
+        const buy = hits.find(h => h.act === 'buy')!
+        expect(text(lines[buy.y]!).slice(buy.x0, buy.x1)).toContain(`â‚½${(item.price * qty).toLocaleString('en-US')}`)
+        for (const l of lines) expect([...text(l)]).toHaveLength(columns)
+      }
+})
+
 test('the description wraps to at most 3 lines, and a party line shows when an item would evolve one', () => {
   const p = props({
     rows: 9,

@@ -195,10 +195,20 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   // Tabs, each with how many it sells.
   const tabs = row(1)
   tabs.put(' ', BLUE, PAPER)
-  p.tabs.forEach((name, t) => {
-    const label = ` ${name} ${p.items.filter(i => i.tab === name).length} `
-    tabs.put(label, t === s.tab ? WHITE : BLUE, t === s.tab ? BLUE : PAPER, { tab: t })
-  })
+  // Each tab with how many it sells; on a narrow band without the counts, then with the names cut, so all stay.
+  const counts = p.tabs.map(name => p.items.filter(i => i.tab === name).length)
+  const labels = (cut: number, withCount: boolean) =>
+    p.tabs.map((name, t) => ` ${[...name].slice(0, cut).join('')}${withCount ? ` ${counts[t]}` : ''} `)
+  const longest = Math.max(...p.tabs.map(width))
+  const tries: [number, boolean][] = [
+    [longest, true],
+    [longest, false],
+  ]
+  for (let cut = longest - 1; cut >= 1; cut--) tries.push([cut, false])
+  const shown =
+    tries.map(([cut, c]) => labels(cut, c)).find(l => 1 + l.reduce((n, x) => n + width(x), 0) <= p.columns) ??
+    labels(1, false)
+  shown.forEach((label, t) => tabs.put(label, t === s.tab ? WHITE : BLUE, t === s.tab ? BLUE : PAPER, { tab: t }))
   tabs.pad(p.columns, PAPER)
   lines.push(tabs.runs)
 
@@ -210,19 +220,30 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   // The details column: the picture (when it fits) or a ◆, then name, description, party line; actions last.
   const have = item ? (p.bag[item.id] ?? 0) : 0
   const canBuy = !!item && p.balance >= item.price * s.qty && have + s.qty <= MAX_BAG
-  const actions: [string, string, string, Act?][] = item
+  // The actions row: spaced out, or closer, or with the button as just its price, until it fits beside the list.
+  const price = `₽${fmt((item?.price ?? 0) * s.qty)}`
+  type Action = [string, string, string, Act?]
+  const row3 = (lead: string, qty: string, gap: string, buy: string): Action[] => [
+    [lead, INK, PAPER],
+    ['◀', BLUE, PAPER, 'less'],
+    [qty, INK, PAPER],
+    ['▶', BLUE, PAPER, 'more'],
+    [gap.slice(0, 1), INK, PAPER],
+    ['Max', BLUE, PAPER, 'max'],
+    [gap.slice(1), INK, PAPER],
+    [buy, WHITE, canBuy ? RED : GREY, 'buy'],
+  ]
+  const tiers: Action[][] = item
     ? [
-        ['  ', INK, PAPER],
-        ['◀', BLUE, PAPER, 'less'],
-        [` ×${s.qty} `, INK, PAPER],
-        ['▶', BLUE, PAPER, 'more'],
-        [' ', INK, PAPER],
-        ['Max', BLUE, PAPER, 'max'],
-        ['  ', INK, PAPER],
-        [`Buy ₽${fmt(item.price * s.qty)}`, WHITE, canBuy ? RED : GREY, 'buy'],
+        row3('  ', ` ×${s.qty} `, '   ', `Buy ${price}`),
+        row3('', ` ×${s.qty} `, '  ', `Buy ${price}`),
+        row3('', `×${s.qty}`, '  ', `Buy ${price}`),
+        row3('', `×${s.qty}`, '  ', price),
       ]
-    : []
-  const actionsWidth = actions.reduce((n, [t]) => n + width(t), 0)
+    : [[]]
+  const width3 = (a: Action[]) => a.reduce((n, [t]) => n + width(t), 0)
+  const actionsWidth = width3(tiers[0] ?? [])
+  const actions = tiers.find(a => left + 1 + width3(a) <= p.columns) ?? tiers[tiers.length - 1] ?? []
   const icon = p.icon && p.icon.length <= body && left + 2 + ICON_COLUMNS + actionsWidth <= p.columns ? p.icon : null
   const textWidth = Math.max(1, p.columns - left - 1 - (icon ? ICON_COLUMNS + 2 : 0) - 2)
   const party = item?.party ? fit(`Your party: ${item.party}`, textWidth) : null
@@ -249,10 +270,10 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
       const it = i < list ? items[at] : undefined
       if (it) {
         const bg = at === s.sel ? PICKED : PAPER
-        const price = `₽${fmt(it.price)} `
+        const cost = `₽${fmt(it.price)} `
         const owned = p.bag[it.id] ? ` ×${p.bag[it.id]}` : ''
-        r.put(fit(`${at === s.sel ? '▶' : ' '} ${it.name}${owned}`, left - width(price)), INK, bg, { pick: at })
-        r.put(price, INK, bg)
+        r.put(fit(`${at === s.sel ? '▶' : ' '} ${it.name}${owned}`, left - width(cost) - 1), INK, bg, { pick: at })
+        r.put(` ${cost}`, INK, bg)
       } else r.pad(left, PAPER)
     } else {
       // The ▲ ▼ row under the list.
