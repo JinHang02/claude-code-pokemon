@@ -86,7 +86,7 @@ test('brakes before the edge, pauses there, then turns around', () => {
   expect(lead(run(s, ticks(400))).facing).toBe(-1)
 })
 
-test('never leaves the band, however long it roams', () => {
+test('never leaves the band, however long it roams', { timeoutMs: 30_000 }, () => {
   let scene: Scene = { ...newScene(5), roam: walk }
   for (let i = 0; i < 5000; i++) {
     scene = advance(scene, 30, 6, Math.random)

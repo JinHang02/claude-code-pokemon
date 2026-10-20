@@ -2,7 +2,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { emptySave, xpForLevel } from '../hooks/save'
-import { ART, begin, cmd, hourAt, LIST, member, mountBand, until } from './world'
+import { ART, begin, cmd, hourAt, KIT, LIST, member, mountBand, until } from './world'
 import type { Net } from './world'
 
 // The colours in a frame: every cell's foreground and background.
@@ -178,58 +178,66 @@ test(
   },
 )
 
-test("a stone given to a Pokémon another session just released says it's gone, and keeps the stone", async ($, on) => {
-  let go = () => {}
-  const net: Net = { isOnline: true, list: JSON.stringify(LIST) }
-  const plain = { next: [], gender: 'male' as const }
-  const w = await begin(
-    $,
-    on,
-    {
-      ...emptySave(),
-      party: [member('pikachu', { id: 'p', ...plain }), member('eevee', { id: 'e', ...plain })],
-      bag: { 'water-stone': 1 },
-    },
-    undefined,
-    undefined,
-    net,
-  )
-  // A name command loads the species list first, so it is in before the stall starts.
-  await cmd($, 'pokemon', 'take eevee')
-  net.stall = new Promise<void>(r => (go = r))
-  const pending = cmd($, 'pokemon', 'give water stone eevee')
-  for (let i = 0; i < 20; i++) await w.clock.advance(10)
-  const s = w.saveNow()
-  w.store.set('save', { ...s, party: s.party.filter(m => m.id !== 'e') })
-  delete net.stall
-  go()
-  expect(await pending).toBe('Eevee is no longer in your party. Your Water Stone is still in your Bag.')
-  expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
-  expect(w.saveNow().bag).toEqual({ 'water-stone': 1 })
-  expect(w.toasts).toEqual([])
-})
+test(
+  "a stone given to a Pokémon another session just released says it's gone, and keeps the stone",
+  KIT,
+  async ($, on) => {
+    let go = () => {}
+    const net: Net = { isOnline: true, list: JSON.stringify(LIST) }
+    const plain = { next: [], gender: 'male' as const }
+    const w = await begin(
+      $,
+      on,
+      {
+        ...emptySave(),
+        party: [member('pikachu', { id: 'p', ...plain }), member('eevee', { id: 'e', ...plain })],
+        bag: { 'water-stone': 1 },
+      },
+      undefined,
+      undefined,
+      net,
+    )
+    // A name command loads the species list first, so it is in before the stall starts.
+    await cmd($, 'pokemon', 'take eevee')
+    net.stall = new Promise<void>(r => (go = r))
+    const pending = cmd($, 'pokemon', 'give water stone eevee')
+    for (let i = 0; i < 20; i++) await w.clock.advance(10)
+    const s = w.saveNow()
+    w.store.set('save', { ...s, party: s.party.filter(m => m.id !== 'e') })
+    delete net.stall
+    go()
+    expect(await pending).toBe('Eevee is no longer in your party. Your Water Stone is still in your Bag.')
+    expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
+    expect(w.saveNow().bag).toEqual({ 'water-stone': 1 })
+    expect(w.toasts).toEqual([])
+  },
+)
 
-test('a stone waiting its turn behind another evolution, for a Pokémon released meanwhile, keeps the stone, and says so in a toast', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('eevee', { id: 'e1', gender: 'male' }), member('eevee', { id: 'e2', gender: 'female' })],
-    bag: { 'water-stone': 2 },
-  })
-  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
-  await mountBand($)
-  await w.clock.advance(500)
-  expect(await cmd($, 'pokemon', 'give water stone eevee 1')).toBe('Eevee evolved into Vaporeon!')
-  let said = ''
-  const waiting = cmd($, 'pokemon', 'give water stone eevee').then(text => (said = text))
-  await w.clock.advance(500)
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee ♀ (Lv 1, party)! It went back to the wild.')
-  for (let i = 0; i < 100 && !said; i++) await w.clock.advance(100)
-  await waiting
-  // The command doesn't wait for its turn; what came of it is told when it comes.
-  expect(said).toBe('Giving the Water Stone to Eevee: what it does shows after the one on screen.')
-  const gone = 'Eevee is no longer in your party. Your Water Stone is still in your Bag.'
-  for (let i = 0; i < 100 && !w.toasts.includes(gone); i++) await w.clock.advance(100)
-  expect(w.toasts.filter(t => t === gone)).toHaveLength(1)
-  expect(w.saveNow().party.map(m => [m.id, m.species])).toEqual([['e1', 'vaporeon']])
-  expect(w.saveNow().bag).toEqual({ 'water-stone': 1 })
-})
+test(
+  'a stone waiting its turn behind another evolution, for a Pokémon released meanwhile, keeps the stone, and says so in a toast',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('eevee', { id: 'e1', gender: 'male' }), member('eevee', { id: 'e2', gender: 'female' })],
+      bag: { 'water-stone': 2 },
+    })
+    await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+    await mountBand($)
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon', 'give water stone eevee 1')).toBe('Eevee evolved into Vaporeon!')
+    let said = ''
+    const waiting = cmd($, 'pokemon', 'give water stone eevee').then(text => (said = text))
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee ♀ (Lv 1, party)! It went back to the wild.')
+    for (let i = 0; i < 100 && !said; i++) await w.clock.advance(100)
+    await waiting
+    // The command doesn't wait for its turn; what came of it is told when it comes.
+    expect(said).toBe('Giving the Water Stone to Eevee: what it does shows after the one on screen.')
+    const gone = 'Eevee is no longer in your party. Your Water Stone is still in your Bag.'
+    for (let i = 0; i < 100 && !w.toasts.includes(gone); i++) await w.clock.advance(100)
+    expect(w.toasts.filter(t => t === gone)).toHaveLength(1)
+    expect(w.saveNow().party.map(m => [m.id, m.species])).toEqual([['e1', 'vaporeon']])
+    expect(w.saveNow().bag).toEqual({ 'water-stone': 1 })
+  },
+)

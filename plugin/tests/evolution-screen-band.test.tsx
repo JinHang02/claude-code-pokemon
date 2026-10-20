@@ -138,6 +138,13 @@ const leftOf = (l: Look, color: number) => {
   return -1
 }
 
+// Until Eevee is drawn. The band's timer counts only once the party is, and its sprite arrives in real time: on a busy
+// machine, after the fake clock has moved on, so a visitor due "in ten minutes" would come later.
+async function untilDrawn($: never, band: Band) {
+  for (let i = 0; i < 50 && !(await look(band)).colors.has(EEVEE); i++) await cmd($, 'pokemon', 'party')
+  expect((await look(band)).colors.has(EEVEE)).toBe(true)
+}
+
 async function stoneWorld($: never, on: never, saved = withEevee(), size = 6, extra: Partial<Net> = {}) {
   const w = await begin($, on, saved, undefined, undefined, net(size, extra))
   await until($, () => w.saveNow().party.every(m => m.next !== undefined))
@@ -287,6 +294,7 @@ test('/pokemon-play evolve with a wild Pokémon out says the preview plays once 
 test("the timer's visitor due while a screen plays comes as soon as it has ended", SLOW, async ($, on) => {
   const w = await stoneWorld($ as never, on as never)
   const band = await mount($)
+  await untilDrawn($ as never, band)
   // The first visitor is due ten minutes after the band is first drawn: here, four seconds into the screen.
   for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
   await w.clock.advance(60_000 - 4000)
@@ -310,6 +318,7 @@ test(
   async ($, on) => {
     const w = await stoneWorld($ as never, on as never)
     const band = await mount($)
+    await untilDrawn($ as never, band)
     for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
     await w.clock.advance(60_000 - 2000)
     // Awake, so the timer brings its visitor on time.
@@ -324,7 +333,8 @@ test(
       return stall
     }
     await watch(w.clock, band, 3000)
-    expect(stalled).not.toBe('')
+    // The visitor's draw runs on real time: a busy machine may ask for its sprite only after the fake clock moved on.
+    await until($, () => stalled !== '')
     const appeared = () => w.toasts.filter(t => /A wild .+ appeared!$/.test(t))
     expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('What? Eevee is evolving!')
     await w.clock.advance(300)

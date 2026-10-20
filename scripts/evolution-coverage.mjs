@@ -8,6 +8,8 @@ import { join } from 'node:path'
 const root = new URL('..', import.meta.url).pathname
 const copy = mkdtempSync(join(tmpdir(), 'pokemon-coverage-'))
 cpSync(join(root, 'plugin'), copy, { recursive: true })
+// The every-evolution test prints its report only when this says so.
+writeFileSync(join(copy, 'tests', 'coverage-run.ts'), 'export const IS_COVERAGE_RUN = true\n')
 let output = ''
 try {
   // Both streams, pass or fail: the test runner prints the report lines on stderr.

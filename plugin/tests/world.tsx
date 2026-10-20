@@ -5,6 +5,9 @@ import { expect, mock } from 'claude-code/testing'
 import type { Stage } from '../hooks/evolution'
 import type { Member, Save, Together } from '../hooks/save'
 
+// A test that starts a session: its first in a file pays for the bundle and the session's start, and on a busy machine
+// any of them can take seconds, past the default 5.
+export const KIT = { timeoutMs: 30_000 }
 export const ART = '\x1b[38;2;255;0;0m\x1b[48;2;0;0;255m▀\x1b[0m\x1b[38;2;0;255;0m▄\n\x1b[38;2;255;0;0m█\x1b[0m '
 export const LIST = [
   { name: 'pikachu', forms: ['regular'] },

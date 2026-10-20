@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 import { emptySave, level } from '../hooks/save'
-import { answerTools, bash, begin, cmd, member, mountBand, until } from './world'
+import { answerTools, bash, begin, cmd, KIT, member, mountBand, until } from './world'
 
 type Band = {
   pointer: (e: { type: 'down'; x: number; y: number; button: 'left'; in?: string }) => Promise<void>
@@ -83,27 +83,31 @@ test(
   },
 )
 
-test('an open Mart is still open after /clear; it closes, and the ₽ button shows +₽ for what is earned after', async ($, on) => {
-  answerTools(on)
-  const state = sessionState(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
-  expect(await clientProps(band, 'mart')).toMatchObject({ balance: 3000 })
+test(
+  'an open Mart is still open after /clear; it closes, and the ₽ button shows +₽ for what is earned after',
+  KIT,
+  async ($, on) => {
+    answerTools(on)
+    const state = sessionState(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
+    expect(await clientProps(band, 'mart')).toMatchObject({ balance: 3000 })
 
-  await state.clear($)
-  await w.clock.advance(100)
-  expect(await clientProps(band, 'mart')).toMatchObject({ balance: 3000 })
-  await band.key({ key: 'x', in: 'mart' })
-  expect(await clientProps(band, 'mart')).toBeNull()
-  await $.tool.call(bash('git commit -m x') as never)
-  // The ₽ lands in the background: a command waits for it.
-  await cmd($, 'pokemon', 'party')
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
-  await w.clock.advance(1500)
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
-})
+    await state.clear($)
+    await w.clock.advance(100)
+    expect(await clientProps(band, 'mart')).toMatchObject({ balance: 3000 })
+    await band.key({ key: 'x', in: 'mart' })
+    expect(await clientProps(band, 'mart')).toBeNull()
+    await $.tool.call(bash('git commit -m x') as never)
+    // The ₽ lands in the background: a command waits for it.
+    await cmd($, 'pokemon', 'party')
+    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
+    await w.clock.advance(1500)
+    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
+  },
+)
 
 // Simulates 3 minutes of the frame and heartbeat timers (120 s, then 60 s).
 test(

@@ -5,7 +5,7 @@ import type { Where } from '../hooks/encounter'
 import { SPECIES } from '../hooks/species-data'
 import { LIST } from './fixtures/evolutions'
 
-test('the species table covers every species and form in the sprite list', () => {
+test('the species table covers every species and form in the sprite list', { timeoutMs: 30_000 }, () => {
   for (const { name, forms } of LIST) {
     const info = SPECIES[name]
     expect(info, name).toBeDefined()

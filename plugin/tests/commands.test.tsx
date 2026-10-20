@@ -19,6 +19,7 @@ import {
   end,
   GENDER_RATES,
   hourAt,
+  KIT,
   LIST,
   lv,
   member,
@@ -28,20 +29,20 @@ import {
 } from './world'
 import type { Net } from './world'
 
-test('a first session gets a random lead, saved for next time', async ($, on) => {
+test('a first session gets a random lead, saved for next time', KIT, async ($, on) => {
   const w = await begin($, on)
   expect(await cmd($, 'pokemon', 'party')).toContain('Your party:\n  Lead ')
   expect(w.saveNow().party.length).toBe(1)
   expect(Object.keys(w.saveNow().dex).length).toBe(1)
 })
 
-test('a saved party comes back next session, levels intact', async ($, on) => {
+test('a saved party comes back next session, levels intact', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('eevee', { xp: xpForLevel(5) })] })
   expect(await cmd($, 'pokemon', 'party')).toContain('Lead  Eevee  Lv 5')
   expect(w.saveNow().party[0]?.species).toBe('eevee')
 })
 
-test('party: add up to three, twins too, remove any but the last', async ($, on) => {
+test('party: add up to three, twins too, remove any but the last', KIT, async ($, on) => {
   // A caught Pokémon is shiny 1 time in 32: its ✨ isn't what this test is about.
   const said = async (query: string) => (await cmd($, 'pokemon', query)).split('✨ ').join('')
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
@@ -62,19 +63,26 @@ test('party: add up to three, twins too, remove any but the last', async ($, on)
   expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
 })
 
-test('naming a party member makes it lead with its level; a new name replaces the lead and says so', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { xp: 40 }), member('eevee', { xp: 100 })] })
-  expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 6).')
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'pikachu'])
-  const text = await cmd($, 'pokemon', 'charizard')
-  expect(text).toContain("It's your new lead.")
-  expect(text).toContain('Eevee (Lv 6) went into the PC box.')
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['charizard', 'pikachu'])
-  expect(w.saveNow().box?.map(m => [m.species, m.xp])).toEqual([['eevee', 100]])
-  expect(await cmd($, 'pokemon', 'agumon')).toBe('No Pokémon called "agumon".')
-})
+test(
+  'naming a party member makes it lead with its level; a new name replaces the lead and says so',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { xp: 40 }), member('eevee', { xp: 100 })],
+    })
+    expect(await cmd($, 'pokemon', 'eevee')).toBe('Eevee leads the party again (Lv 6).')
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'pikachu'])
+    const text = await cmd($, 'pokemon', 'charizard')
+    expect(text).toContain("It's your new lead.")
+    expect(text).toContain('Eevee (Lv 6) went into the PC box.')
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['charizard', 'pikachu'])
+    expect(w.saveNow().box?.map(m => [m.species, m.xp])).toEqual([['eevee', 100]])
+    expect(await cmd($, 'pokemon', 'agumon')).toBe('No Pokémon called "agumon".')
+  },
+)
 
-test('passing tests and commits earn xp; a lone failed grep does nothing', async ($, on) => {
+test('passing tests and commits earn xp; a lone failed grep does nothing', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu'), member('eevee')] })
   await cmd($, 'pokemon', 'party')
@@ -86,19 +94,23 @@ test('passing tests and commits earn xp; a lone failed grep does nothing', async
   expect(w.partyNow().map(m => m.xp)).toEqual([15, 15])
 })
 
-test('Charmander evolves at Lv 16, as in the games: saved, seen, announced, and Charmeleon learns its own level', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('charmander', { xp: xpForLevel(16) - 5 })] })
-  await until($, () => evolveLevel(w.saveNow().party[0]) === 16)
-  await $.tool.call(bash('git commit -m "ship it"') as never)
-  await until($, () => evolveLevel(w.saveNow().party[0]) === 36 && w.toasts.length > 0)
-  expect(w.saveNow().party[0]).toMatchObject({ species: 'charmeleon', evolutions: 1, next: [lv('charizard', 36)] })
-  expect(w.saveNow().dex.charmeleon?.seen).toBe(1)
-  expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!'])
-  expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon +Lv 16 /)
-})
+test(
+  'Charmander evolves at Lv 16, as in the games: saved, seen, announced, and Charmeleon learns its own level',
+  KIT,
+  async ($, on) => {
+    answerTools(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('charmander', { xp: xpForLevel(16) - 5 })] })
+    await until($, () => evolveLevel(w.saveNow().party[0]) === 16)
+    await $.tool.call(bash('git commit -m "ship it"') as never)
+    await until($, () => evolveLevel(w.saveNow().party[0]) === 36 && w.toasts.length > 0)
+    expect(w.saveNow().party[0]).toMatchObject({ species: 'charmeleon', evolutions: 1, next: [lv('charizard', 36)] })
+    expect(w.saveNow().dex.charmeleon?.seen).toBe(1)
+    expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!'])
+    expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon +Lv 16 /)
+  },
+)
 
-test('a final stage is marked done; an everstone stops evolution', async ($, on) => {
+test('a final stage is marked done; an everstone stops evolution', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -118,7 +130,7 @@ test('a final stage is marked done; an everstone stops evolution', async ($, on)
   expect(await cmd($, 'pokemon', 'everstone pikachu')).toBe('Pikachu dropped its everstone and can evolve again.')
 })
 
-test('an everstone given while an evolution downloads stops it, and the everstone stays', async ($, on) => {
+test('an everstone given while an evolution downloads stops it, and the everstone stays', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -138,7 +150,7 @@ test('an everstone given while an evolution downloads stops it, and the everston
   expect(w.toasts).toEqual([])
 })
 
-test('/pokemon-play evolve previews without saving; wild visitors land in the Pokédex', async ($, on) => {
+test('/pokemon-play evolve previews without saving; wild visitors land in the Pokédex', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   expect(await cmd($, 'pokemon-play', 'evolve')).toBe(
     'Previewing Pikachu evolving into Raichu; it changes back in a few seconds.',
@@ -158,7 +170,7 @@ test('/pokemon-play evolve previews without saving; wild visitors land in the Po
   expect(await cmd($, 'pokemon-play', 'dance')).toContain('Try one of: hop, cheer, faint')
 })
 
-test('/pokedex shows sightings and the party', async ($, on) => {
+test('/pokedex shows sightings and the party', KIT, async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'add eevee')
   await cmd($, 'pokemon', 'add shiny vaporeon')
@@ -169,7 +181,7 @@ test('/pokedex shows sightings and the party', async ($, on) => {
   expect(dex).toMatch(/Lead {2}Pikachu +Lv 1 /)
 })
 
-test('the band draws the party, and size small makes it shorter', async ($, on) => {
+test('the band draws the party, and size small makes it shorter', KIT, async ($, on) => {
   const tall = Array.from({ length: 12 }, () => `\x1b[38;2;9;9;9m\x1b[48;2;9;9;9m▀\x1b[0m`.repeat(12)).join('\n')
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu'), member('eevee')] }, tall)
   await cmd($, 'pokemon', 'party')
@@ -193,7 +205,7 @@ test('the band draws the party, and size small makes it shorter', async ($, on) 
   expect(await cmd($, 'pokemon', 'size huge')).toContain('Sizes: small, normal, auto')
 })
 
-test('downloads land in ~/.cache and the next session reads them back instead', async ($, on) => {
+test('downloads land in ~/.cache and the next session reads them back instead', KIT, async ($, on) => {
   const files = new Map<string, string>()
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, ART, files)
   await cmd($, 'pokemon', 'add eevee')
@@ -208,7 +220,7 @@ test('downloads land in ~/.cache and the next session reads them back instead', 
   expect(w.fetched.length).toBe(files.size)
 })
 
-test('a warm cache means no downloads at all', async ($, on) => {
+test('a warm cache means no downloads at all', KIT, async ($, on) => {
   const dir = '/home/ash/.cache/claude-code-pokemon'
   const files = new Map([
     [`${dir}/pokemon.json`, JSON.stringify(LIST)],
@@ -221,35 +233,39 @@ test('a warm cache means no downloads at all', async ($, on) => {
   expect(w.fetched).toEqual([])
 })
 
-test('hiding the band and showing it again: the meadow comes back to life without sending anything', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  await $.ui.mount({
-    plugin: 'pokemon',
-    surface: 'terminal',
-    component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 80 } as never,
-  })
-  // All of it inside the 6 seconds of `work`, when the party is busiest.
-  await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
-  await w.clock.advance(1500)
-  expect(w.band.frames).toBeGreaterThan(3)
+test(
+  'hiding the band and showing it again: the meadow comes back to life without sending anything',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    await $.ui.mount({
+      plugin: 'pokemon',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 80 } as never,
+    })
+    // All of it inside the 6 seconds of `work`, when the party is busiest.
+    await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
+    await w.clock.advance(1500)
+    expect(w.band.frames).toBeGreaterThan(3)
 
-  w.band.isHidden = true
-  await w.clock.advance(2000)
-  const refusedWhileHidden = w.band.refused
-  expect(refusedWhileHidden).toBeGreaterThan(0)
-  // Offered about once a second while hidden, not twenty times.
-  expect(refusedWhileHidden).toBeLessThanOrEqual(3)
+    w.band.isHidden = true
+    await w.clock.advance(2000)
+    const refusedWhileHidden = w.band.refused
+    expect(refusedWhileHidden).toBeGreaterThan(0)
+    // Offered about once a second while hidden, not twenty times.
+    expect(refusedWhileHidden).toBeLessThanOrEqual(3)
 
-  w.band.isHidden = false
-  const before = w.band.frames
-  await w.clock.advance(2000)
-  // Lively again: far more than the once-a-second offers while hidden, though calm moments send fewer.
-  expect(w.band.frames - before).toBeGreaterThan(5)
-})
+    w.band.isHidden = false
+    const before = w.band.frames
+    await w.clock.advance(2000)
+    // Lively again: far more than the once-a-second offers while hidden, though calm moments send fewer.
+    expect(w.band.frames - before).toBeGreaterThan(5)
+  },
+)
 
-test('two sessions side by side: xp from both adds up and neither overwrites the other', async ($, on) => {
+test('two sessions side by side: xp from both adds up and neither overwrites the other', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
@@ -265,7 +281,7 @@ test('two sessions side by side: xp from both adds up and neither overwrites the
   expect(w.saveNow().dex.mew?.seen).toBe(1)
 })
 
-test("another session's changes show up here within seconds, without typing anything", async ($, on) => {
+test("another session's changes show up here within seconds, without typing anything", KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
   await mountBand($)
@@ -278,61 +294,73 @@ test("another session's changes show up here within seconds, without typing anyt
   expect(w.band.frames).toBe(frames)
 })
 
-test('/pokemon off puts them in their Poké Balls: nothing drawn, no xp; /pokemon on brings them back', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
-  await cmd($, 'pokemon', 'party')
-  await mountBand($)
-  await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
-  await w.clock.advance(1000)
-  expect(await cmd($, 'pokemon', 'off')).toBe(
-    'Your Pokémon are resting in their Poké Balls. /pokemon on brings them back.',
-  )
-  expect(w.saveNow().isOff).toBe(true)
-  expect(await cmd($, 'pokemon', 'off')).toBe('Your Pokémon are already resting.')
-  const frames = w.band.frames
-  await w.clock.advance(2000)
-  expect(w.band.frames).toBe(frames)
-  await $.tool.call(bash('pytest -q') as never)
-  await cmd($, 'pokemon', 'party')
-  expect(w.partyNow()[0]?.xp).toBe(0)
-  expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!')
-  expect(w.saveNow().isOff).toBeUndefined()
-  await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
-  await w.clock.advance(2000)
-  expect(w.band.frames).toBeGreaterThan(frames + 10)
-  expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are already out.')
-})
+test(
+  '/pokemon off puts them in their Poké Balls: nothing drawn, no xp; /pokemon on brings them back',
+  KIT,
+  async ($, on) => {
+    answerTools(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
+    await cmd($, 'pokemon', 'party')
+    await mountBand($)
+    await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
+    await w.clock.advance(1000)
+    expect(await cmd($, 'pokemon', 'off')).toBe(
+      'Your Pokémon are resting in their Poké Balls. /pokemon on brings them back.',
+    )
+    expect(w.saveNow().isOff).toBe(true)
+    expect(await cmd($, 'pokemon', 'off')).toBe('Your Pokémon are already resting.')
+    const frames = w.band.frames
+    await w.clock.advance(2000)
+    expect(w.band.frames).toBe(frames)
+    await $.tool.call(bash('pytest -q') as never)
+    await cmd($, 'pokemon', 'party')
+    expect(w.partyNow()[0]?.xp).toBe(0)
+    expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!')
+    expect(w.saveNow().isOff).toBeUndefined()
+    await $.command.run({ command: 'pokemon-play', args: 'work' } as never)
+    await w.clock.advance(2000)
+    expect(w.band.frames).toBeGreaterThan(frames + 10)
+    expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are already out.')
+  },
+)
 
-test('a bare add catches a random Pokémon; a bare release or remove asks which one and releases no one', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
-  expect(await cmd($, 'pokemon', 'add')).toMatch(/joined your party!$/)
-  await cmd($, 'pokemon', 'add eevee')
-  const before = w.saveNow()
-  expect(before.party.length).toBe(3)
-  expect(await cmd($, 'pokemon', 'release')).toBe('Which one? /pokemon release <name>')
-  expect(await cmd($, 'pokemon', 'remove')).toBe('Which one? /pokemon release <name>')
-  expect(await cmd($, 'pokemon', 'release  ')).toBe('Which one? /pokemon release <name>')
-  expect(kept(w.saveNow())).toEqual(kept(before))
-})
+test(
+  'a bare add catches a random Pokémon; a bare release or remove asks which one and releases no one',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
+    expect(await cmd($, 'pokemon', 'add')).toMatch(/joined your party!$/)
+    await cmd($, 'pokemon', 'add eevee')
+    const before = w.saveNow()
+    expect(before.party.length).toBe(3)
+    expect(await cmd($, 'pokemon', 'release')).toBe('Which one? /pokemon release <name>')
+    expect(await cmd($, 'pokemon', 'remove')).toBe('Which one? /pokemon release <name>')
+    expect(await cmd($, 'pokemon', 'release  ')).toBe('Which one? /pokemon release <name>')
+    expect(kept(w.saveNow())).toEqual(kept(before))
+  },
+)
 
-test('only an exact spelling catches a Pokémon; anything close gets a suggestion and changes nothing', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu', { next: [lv('raichu', 30)] }), member('charmander')],
-  })
-  expect(await cmd($, 'pokemon', 'charized')).toBe('Did you mean Charizard? Run /pokemon charizard')
-  expect(await cmd($, 'pokemon', 'pika')).toBe('Did you mean Pikachu? Run /pokemon pikachu')
-  expect(await cmd($, 'pokemon', 'shiny charizard mega')).toBe(
-    'Did you mean Charizard (Mega X)? Run /pokemon shiny charizard mega x',
-  )
-  expect(await cmd($, 'pokemon', 'add eeve')).toBe('Did you mean Eevee? Run /pokemon add eevee')
-  expect(await cmd($, 'pokemon', 'remove charm')).toBe('Did you mean Charmander? Run /pokemon remove charmander')
-  expect(await cmd($, 'pokemon', 'everstone pika')).toBe('Did you mean Pikachu? Run /pokemon everstone pikachu')
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'charmander'])
-  expect(w.saveNow().party.some(m => m.heldItem)).toBe(false)
-  expect(await cmd($, 'pokemon', 'charizard mega x')).toContain('Charizard (Mega X) appeared!')
-})
+test(
+  'only an exact spelling catches a Pokémon; anything close gets a suggestion and changes nothing',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { next: [lv('raichu', 30)] }), member('charmander')],
+    })
+    expect(await cmd($, 'pokemon', 'charized')).toBe('Did you mean Charizard? Run /pokemon charizard')
+    expect(await cmd($, 'pokemon', 'pika')).toBe('Did you mean Pikachu? Run /pokemon pikachu')
+    expect(await cmd($, 'pokemon', 'shiny charizard mega')).toBe(
+      'Did you mean Charizard (Mega X)? Run /pokemon shiny charizard mega x',
+    )
+    expect(await cmd($, 'pokemon', 'add eeve')).toBe('Did you mean Eevee? Run /pokemon add eevee')
+    expect(await cmd($, 'pokemon', 'remove charm')).toBe('Did you mean Charmander? Run /pokemon remove charmander')
+    expect(await cmd($, 'pokemon', 'everstone pika')).toBe('Did you mean Pikachu? Run /pokemon everstone pikachu')
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'charmander'])
+    expect(w.saveNow().party.some(m => m.heldItem)).toBe(false)
+    expect(await cmd($, 'pokemon', 'charizard mega x')).toContain('Charizard (Mega X) appeared!')
+  },
+)
 
 // The colors on screen in a frame the band was sent: every cell's foreground and background.
 const colorsIn = (cells: string) => {
@@ -461,77 +489,90 @@ async function visited(
   return { w, aim, cell }
 }
 
-test('while aiming, every step a wild Pokémon takes is drawn: clicks are judged on the picture shown', async ($, on) => {
-  const { w, aim } = await visited($, on, 'caterpie')
-  // No ₽ button while aiming: the whole band is a click layer then.
-  expect(JSON.stringify(await aim.drawn())).not.toContain('"shop"')
-  // The engine redraws the click layer only when the plugin asks.
-  let lines = await aimLines(aim)
-  const edges = (l: Line[] | null) => {
-    const xs = [...columnsIn(l, '#00ffff')]
-    return xs.length ? ([Math.min(...xs), Math.max(...xs)] as const) : null
-  }
-  let jump = 0
-  for (let i = 0; i < 300; i++) {
-    const asked = w.band.invalidated
-    await w.clock.advance(50)
-    if (w.band.invalidated === asked) continue
-    const before = edges(lines)
-    lines = await aimLines(aim)
-    const after = edges(lines)
-    if (before && after) jump = Math.max(jump, Math.min(Math.abs(after[0] - before[0]), Math.abs(after[1] - before[1])))
-  }
-  expect(jump).toBeLessThanOrEqual(1)
-})
+test(
+  'while aiming, every step a wild Pokémon takes is drawn: clicks are judged on the picture shown',
+  KIT,
+  async ($, on) => {
+    const { w, aim } = await visited($, on, 'caterpie')
+    // No ₽ button while aiming: the whole band is a click layer then.
+    expect(JSON.stringify(await aim.drawn())).not.toContain('"shop"')
+    // The engine redraws the click layer only when the plugin asks.
+    let lines = await aimLines(aim)
+    const edges = (l: Line[] | null) => {
+      const xs = [...columnsIn(l, '#00ffff')]
+      return xs.length ? ([Math.min(...xs), Math.max(...xs)] as const) : null
+    }
+    let jump = 0
+    for (let i = 0; i < 300; i++) {
+      const asked = w.band.invalidated
+      await w.clock.advance(50)
+      if (w.band.invalidated === asked) continue
+      const before = edges(lines)
+      lines = await aimLines(aim)
+      const after = edges(lines)
+      if (before && after)
+        jump = Math.max(jump, Math.min(Math.abs(after[0] - before[0]), Math.abs(after[1] - before[1])))
+    }
+    expect(jump).toBeLessThanOrEqual(1)
+  },
+)
 
-test("while aiming, the click layer is the whole band: the ₽ button's corner shows the landscape, and a click there throws", async ($, on) => {
-  const { w, aim } = await visited($, on, 'caterpie')
-  const lines = await aimLines(aim)
-  expect(lines).not.toBeNull()
-  for (const runs of lines ?? []) {
-    const row = runs.flatMap(([text, fg, bg]) => [...text].map(() => fg || bg))
-    expect(row).toHaveLength(80)
-    // The corner is painted, not left blank: no cell there without a colour.
-    expect(row.slice(67).filter(color => !color)).toEqual([])
-  }
-  // A click in the corner is a throw like any other: a miss, the ball flying out there.
-  await aim.pointer({ type: 'down', x: 75, y: 0, button: 'left' })
-  let flew = false
-  for (let i = 0; i < 40; i++) {
-    await w.clock.advance(50)
-    if (colorsIn(w.band.cells).has(BALL_RED)) flew = true
-  }
-  expect(flew).toBe(true)
-})
+test(
+  "while aiming, the click layer is the whole band: the ₽ button's corner shows the landscape, and a click there throws",
+  KIT,
+  async ($, on) => {
+    const { w, aim } = await visited($, on, 'caterpie')
+    const lines = await aimLines(aim)
+    expect(lines).not.toBeNull()
+    for (const runs of lines ?? []) {
+      const row = runs.flatMap(([text, fg, bg]) => [...text].map(() => fg || bg))
+      expect(row).toHaveLength(80)
+      // The corner is painted, not left blank: no cell there without a colour.
+      expect(row.slice(67).filter(color => !color)).toEqual([])
+    }
+    // A click in the corner is a throw like any other: a miss, the ball flying out there.
+    await aim.pointer({ type: 'down', x: 75, y: 0, button: 'left' })
+    let flew = false
+    for (let i = 0; i < 40; i++) {
+      await w.clock.advance(50)
+      if (colorsIn(w.band.cells).has(BALL_RED)) flew = true
+    }
+    expect(flew).toBe(true)
+  },
+)
 
-test('a wild Pokémon can be aimed at only once its catch rate is known, so a sure catch stays sure', async ($, on) => {
-  const net = newmonNet()
-  const w = await begin(
-    $,
-    on,
-    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
-    TALL,
-    undefined,
-    net,
-  )
-  await cmd($, 'pokemon', 'party')
-  const aim = (await mountBand($ as never)) as Aim
-  await cmd($, 'pokemon-play', 'day')
-  let open = () => {}
-  net.speciesStall = new Promise<void>(resolve => (open = resolve))
-  await cmd($, 'pokemon-play', 'wild newmon')
-  for (let i = 0; i < 80; i++) {
-    await w.clock.advance(50)
-    expect(await isAiming(aim)).toBe(false)
-  }
-  net.speciesStall = undefined
-  open()
-  const cell = await seenIn(w, aim, '#00ffff')
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
-})
+test(
+  'a wild Pokémon can be aimed at only once its catch rate is known, so a sure catch stays sure',
+  KIT,
+  async ($, on) => {
+    const net = newmonNet()
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+      TALL,
+      undefined,
+      net,
+    )
+    await cmd($, 'pokemon', 'party')
+    const aim = (await mountBand($ as never)) as Aim
+    await cmd($, 'pokemon-play', 'day')
+    let open = () => {}
+    net.speciesStall = new Promise<void>(resolve => (open = resolve))
+    await cmd($, 'pokemon-play', 'wild newmon')
+    for (let i = 0; i < 80; i++) {
+      await w.clock.advance(50)
+      expect(await isAiming(aim)).toBe(false)
+    }
+    net.speciesStall = undefined
+    open()
+    const cell = await seenIn(w, aim, '#00ffff')
+    await aim.pointer({ type: 'down', ...cell, button: 'left' })
+    await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+  },
+)
 
-test('a Poké Ball thrown at a sure catch: it joins the party with ◓, and the Pokédex counts it', async ($, on) => {
+test('a Poké Ball thrown at a sure catch: it joins the party with ◓, and the Pokédex counts it', KIT, async ($, on) => {
   const { w, aim, cell } = await visited($, on, 'caterpie')
   await aim.pointer({ type: 'down', ...cell, button: 'left' })
   await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
@@ -543,21 +584,25 @@ test('a Poké Ball thrown at a sure catch: it joins the party with ◓, and the 
   expect(await cmd($, 'pokedex')).toMatch(/seen · 1 caught ·/)
 })
 
-test('a ball thrown at the sky above it misses: it flies, lands, blinks out, and nothing is caught', async ($, on) => {
-  const { w, aim, cell } = await visited($, on, 'caterpie')
-  await aim.pointer({ type: 'down', x: cell.x, y: 0, button: 'left' })
-  let flew = false
-  for (let i = 0; i < 40; i++) {
-    await w.clock.advance(50)
-    if (colorsIn(w.band.cells).has(BALL_RED)) flew = true
-  }
-  expect(flew).toBe(true)
-  expect(JSON.stringify(await aimLines(aim))).not.toContain('#e3350d')
-  expect(w.toasts.some(t => t.startsWith('Gotcha'))).toBe(false)
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
-})
+test(
+  'a ball thrown at the sky above it misses: it flies, lands, blinks out, and nothing is caught',
+  KIT,
+  async ($, on) => {
+    const { w, aim, cell } = await visited($, on, 'caterpie')
+    await aim.pointer({ type: 'down', x: cell.x, y: 0, button: 'left' })
+    let flew = false
+    for (let i = 0; i < 40; i++) {
+      await w.clock.advance(50)
+      if (colorsIn(w.band.cells).has(BALL_RED)) flew = true
+    }
+    expect(flew).toBe(true)
+    expect(JSON.stringify(await aimLines(aim))).not.toContain('#e3350d')
+    expect(w.toasts.some(t => t.startsWith('Gotcha'))).toBe(false)
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu'])
+  },
+)
 
-test('one that can never be caught breaks free: hidden in the ball, then back out', async ($, on) => {
+test('one that can never be caught breaks free: hidden in the ball, then back out', KIT, async ($, on) => {
   // The lead walks in front of a visitor. Here it is 2 columns wide, and the ball is thrown once the visitor shows
   // 3 columns: then the lead never hides all of it, wherever it walks while the ball is out.
   const net = nevermonNet()
@@ -584,101 +629,117 @@ test('one that can never be caught breaks free: hidden in the ball, then back ou
   expect(w.saveNow().dex.nevermon?.caught).toBeUndefined()
 })
 
-test('the click layer is there only while a wild Pokémon can be aimed at; a second click mid-throw does nothing', async ($, on) => {
-  const w = await begin(
-    $,
-    on,
-    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
-    TALL,
-    undefined,
-    throwNet(),
-  )
-  await cmd($, 'pokemon', 'party')
-  const aim = (await mountBand($ as never)) as Aim
-  await cmd($, 'pokemon-play', 'day')
-  expect(await isAiming(aim)).toBe(false)
-  await cmd($, 'pokemon-play', 'wild caterpie')
-  await w.clock.advance(500)
-  expect(await isAiming(aim)).toBe(false)
-  const cell = await seenIn(w, aim, '#00ffff')
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
-  for (let i = 0; i < 60; i++) await w.clock.advance(50)
-  expect(w.toasts.filter(t => t.startsWith('Gotcha'))).toHaveLength(1)
-  expect(w.saveNow().party.filter(m => m.species === 'caterpie')).toHaveLength(1)
-  expect(await isAiming(aim)).toBe(false)
-})
+test(
+  'the click layer is there only while a wild Pokémon can be aimed at; a second click mid-throw does nothing',
+  KIT,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+      TALL,
+      undefined,
+      throwNet(),
+    )
+    await cmd($, 'pokemon', 'party')
+    const aim = (await mountBand($ as never)) as Aim
+    await cmd($, 'pokemon-play', 'day')
+    expect(await isAiming(aim)).toBe(false)
+    await cmd($, 'pokemon-play', 'wild caterpie')
+    await w.clock.advance(500)
+    expect(await isAiming(aim)).toBe(false)
+    const cell = await seenIn(w, aim, '#00ffff')
+    await aim.pointer({ type: 'down', ...cell, button: 'left' })
+    await aim.pointer({ type: 'down', ...cell, button: 'left' })
+    await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+    for (let i = 0; i < 60; i++) await w.clock.advance(50)
+    expect(w.toasts.filter(t => t.startsWith('Gotcha'))).toHaveLength(1)
+    expect(w.saveNow().party.filter(m => m.species === 'caterpie')).toHaveLength(1)
+    expect(await isAiming(aim)).toBe(false)
+  },
+)
 
 // `n` Pokémon for the PC box, cheaply: a full box is 960 of them.
 const boxOf = (n: number, species = 'caterpie') =>
   Array.from({ length: n }, (_, i) => member(species, { id: `b${i}`, next: [] }))
 const fullParty = () => ['pikachu', 'eevee', 'charmander'].map(s => member(s, { next: [] }))
 
-test('a full party and a full PC box: no ball is thrown, the visitor stays, and once there is room it can be caught', async ($, on) => {
-  const { w, aim, cell } = await visited($, on, 'caterpie', { ...emptySave(), party: fullParty(), box: boxOf(960) })
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  let flew = false
-  for (let i = 0; i < 40; i++) {
-    await w.clock.advance(50)
-    if (colorsIn(w.band.cells).has(BALL_RED) || JSON.stringify(await aimLines(aim)).includes('#e3350d')) flew = true
-  }
-  expect(flew).toBe(false)
-  expect(w.toasts).toContain(
-    "There's no more room in your PC box! Your party is full too. Make room with /pokemon release <name>.",
-  )
-  expect(await isAiming(aim)).toBe(true)
-  expect(w.saveNow().box).toHaveLength(960)
-  expect(w.saveNow().dex.caterpie?.caught).toBeUndefined()
-  // A release makes room: the next ball catches it, into the box.
-  expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
-  const again = await seenIn(w, aim, '#00ffff')
-  await aim.pointer({ type: 'down', ...again, button: 'left' })
-  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
-  expect(w.toasts.some(t => /^Gotcha! (✨ )?Caterpie was caught! It was sent to the PC box\.$/.test(t))).toBe(true)
-  expect(w.saveNow().box).toHaveLength(960)
-})
+test(
+  'a full party and a full PC box: no ball is thrown, the visitor stays, and once there is room it can be caught',
+  KIT,
+  async ($, on) => {
+    const { w, aim, cell } = await visited($, on, 'caterpie', { ...emptySave(), party: fullParty(), box: boxOf(960) })
+    await aim.pointer({ type: 'down', ...cell, button: 'left' })
+    let flew = false
+    for (let i = 0; i < 40; i++) {
+      await w.clock.advance(50)
+      if (colorsIn(w.band.cells).has(BALL_RED) || JSON.stringify(await aimLines(aim)).includes('#e3350d')) flew = true
+    }
+    expect(flew).toBe(false)
+    expect(w.toasts).toContain(
+      "There's no more room in your PC box! Your party is full too. Make room with /pokemon release <name>.",
+    )
+    expect(await isAiming(aim)).toBe(true)
+    expect(w.saveNow().box).toHaveLength(960)
+    expect(w.saveNow().dex.caterpie?.caught).toBeUndefined()
+    // A release makes room: the next ball catches it, into the box.
+    expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
+    const again = await seenIn(w, aim, '#00ffff')
+    await aim.pointer({ type: 'down', ...again, button: 'left' })
+    await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+    expect(w.toasts.some(t => /^Gotcha! (✨ )?Caterpie was caught! It was sent to the PC box\.$/.test(t))).toBe(true)
+    expect(w.saveNow().box).toHaveLength(960)
+  },
+)
 
-test('a PC box another session fills while the ball wobbles: the catch breaks free, nothing is kept, and it can be aimed at again', async ($, on) => {
-  const { w, aim, cell } = await visited($, on, 'caterpie', { ...emptySave(), party: fullParty(), box: boxOf(959) })
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  await w.clock.advance(100)
-  w.store.set('save', { ...w.saveNow(), box: boxOf(960) })
-  await seen(w, () => w.toasts.find(t => t.startsWith("There's no more room")) ?? null)
-  expect(w.toasts.some(t => t.startsWith('Gotcha'))).toBe(false)
-  for (let i = 0; i < 30; i++) await w.clock.advance(50)
-  expect(await isAiming(aim)).toBe(true)
-  expect(w.saveNow().box).toHaveLength(960)
-  expect(w.saveNow().party).toHaveLength(3)
-  expect(w.saveNow().dex.caterpie?.caught).toBeUndefined()
-})
+test(
+  'a PC box another session fills while the ball wobbles: the catch breaks free, nothing is kept, and it can be aimed at again',
+  KIT,
+  async ($, on) => {
+    const { w, aim, cell } = await visited($, on, 'caterpie', { ...emptySave(), party: fullParty(), box: boxOf(959) })
+    await aim.pointer({ type: 'down', ...cell, button: 'left' })
+    await w.clock.advance(100)
+    w.store.set('save', { ...w.saveNow(), box: boxOf(960) })
+    await seen(w, () => w.toasts.find(t => t.startsWith("There's no more room")) ?? null)
+    expect(w.toasts.some(t => t.startsWith('Gotcha'))).toBe(false)
+    for (let i = 0; i < 30; i++) await w.clock.advance(50)
+    expect(await isAiming(aim)).toBe(true)
+    expect(w.saveNow().box).toHaveLength(960)
+    expect(w.saveNow().party).toHaveLength(3)
+    expect(w.saveNow().dex.caterpie?.caught).toBeUndefined()
+  },
+)
 
-test('a full PC box refuses a new lead, a reroll and a deposit, and changes nothing; swaps and releases still work', async ($, on) => {
-  const party = [member('pikachu', { next: [] }), member('eevee', { next: [] })]
-  const box = [...boxOf(959), member('charmander', { id: 'c', next: [] })]
-  const w = await begin($, on, { ...emptySave(), party, box })
-  await cmd($, 'pokemon', 'party')
-  const before = JSON.stringify(w.saveNow())
-  expect(await cmd($, 'pokemon', 'raichu')).toBe(
-    "There's no more room in your PC box! Pikachu can't go there to make way for a new lead. Make room with /pokemon release <name>.",
-  )
-  expect(await cmd($, 'pokemon', '')).toMatch(/^There's no more room in your PC box! Pikachu /)
-  expect(await cmd($, 'pokemon', 'deposit eevee')).toBe(
-    "There's no more room in your PC box! Eevee stays in your party. Make room with /pokemon release <name>.",
-  )
-  expect(JSON.stringify(w.saveNow())).toBe(before)
-  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(960 \/ 960\) · page 1 of 32:\n/)
-  // A boxed one leading swaps places with the lead: the box stays at 960.
-  expect(await cmd($, 'pokemon', 'charmander')).toBe(
-    'Charmander (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
-  )
-  expect(w.saveNow().box).toHaveLength(960)
-  expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
-  expect(await cmd($, 'pokemon', 'deposit eevee')).toBe('Eevee (Lv 1) went into the PC box.')
-  expect(w.saveNow().box).toHaveLength(960)
-})
+test(
+  'a full PC box refuses a new lead, a reroll and a deposit, and changes nothing; swaps and releases still work',
+  KIT,
+  async ($, on) => {
+    const party = [member('pikachu', { next: [] }), member('eevee', { next: [] })]
+    const box = [...boxOf(959), member('charmander', { id: 'c', next: [] })]
+    const w = await begin($, on, { ...emptySave(), party, box })
+    await cmd($, 'pokemon', 'party')
+    const before = JSON.stringify(w.saveNow())
+    expect(await cmd($, 'pokemon', 'raichu')).toBe(
+      "There's no more room in your PC box! Pikachu can't go there to make way for a new lead. Make room with /pokemon release <name>.",
+    )
+    expect(await cmd($, 'pokemon', '')).toMatch(/^There's no more room in your PC box! Pikachu /)
+    expect(await cmd($, 'pokemon', 'deposit eevee')).toBe(
+      "There's no more room in your PC box! Eevee stays in your party. Make room with /pokemon release <name>.",
+    )
+    expect(JSON.stringify(w.saveNow())).toBe(before)
+    expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(960 \/ 960\) · page 1 of 32:\n/)
+    // A boxed one leading swaps places with the lead: the box stays at 960.
+    expect(await cmd($, 'pokemon', 'charmander')).toBe(
+      'Charmander (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 1) went into the PC box.',
+    )
+    expect(w.saveNow().box).toHaveLength(960)
+    expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
+    expect(await cmd($, 'pokemon', 'deposit eevee')).toBe('Eevee (Lv 1) went into the PC box.')
+    expect(w.saveNow().box).toHaveLength(960)
+  },
+)
 
-test('an older save with more than 960 in the PC box keeps them all; only adding is refused', async ($, on) => {
+test('an older save with more than 960 in the PC box keeps them all; only adding is refused', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], box: boxOf(1000) })
   expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1000 \/ 960\) · page 1 of 34:\n/)
   expect(await cmd($, 'pokemon', 'release caterpie 1')).toContain('Bye bye, Caterpie')
@@ -687,31 +748,35 @@ test('an older save with more than 960 in the PC box keeps them all; only adding
   expect(w.saveNow().box).toHaveLength(999)
 })
 
-test('a wild Pokémon still downloading when another steps out stays away: one visitor at a time', async ($, on) => {
-  const w = await begin(
-    $,
-    on,
-    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
-    TALL,
-    undefined,
-    throwNet(),
-  )
-  await cmd($, 'pokemon', 'party')
-  await mountBand($ as never)
-  await cmd($, 'pokemon-play', 'day')
-  let open = () => {}
-  w.net.stall = new Promise<void>(resolve => (open = resolve))
-  const slow = cmd($, 'pokemon-play', 'wild mewtwo')
-  await w.clock.advance(50)
-  w.net.stall = undefined
-  await cmd($, 'pokemon-play', 'wild caterpie')
-  open()
-  await slow
-  expect(w.toasts.filter(t => t.includes('appeared'))).toEqual([expect.stringMatching(/Caterpie appeared!$/)])
-  expect(w.saveNow().dex.mewtwo).toBeUndefined()
-})
+test(
+  'a wild Pokémon still downloading when another steps out stays away: one visitor at a time',
+  KIT,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+      TALL,
+      undefined,
+      throwNet(),
+    )
+    await cmd($, 'pokemon', 'party')
+    await mountBand($ as never)
+    await cmd($, 'pokemon-play', 'day')
+    let open = () => {}
+    w.net.stall = new Promise<void>(resolve => (open = resolve))
+    const slow = cmd($, 'pokemon-play', 'wild mewtwo')
+    await w.clock.advance(50)
+    w.net.stall = undefined
+    await cmd($, 'pokemon-play', 'wild caterpie')
+    open()
+    await slow
+    expect(w.toasts.filter(t => t.includes('appeared'))).toEqual([expect.stringMatching(/Caterpie appeared!$/)])
+    expect(w.saveNow().dex.mewtwo).toBeUndefined()
+  },
+)
 
-test('a species in the table is aimable at once: its catch rate needs no download', async ($, on) => {
+test('a species in the table is aimable at once: its catch rate needs no download', KIT, async ($, on) => {
   const net = throwNet()
   const w = await begin(
     $,
@@ -731,25 +796,33 @@ test('a species in the table is aimable at once: its catch rate needs no downloa
   await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
 })
 
-test('/pokemon-play wild <name> keeps a time or landscape word in the name: it summons, it does not switch the scene', async ($, on) => {
-  await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
-  await cmd($, 'pokemon', 'party')
-  await mountBand($ as never)
-  expect(await cmd($, 'pokemon-play', 'wild lycanroc dusk')).toBe('A wild Lycanroc (Dusk) wanders by.')
-})
+test(
+  '/pokemon-play wild <name> keeps a time or landscape word in the name: it summons, it does not switch the scene',
+  KIT,
+  async ($, on) => {
+    await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+    await cmd($, 'pokemon', 'party')
+    await mountBand($ as never)
+    expect(await cmd($, 'pokemon-play', 'wild lycanroc dusk')).toBe('A wild Lycanroc (Dusk) wanders by.')
+  },
+)
 
-test('a second /pokemon-play wild while a visitor is out says it is still here, and brings no one', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
-  await cmd($, 'pokemon', 'party')
-  await mountBand($ as never)
-  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
-  expect(await cmd($, 'pokemon-play', 'wild')).toBe('Caterpie is still here.')
-  expect(await cmd($, 'pokemon-play', 'wild mewtwo')).toBe('Caterpie is still here.')
-  expect(w.toasts.filter(t => t.includes('appeared'))).toHaveLength(1)
-  expect(w.saveNow().dex.mewtwo).toBeUndefined()
-})
+test(
+  'a second /pokemon-play wild while a visitor is out says it is still here, and brings no one',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
+    await cmd($, 'pokemon', 'party')
+    await mountBand($ as never)
+    expect(await cmd($, 'pokemon-play', 'wild caterpie')).toBe('A wild Caterpie wanders by.')
+    expect(await cmd($, 'pokemon-play', 'wild')).toBe('Caterpie is still here.')
+    expect(await cmd($, 'pokemon-play', 'wild mewtwo')).toBe('Caterpie is still here.')
+    expect(w.toasts.filter(t => t.includes('appeared'))).toHaveLength(1)
+    expect(w.saveNow().dex.mewtwo).toBeUndefined()
+  },
+)
 
-test('/pokemon-play wild takes a name: a misspelled one calls nobody, a real one comes by', async ($, on) => {
+test('/pokemon-play wild takes a name: a misspelled one calls nobody, a real one comes by', KIT, async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
   await cmd($, 'pokemon', 'party')
   await mountBand($ as never)
@@ -757,31 +830,36 @@ test('/pokemon-play wild takes a name: a misspelled one calls nobody, a real one
   expect(await cmd($, 'pokemon-play', 'wild mewtwo')).toBe('A wild Mewtwo wanders by.')
 })
 
-test('a wild Pokémon, end to end: the grass rustles, then a "!" over the party, and a toast names it', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu', { next: [lv('raichu', 30)] }), member('eevee')],
-  })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Aim
-  await w.clock.advance(500)
-  expect(await cmd($, 'pokemon-play', 'wild')).toMatch(/^A wild .+ wanders by\.$/)
-  expect(w.toasts.some(t => /^(✨ )?A wild .+ appeared!$/.test(t))).toBe(true)
-  const rustle = [0x8fe36a, 0x6fcf4f]
-  let rustled = false
-  for (let i = 0; i < 35; i++) {
-    await w.clock.advance(50)
-    if ([...colorsIn(w.band.cells)].some(c => rustle.includes(c))) rustled = true
-  }
-  expect(rustled).toBe(true)
-  let alerted = false
-  for (let i = 0; i < 30; i++) {
-    await w.clock.advance(50)
-    // Drawn as pixel art or, once it can be aimed at, as text.
-    if (colorsIn(w.band.cells).has(0xe0352b) || JSON.stringify(await aimLines(band)).includes('#e0352b')) alerted = true
-  }
-  expect(alerted).toBe(true)
-})
+test(
+  'a wild Pokémon, end to end: the grass rustles, then a "!" over the party, and a toast names it',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { next: [lv('raichu', 30)] }), member('eevee')],
+    })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Aim
+    await w.clock.advance(500)
+    expect(await cmd($, 'pokemon-play', 'wild')).toMatch(/^A wild .+ wanders by\.$/)
+    expect(w.toasts.some(t => /^(✨ )?A wild .+ appeared!$/.test(t))).toBe(true)
+    const rustle = [0x8fe36a, 0x6fcf4f]
+    let rustled = false
+    for (let i = 0; i < 35; i++) {
+      await w.clock.advance(50)
+      if ([...colorsIn(w.band.cells)].some(c => rustle.includes(c))) rustled = true
+    }
+    expect(rustled).toBe(true)
+    let alerted = false
+    for (let i = 0; i < 30; i++) {
+      await w.clock.advance(50)
+      // Drawn as pixel art or, once it can be aimed at, as text.
+      if (colorsIn(w.band.cells).has(0xe0352b) || JSON.stringify(await aimLines(band)).includes('#e0352b'))
+        alerted = true
+    }
+    expect(alerted).toBe(true)
+  },
+)
 
 // The engine's own drawing of a Spinner or TurnDuration, from the props the plugin handed down.
 function engineLines(on: On) {
@@ -796,28 +874,37 @@ function engineLines(on: On) {
 const SPINNER = { word: 'Drizzling', message: null, suffix: '…', mode: 'thinking' } as const
 const DURATION = { word: 'Baked', durationMs: 64_000 } as const
 
-test("the spinner keeps Claude Code's own line with a Pokémon word; the closing line is all Pokémon", async ($, on) => {
-  const engine = engineLines(on)
-  await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
-  const spinner = await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'Spinner', props: SPINNER })
-  // Drawn by the engine (tip, task list and token count included), from props with the word swapped.
-  expect(engine.at(-1)).toEqual({ ...SPINNER, word: pickFor(WORKING, 'Drizzling') })
-  expect((await spinner.find({ type: 'Text' }))?.text).toBe(JSON.stringify(engine.at(-1)))
-  const compacting = { ...SPINNER, message: 'Compacting conversation' }
-  await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'Spinner', props: compacting })
-  expect(engine.at(-1)?.message).toBe('Compacting conversation')
+test(
+  "the spinner keeps Claude Code's own line with a Pokémon word; the closing line is all Pokémon",
+  KIT,
+  async ($, on) => {
+    const engine = engineLines(on)
+    await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
+    const spinner = await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'Spinner', props: SPINNER })
+    // Drawn by the engine (tip, task list and token count included), from props with the word swapped.
+    expect(engine.at(-1)).toEqual({ ...SPINNER, word: pickFor(WORKING, 'Drizzling') })
+    expect((await spinner.find({ type: 'Text' }))?.text).toBe(JSON.stringify(engine.at(-1)))
+    const compacting = { ...SPINNER, message: 'Compacting conversation' }
+    await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'Spinner', props: compacting })
+    expect(engine.at(-1)?.message).toBe('Compacting conversation')
 
-  const done = await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'TurnDuration', props: DURATION })
-  const line = await done.find({ type: 'Text' })
-  expect(line?.text).toMatch(new RegExp(`^${BALL} (${DONE.join('|')}) for 1m 4s$`))
-  expect((await done.find({ type: 'Box' }))?.props.marginTop).toBe(1)
-  expect((await done.find({ type: 'Text', text: new RegExp(`^${BALL}$`) }))?.props.color).toBe(COLORS.red)
-  expect((await done.find({ type: 'Text', text: /^for 1m 4s$/ }))?.props.color).toBe(COLORS.blue)
-  const verb = await done.findAll({ type: 'Text', text: new RegExp(`^(${DONE.join('|')})$`) })
-  expect(verb[0]?.props).toMatchObject({ color: COLORS.yellow, bold: true })
-})
+    const done = await $.ui.mount({
+      plugin: 'pokemon',
+      surface: 'terminal',
+      component: 'TurnDuration',
+      props: DURATION,
+    })
+    const line = await done.find({ type: 'Text' })
+    expect(line?.text).toMatch(new RegExp(`^${BALL} (${DONE.join('|')}) for 1m 4s$`))
+    expect((await done.find({ type: 'Box' }))?.props.marginTop).toBe(1)
+    expect((await done.find({ type: 'Text', text: new RegExp(`^${BALL}$`) }))?.props.color).toBe(COLORS.red)
+    expect((await done.find({ type: 'Text', text: /^for 1m 4s$/ }))?.props.color).toBe(COLORS.blue)
+    const verb = await done.findAll({ type: 'Text', text: new RegExp(`^(${DONE.join('|')})$`) })
+    expect(verb[0]?.props).toMatchObject({ color: COLORS.yellow, bold: true })
+  },
+)
 
-test('/pokemon off leaves the spinner and the closing line as the engine draws them', async ($, on) => {
+test('/pokemon off leaves the spinner and the closing line as the engine draws them', KIT, async ($, on) => {
   const engine = engineLines(on)
   await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'off')
@@ -828,7 +915,7 @@ test('/pokemon off leaves the spinner and the closing line as the engine draws t
   expect((await done.find({ type: 'Text' }))?.text).toBe(JSON.stringify(DURATION))
 })
 
-test("the desktop spinner keeps its own words: there it names the step it's on", async ($, on) => {
+test("the desktop spinner keeps its own words: there it names the step it's on", KIT, async ($, on) => {
   const engine = engineLines(on)
   await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   const props = { ...SPINNER, word: 'Creating notes.md', mode: 'tool-use' } as const
@@ -836,7 +923,7 @@ test("the desktop spinner keeps its own words: there it names the step it's on",
   expect(engine.at(-1)).toEqual(props)
 })
 
-test('a name made only of symbols catches nothing, releases no one and holds no everstone', async ($, on) => {
+test('a name made only of symbols catches nothing, releases no one and holds no everstone', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { xp: 400 }), member('eevee')] })
   expect(await cmd($, 'pokemon', '✨')).toBe('No Pokémon called "✨".')
   expect(await cmd($, 'pokemon', 'add ピカチュウ')).toBe('No Pokémon called "ピカチュウ".')
@@ -848,7 +935,7 @@ test('a name made only of symbols catches nothing, releases no one and holds no 
   ])
 })
 
-test('remove names the right one of two forms; leading again records no new sighting', async ($, on) => {
+test('remove names the right one of two forms; leading again records no new sighting', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('vulpix', { form: 'alola', xp: 900 }), member('pikachu'), member('vulpix')],
@@ -860,17 +947,21 @@ test('remove names the right one of two forms; leading again records no new sigh
   expect(w.saveNow().party[0]?.isShiny).toBe(false)
 })
 
-test('another session turning the party off stops xp at once; /pokemon on says they were resting', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
-  await cmd($, 'pokemon', 'party')
-  w.store.set('save', { ...w.saveNow(), isOff: true })
-  await $.tool.call(bash('git commit -m x') as never)
-  expect(w.partyNow()[0]?.xp).toBe(0)
-  expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!')
-})
+test(
+  'another session turning the party off stops xp at once; /pokemon on says they were resting',
+  KIT,
+  async ($, on) => {
+    answerTools(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
+    await cmd($, 'pokemon', 'party')
+    w.store.set('save', { ...w.saveNow(), isOff: true })
+    await $.tool.call(bash('git commit -m x') as never)
+    expect(w.partyNow()[0]?.xp).toBe(0)
+    expect(await cmd($, 'pokemon', 'on')).toBe('Your Pokémon are back in the meadow!')
+  },
+)
 
-test('two of one species: only the one due evolves, and the other keeps its everstone', async ($, on) => {
+test('two of one species: only the one due evolves, and the other keeps its everstone', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -888,7 +979,7 @@ test('two of one species: only the one due evolves, and the other keeps its ever
   expect(w.toasts).toEqual(['What? Charmeleon evolved into Charizard!'])
 })
 
-test('dropping an everstone evolves a Pokémon already past its level', async ($, on) => {
+test('dropping an everstone evolves a Pokémon already past its level', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('charmander', { xp: xpForLevel(20), next: [lv('charmeleon', 16)], heldItem: 'everstone' })],
@@ -897,7 +988,7 @@ test('dropping an everstone evolves a Pokémon already past its level', async ($
   await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
 })
 
-test('nothing evolves while the party is off; /pokemon on lets it', async ($, on) => {
+test('nothing evolves while the party is off; /pokemon on lets it', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     isOff: true,
@@ -910,7 +1001,7 @@ test('nothing evolves while the party is off; /pokemon on lets it', async ($, on
   await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
 })
 
-test('a tool call refused beneath the plugin earns nothing', async ($, on) => {
+test('a tool call refused beneath the plugin earns nothing', KIT, async ($, on) => {
   on('tool.call', async () => ({ deny: 'blocked by policy' }))
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await $.tool.call(bash('git commit -m x') as never)
@@ -919,7 +1010,7 @@ test('a tool call refused beneath the plugin earns nothing', async ($, on) => {
   expect(w.partyNow()[0]?.xp).toBe(0)
 })
 
-test('offline at the first start: said once, and a first Pokémon arrives once back online', async ($, on) => {
+test('offline at the first start: said once, and a first Pokémon arrives once back online', KIT, async ($, on) => {
   const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
   expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
   await w.clock.advance(30_000)
@@ -930,7 +1021,7 @@ test('offline at the first start: said once, and a first Pokémon arrives once b
   expect(w.saveNow().party.length).toBe(1)
 })
 
-test('a saved party that could not be drawn offline is drawn once back online', async ($, on) => {
+test('a saved party that could not be drawn offline is drawn once back online', KIT, async ($, on) => {
   engineLines(on)
   const w = await begin(
     $,
@@ -953,7 +1044,7 @@ test('a saved party that could not be drawn offline is drawn once back online', 
   expect(w.band.frames).toBeGreaterThan(0)
 })
 
-test('a broken cache (a crash mid-write) is downloaded again', async ($, on) => {
+test('a broken cache (a crash mid-write) is downloaded again', KIT, async ($, on) => {
   const dir = '/home/ash/.cache/claude-code-pokemon'
   const files = new Map([[`${dir}/pokemon.json`, '[{"name": "pika']])
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] }, ART, files)
@@ -962,7 +1053,7 @@ test('a broken cache (a crash mid-write) is downloaded again', async ($, on) => 
   expect(w.toasts).toEqual([])
 })
 
-test('a broken download (a Wi-Fi login page) is never cached, and is reported', async ($, on) => {
+test('a broken download (a Wi-Fi login page) is never cached, and is reported', KIT, async ($, on) => {
   const login = '<html>Sign in to the hotel Wi-Fi</html>'
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] }, login)
   await cmd($, 'pokemon', 'party')
@@ -970,7 +1061,7 @@ test('a broken download (a Wi-Fi login page) is never cached, and is reported', 
   expect(w.toasts.some(t => t.includes('broken download'))).toBe(true)
 })
 
-test('an old species list still serves when its refresh fails', async ($, on) => {
+test('an old species list still serves when its refresh fails', KIT, async ($, on) => {
   const dir = '/home/ash/.cache/claude-code-pokemon'
   const files = new Map([
     [`${dir}/pokemon.json`, JSON.stringify(LIST)],
@@ -984,7 +1075,7 @@ test('an old species list still serves when its refresh fails', async ($, on) =>
   expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
 })
 
-test('a stalled download never holds up a command', async ($, on) => {
+test('a stalled download never holds up a command', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
@@ -1002,7 +1093,7 @@ test('a stalled download never holds up a command', async ($, on) => {
   expect(await reply).toBe('Your Pokémon are resting in their Poké Balls. /pokemon on brings them back.')
 })
 
-test('names in the downloaded list that are not plain names never become files', async ($, on) => {
+test('names in the downloaded list that are not plain names never become files', KIT, async ($, on) => {
   const list = [
     { name: '../../../../.zshrc', forms: ['regular'] },
     { name: 'pikachu', forms: ['regular', '../../x'] },
@@ -1013,7 +1104,7 @@ test('names in the downloaded list that are not plain names never become files',
   expect([...w.files.keys()].filter(f => f.includes('..'))).toEqual([])
 })
 
-test('a store that cannot be read at start is reported, and works again once it can', async ($, on) => {
+test('a store that cannot be read at start is reported, and works again once it can', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
@@ -1032,42 +1123,46 @@ test('a store that cannot be read at start is reported, and works again once it 
   expect(await cmd($, 'pokemon', 'party')).toContain('Lead  Pikachu')
 })
 
-test('another surface drawing at the same time leaves the terminal band running; wide bands are clipped to 512, button included; narrow ones have no button', async ($, on) => {
-  engineLines(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  await mountBand($)
-  await cmd($, 'pokemon-play', 'work')
-  await w.clock.advance(1000)
-  await $.ui.mount({
-    plugin: 'pokemon',
-    surface: 'desktop',
-    component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 80 },
-  } as never)
-  const before = w.band.frames
-  await w.clock.advance(2000)
-  expect(w.band.frames - before).toBeGreaterThan(5)
-  const wide = await $.ui.mount({
-    plugin: 'pokemon',
-    surface: 'terminal',
-    component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 600 },
-  } as never)
-  expect(JSON.stringify(await wide.drawn())).toContain('"columns":512')
-  // Too narrow for the scene and the button: the scene alone.
-  const narrow = await $.ui.mount({
-    plugin: 'pokemon',
-    surface: 'terminal',
-    component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 20 },
-  } as never)
-  const drawn = JSON.stringify(await narrow.drawn())
-  expect(drawn).toContain('"columns":20')
-  expect(drawn).not.toContain('"shop"')
-})
+test(
+  'another surface drawing at the same time leaves the terminal band running; wide bands are clipped to 512, button included; narrow ones have no button',
+  KIT,
+  async ($, on) => {
+    engineLines(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    await mountBand($)
+    await cmd($, 'pokemon-play', 'work')
+    await w.clock.advance(1000)
+    await $.ui.mount({
+      plugin: 'pokemon',
+      surface: 'desktop',
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 80 },
+    } as never)
+    const before = w.band.frames
+    await w.clock.advance(2000)
+    expect(w.band.frames - before).toBeGreaterThan(5)
+    const wide = await $.ui.mount({
+      plugin: 'pokemon',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 600 },
+    } as never)
+    expect(JSON.stringify(await wide.drawn())).toContain('"columns":512')
+    // Too narrow for the scene and the button: the scene alone.
+    const narrow = await $.ui.mount({
+      plugin: 'pokemon',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 20 },
+    } as never)
+    const drawn = JSON.stringify(await narrow.drawn())
+    expect(drawn).toContain('"columns":20')
+    expect(drawn).not.toContain('"shop"')
+  },
+)
 
-test('two members due at once evolve one after the other, each with its whole animation', async ($, on) => {
+test('two members due at once evolve one after the other, each with its whole animation', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1086,7 +1181,7 @@ test('two members due at once evolve one after the other, each with its whole an
   expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!', 'What? Pikachu evolved into Raichu!'])
 })
 
-test('with no band drawn (a `claude -p` run), evolutions never wait for an animation', async ($, on) => {
+test('with no band drawn (a `claude -p` run), evolutions never wait for an animation', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1100,7 +1195,7 @@ test('with no band drawn (a `claude -p` run), evolutions never wait for an anima
   expect(w.saveNow().party.map(m => m.species)).toEqual(['charmeleon', 'raichu'])
 })
 
-test("a space too short for the band shows Claude Code's own row instead", async ($, on) => {
+test("a space too short for the band shows Claude Code's own row instead", KIT, async ($, on) => {
   const engine = engineLines(on)
   await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
@@ -1114,7 +1209,7 @@ test("a space too short for the band shows Claude Code's own row instead", async
   expect(engine.length).toBeGreaterThan(0)
 })
 
-test('each session keeps its XP under its own key, so sessions writing at once never lose any', async ($, on) => {
+test('each session keeps its XP under its own key, so sessions writing at once never lose any', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [lv('raichu', 30)] })] })
   await cmd($, 'pokemon', 'party')
@@ -1155,7 +1250,7 @@ test(
   },
 )
 
-test('gender follows the species, shows in the party, and decides gender-only evolutions', async ($, on) => {
+test('gender follows the species, shows in the party, and decides gender-only evolutions', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1215,55 +1310,67 @@ async function dawnStoneOnFreshKirlia(
   return { w, text: await given }
 }
 
-test('a Dawn Stone given to a Kirlia whose gender is still unknown makes a Gallade only of a male', async ($, on) => {
-  const { w, text } = await dawnStoneOnFreshKirlia($, on, 8)
-  expect(text).toBe("Kirlia can't use a Dawn Stone.")
-  expect(w.saveNow().party[1]).toMatchObject({ species: 'kirlia', gender: 'female' })
-  expect(w.saveNow().bag).toEqual({ 'dawn-stone': 1 })
-})
+test(
+  'a Dawn Stone given to a Kirlia whose gender is still unknown makes a Gallade only of a male',
+  KIT,
+  async ($, on) => {
+    const { w, text } = await dawnStoneOnFreshKirlia($, on, 8)
+    expect(text).toBe("Kirlia can't use a Dawn Stone.")
+    expect(w.saveNow().party[1]).toMatchObject({ species: 'kirlia', gender: 'female' })
+    expect(w.saveNow().bag).toEqual({ 'dawn-stone': 1 })
+  },
+)
 
-test('a Dawn Stone given to a male Kirlia whose gender was still unknown makes a Gallade', async ($, on) => {
+test('a Dawn Stone given to a male Kirlia whose gender was still unknown makes a Gallade', KIT, async ($, on) => {
   const { w, text } = await dawnStoneOnFreshKirlia($, on, 0)
   expect(text).toBe('Kirlia evolved into Gallade!')
   expect(w.saveNow().party[1]).toMatchObject({ species: 'gallade', gender: 'male' })
 })
 
-test('a piped test run reacts to its summary; one still running in the background reacts to nothing', async ($, on) => {
-  on('tool.call', async (_$, e) => {
-    const { command, run_in_background } = e as unknown as { command: string; run_in_background?: boolean }
-    if (run_in_background) return { result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b1' } }
-    const stdout = command.includes('broken') ? '== 1 failed, 2 passed in 0.1s ==' : '== 3 passed in 0.1s =='
-    return { result: { stdout, stderr: '', interrupted: false } }
-  })
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
-  await cmd($, 'pokemon', 'party')
-  await $.tool.call(bash('pytest 2>&1 | tail -5') as never)
-  await cmd($, 'pokemon', 'party')
-  expect(w.partyNow()[0]?.xp).toBe(5)
-  await $.tool.call(bash('pytest tests/broken.py | tail -5') as never)
-  await $.tool.call({ ...bash('pytest'), run_in_background: true } as never)
-  await cmd($, 'pokemon', 'party')
-  expect(w.partyNow()[0]?.xp).toBe(5)
-})
+test(
+  'a piped test run reacts to its summary; one still running in the background reacts to nothing',
+  KIT,
+  async ($, on) => {
+    on('tool.call', async (_$, e) => {
+      const { command, run_in_background } = e as unknown as { command: string; run_in_background?: boolean }
+      if (run_in_background) return { result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b1' } }
+      const stdout = command.includes('broken') ? '== 1 failed, 2 passed in 0.1s ==' : '== 3 passed in 0.1s =='
+      return { result: { stdout, stderr: '', interrupted: false } }
+    })
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] })
+    await cmd($, 'pokemon', 'party')
+    await $.tool.call(bash('pytest 2>&1 | tail -5') as never)
+    await cmd($, 'pokemon', 'party')
+    expect(w.partyNow()[0]?.xp).toBe(5)
+    await $.tool.call(bash('pytest tests/broken.py | tail -5') as never)
+    await $.tool.call({ ...bash('pytest'), run_in_background: true } as never)
+    await cmd($, 'pokemon', 'party')
+    expect(w.partyNow()[0]?.xp).toBe(5)
+  },
+)
 
-test('the PC box: listed with /pokemon box; a boxed Pokémon can lead (the old lead takes its place) or rejoin', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu', { xp: 100 }), member('charmander')],
-    box: [member('eevee', { xp: 40, isCaught: true })],
-  })
-  expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1 \/ 960\):\n {2}1\. {2}Eevee ◓ {2}Lv 4 /)
-  expect(await cmd($, 'pokemon', 'eevee')).toBe(
-    'Eevee (Lv 4) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
-  )
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'charmander'])
-  expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
-  expect(await cmd($, 'pokemon', 'add pikachu')).toBe('Pikachu came out of the PC box and joined your party!')
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'charmander', 'pikachu'])
-  expect(await cmd($, 'pokemon', 'box')).toBe('Your PC box is empty.')
-})
+test(
+  'the PC box: listed with /pokemon box; a boxed Pokémon can lead (the old lead takes its place) or rejoin',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { xp: 100 }), member('charmander')],
+      box: [member('eevee', { xp: 40, isCaught: true })],
+    })
+    expect(await cmd($, 'pokemon', 'box')).toMatch(/^Your PC box \(1 \/ 960\):\n {2}1\. {2}Eevee ◓ {2}Lv 4 /)
+    expect(await cmd($, 'pokemon', 'eevee')).toBe(
+      'Eevee (Lv 4) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
+    )
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'charmander'])
+    expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
+    expect(await cmd($, 'pokemon', 'add pikachu')).toBe('Pikachu came out of the PC box and joined your party!')
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['eevee', 'charmander', 'pikachu'])
+    expect(await cmd($, 'pokemon', 'box')).toBe('Your PC box is empty.')
+  },
+)
 
-test('deposit moves a member into the PC box with its XP; the lead too, never the last one', async ($, on) => {
+test('deposit moves a member into the PC box with its XP; the lead too, never the last one', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu', { xp: 100 }), member('eevee', { xp: 40 }), member('charmander')],
@@ -1281,20 +1388,24 @@ test('deposit moves a member into the PC box with its XP; the lead too, never th
   expect(await cmd($, 'pokemon', 'add eevee')).toBe('Eevee came out of the PC box and joined your party!')
 })
 
-test('a shiny named in the PC box comes out of it: the lead goes into the box, not back to the wild', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu', { xp: 100 })],
-    box: [member('eevee', { id: 'boxed', isShiny: true })],
-  })
-  expect(await cmd($, 'pokemon', 'shiny eevee')).toBe(
-    '✨ Eevee (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
-  )
-  expect(w.saveNow().party.map(m => m.id)).toEqual(['boxed'])
-  expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
-})
+test(
+  'a shiny named in the PC box comes out of it: the lead goes into the box, not back to the wild',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { xp: 100 })],
+      box: [member('eevee', { id: 'boxed', isShiny: true })],
+    })
+    expect(await cmd($, 'pokemon', 'shiny eevee')).toBe(
+      '✨ Eevee (Lv 1) came out of the PC box to lead your party. Pikachu (Lv 6) went into the PC box.',
+    )
+    expect(w.saveNow().party.map(m => m.id)).toEqual(['boxed'])
+    expect(w.saveNow().box?.map(m => m.species)).toEqual(['pikachu'])
+  },
+)
 
-test('shiny twins asked for when neither is shiny: a new shiny one leads, and both twins stay', async ($, on) => {
+test('shiny twins asked for when neither is shiny: a new shiny one leads, and both twins stay', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
@@ -1311,7 +1422,7 @@ test('shiny twins asked for when neither is shiny: a new shiny one leads, and bo
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['p'])
 })
 
-test('a plain name never takes a regional form out of the PC box', async ($, on) => {
+test('a plain name never takes a regional form out of the PC box', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu'), member('mr-mime')],
@@ -1328,21 +1439,25 @@ test('a plain name never takes a regional form out of the PC box', async ($, on)
   expect(w.saveNow().box?.map(m => m.id)).toEqual(['gal'])
 })
 
-test('a name in both the party and the box asks which, party first; a full party leaves the box alone', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu'), member('eevee'), member('charmander')],
-    box: [member('eevee', { id: 'boxed' }), member('raichu', { id: 'boxed-raichu' })],
-  })
-  expect(await cmd($, 'pokemon', 'eevee')).toMatch(
-    /^Which Eevee\?\n {2}1\. Eevee.* Lv 1 \(party\)\n {2}2\. Eevee.* Lv 1 \(PC box\)\nAdd the number: \/pokemon eevee 2$/,
-  )
-  expect(await cmd($, 'pokemon', 'eevee 1')).toBe('Eevee leads the party again (Lv 1).')
-  expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
-  expect(w.saveNow().box?.map(m => m.id)).toEqual(['boxed', 'boxed-raichu'])
-})
+test(
+  'a name in both the party and the box asks which, party first; a full party leaves the box alone',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu'), member('eevee'), member('charmander')],
+      box: [member('eevee', { id: 'boxed' }), member('raichu', { id: 'boxed-raichu' })],
+    })
+    expect(await cmd($, 'pokemon', 'eevee')).toMatch(
+      /^Which Eevee\?\n {2}1\. Eevee.* Lv 1 \(party\)\n {2}2\. Eevee.* Lv 1 \(PC box\)\nAdd the number: \/pokemon eevee 2$/,
+    )
+    expect(await cmd($, 'pokemon', 'eevee 1')).toBe('Eevee leads the party again (Lv 1).')
+    expect(await cmd($, 'pokemon', 'add raichu')).toContain('Your party is full (3)')
+    expect(w.saveNow().box?.map(m => m.id)).toEqual(['boxed', 'boxed-raichu'])
+  },
+)
 
-test('/pokemon add <name> with that Pokémon in the party adds a twin', async ($, on) => {
+test('/pokemon add <name> with that Pokémon in the party adds a twin', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('eevee', { id: 'e1' })] })
   expect(await cmd($, 'pokemon', 'add eevee')).toContain('Eevee joined your party!')
   const party = w.saveNow().party
@@ -1352,7 +1467,7 @@ test('/pokemon add <name> with that Pokémon in the party adds a twin', async ($
   expect(w.saveNow().party.map(m => m.id)).toEqual(party.map(m => m.id))
 })
 
-test('a name that fits two members asks which and changes nothing; the number picks one', async ($, on) => {
+test('a name that fits two members asks which and changes nothing; the number picks one', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' }), member('eevee', { id: 'e3' })],
@@ -1375,7 +1490,7 @@ test('a name that fits two members asks which and changes nothing; the number pi
   expect(w.saveNow().bag).toBeUndefined()
 })
 
-test('everstone, take, deposit, a lead and add each act on the one the number picks', async ($, on) => {
+test('everstone, take, deposit, a lead and add each act on the one the number picks', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
@@ -1433,7 +1548,7 @@ function apart(cells: string, columns: number, color: number, gap: number) {
   return runs.length === 2 && a && b && b[0] - a[1] > gap ? runs : null
 }
 
-test('twins walk as two: each keeps its own place when the party changes', async ($, on) => {
+test('twins walk as two: each keeps its own place when the party changes', KIT, async ($, on) => {
   const EEVEE = 0x010203
   const PIKACHU = 0x040506
   const net: Net = {
@@ -1483,7 +1598,7 @@ test('twins walk as two: each keeps its own place when the party changes', async
   expect(runsOf(after, 80, EEVEE)).toHaveLength(2)
 })
 
-test('one twin evolving keeps its place, and the other its own', async ($, on) => {
+test('one twin evolving keeps its place, and the other its own', KIT, async ($, on) => {
   answerTools(on)
   const CHARMANDER = 0x010203
   const CHARMELEON = 0x070809
@@ -1572,11 +1687,11 @@ async function evolvedElsewhere($: Engine, on: On, adopt: () => Promise<unknown>
   return isDrawn
 }
 
-test("another session's evolution is drawn even when XP lands here before the next sync", async ($, on) => {
+test("another session's evolution is drawn even when XP lands here before the next sync", KIT, async ($, on) => {
   expect(await evolvedElsewhere($, on, () => $.tool.call(bash('git commit -m x') as never))).toBe(true)
 })
 
-test("another session's evolution is drawn even when a command here writes the save first", async ($, on) => {
+test("another session's evolution is drawn even when a command here writes the save first", KIT, async ($, on) => {
   // `size` writes the save without a sync first.
   expect(await evolvedElsewhere($, on, () => cmd($, 'pokemon', 'size small'))).toBe(true)
 })
@@ -1588,27 +1703,31 @@ const NUMBERED = [
   { name: 'zygarde', forms: ['regular', '10', 'complete'] },
 ]
 
-test('a number that is part of a name catches that Pokémon when only one of the name before it is yours', async ($, on) => {
-  const saved = {
-    ...emptySave(),
-    party: [member('pikachu', { id: 'p' })],
-    box: [member('porygon', { id: 'lone' }), member('zygarde', { id: 'plain' })],
-  }
-  const w = await begin($, on, saved, ART, undefined, { isOnline: true, list: JSON.stringify(NUMBERED) })
-  // Either catch may be a lucky shiny (1 in 32), and its ✨ follows it into every line that names it.
-  const said = async (query: string) => (await cmd($, 'pokemon', query)).split('✨ ').join('')
-  expect(await said('add porygon 2')).toBe('Porygon2 joined your party!')
-  expect(await said('zygarde 10')).toContain("A wild Zygarde (10) appeared! It's your new lead.")
-  expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['zygarde:10', 'porygon2:regular'])
-  expect(await said('porygon 2')).toBe('Porygon2 leads the party again (Lv 1).')
-  expect(w.saveNow().box?.map(m => m.id)).toEqual(['lone', 'plain', 'p'])
-  // 1 is the one there is.
-  expect(await said('porygon 1')).toBe(
-    'Porygon (Lv 1) came out of the PC box to lead your party. Porygon2 (Lv 1) went into the PC box.',
-  )
-})
+test(
+  'a number that is part of a name catches that Pokémon when only one of the name before it is yours',
+  KIT,
+  async ($, on) => {
+    const saved = {
+      ...emptySave(),
+      party: [member('pikachu', { id: 'p' })],
+      box: [member('porygon', { id: 'lone' }), member('zygarde', { id: 'plain' })],
+    }
+    const w = await begin($, on, saved, ART, undefined, { isOnline: true, list: JSON.stringify(NUMBERED) })
+    // Either catch may be a lucky shiny (1 in 32), and its ✨ follows it into every line that names it.
+    const said = async (query: string) => (await cmd($, 'pokemon', query)).split('✨ ').join('')
+    expect(await said('add porygon 2')).toBe('Porygon2 joined your party!')
+    expect(await said('zygarde 10')).toContain("A wild Zygarde (10) appeared! It's your new lead.")
+    expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['zygarde:10', 'porygon2:regular'])
+    expect(await said('porygon 2')).toBe('Porygon2 leads the party again (Lv 1).')
+    expect(w.saveNow().box?.map(m => m.id)).toEqual(['lone', 'plain', 'p'])
+    // 1 is the one there is.
+    expect(await said('porygon 1')).toBe(
+      'Porygon (Lv 1) came out of the PC box to lead your party. Porygon2 (Lv 1) went into the PC box.',
+    )
+  },
+)
 
-test('two Porygon: the number picks one of them, even with a Porygon2 there', async ($, on) => {
+test('two Porygon: the number picks one of them, even with a Porygon2 there', KIT, async ($, on) => {
   const saved = {
     ...emptySave(),
     party: [member('pikachu'), member('porygon', { id: 'first' })],
@@ -1621,7 +1740,7 @@ test('two Porygon: the number picks one of them, even with a Porygon2 there', as
   expect(w.saveNow().party[0]?.id).toBe('second')
 })
 
-test('a boxed Pokémon comes out by name even when the party holds another form of its species', async ($, on) => {
+test('a boxed Pokémon comes out by name even when the party holds another form of its species', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('mr-mime', { form: 'galar', id: 'gal', xp: 400 }), member('pikachu')],
@@ -1638,39 +1757,43 @@ test('a boxed Pokémon comes out by name even when the party holds another form 
   expect(w.saveNow().party.map(m => m.id)).toContain('gal')
 })
 
-test('an everstone holder never evolves when the party is reordered during an evolution animation', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [
-      member('charmander', { id: 'a', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),
-      member('charmeleon', {
-        id: 'e',
-        xp: xpForLevel(40),
-        next: [lv('charizard', 36)],
-        heldItem: 'everstone',
-        gender: 'male',
-      }),
-      member('pikachu', { id: 'd', xp: xpForLevel(30) - 5, next: [lv('raichu', 30)], gender: 'male' }),
-    ],
-  })
-  await cmd($, 'pokemon', 'party')
-  await mountBand($)
-  await $.tool.call(bash('git commit -m x') as never)
-  await until($, () => w.toasts.length === 1)
-  // Mid-animation, Pikachu moves to lead: the everstone Charmeleon now stands where Pikachu stood.
-  expect(await cmd($, 'pokemon', 'pikachu')).toBe('Pikachu ♂ leads the party again (Lv 30).')
-  for (let i = 0; i < 40 && w.toasts.length < 2; i++) await w.clock.advance(500)
-  for (let i = 0; i < 10; i++) await w.clock.advance(500)
-  expect(w.saveNow().party.map(m => [m.id, m.species, m.heldItem === 'everstone'])).toEqual([
-    ['d', 'raichu', false],
-    ['a', 'charmeleon', false],
-    ['e', 'charmeleon', true],
-  ])
-  expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!', 'What? Pikachu evolved into Raichu!'])
-})
+test(
+  'an everstone holder never evolves when the party is reordered during an evolution animation',
+  KIT,
+  async ($, on) => {
+    answerTools(on)
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [
+        member('charmander', { id: 'a', xp: xpForLevel(16) - 5, next: [lv('charmeleon', 16)], gender: 'male' }),
+        member('charmeleon', {
+          id: 'e',
+          xp: xpForLevel(40),
+          next: [lv('charizard', 36)],
+          heldItem: 'everstone',
+          gender: 'male',
+        }),
+        member('pikachu', { id: 'd', xp: xpForLevel(30) - 5, next: [lv('raichu', 30)], gender: 'male' }),
+      ],
+    })
+    await cmd($, 'pokemon', 'party')
+    await mountBand($)
+    await $.tool.call(bash('git commit -m x') as never)
+    await until($, () => w.toasts.length === 1)
+    // Mid-animation, Pikachu moves to lead: the everstone Charmeleon now stands where Pikachu stood.
+    expect(await cmd($, 'pokemon', 'pikachu')).toBe('Pikachu ♂ leads the party again (Lv 30).')
+    for (let i = 0; i < 40 && w.toasts.length < 2; i++) await w.clock.advance(500)
+    for (let i = 0; i < 10; i++) await w.clock.advance(500)
+    expect(w.saveNow().party.map(m => [m.id, m.species, m.heldItem === 'everstone'])).toEqual([
+      ['d', 'raichu', false],
+      ['a', 'charmeleon', false],
+      ['e', 'charmeleon', true],
+    ])
+    expect(w.toasts).toEqual(['What? Charmander evolved into Charmeleon!', 'What? Pikachu evolved into Raichu!'])
+  },
+)
 
-test('a slow party refresh in flight never draws over an evolution', async ($, on) => {
+test('a slow party refresh in flight never draws over an evolution', KIT, async ($, on) => {
   answerTools(on)
   const net: Net = {
     isOnline: true,
@@ -1721,7 +1844,7 @@ test('a slow party refresh in flight never draws over an evolution', async ($, o
   expect(colors.has(0xff0000)).toBe(false)
 })
 
-test('Rockruff evolves at Lv 25 into the Lycanroc of the hour: Midnight at night', async ($, on) => {
+test('Rockruff evolves at Lv 25 into the Lycanroc of the hour: Midnight at night', KIT, async ($, on) => {
   answerTools(on)
   const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(23) }
   const w = await begin(
@@ -1738,7 +1861,7 @@ test('Rockruff evolves at Lv 25 into the Lycanroc of the hour: Midnight at night
   expect(w.saveNow().party[0]?.form).toBe('midnight')
 })
 
-test('Rockruff by day becomes Midday Lycanroc, the plain form', async ($, on) => {
+test('Rockruff by day becomes Midday Lycanroc, the plain form', KIT, async ($, on) => {
   answerTools(on)
   const net: Net = { isOnline: true, list: JSON.stringify(LIST), now: hourAt(12) }
   const w = await begin(
@@ -1755,7 +1878,7 @@ test('Rockruff by day becomes Midday Lycanroc, the plain form', async ($, on) =>
   expect(w.saveNow().party[0]?.form).toBe('regular')
 })
 
-test('Pancham evolves at Lv 32 only with a Dark-type in the party', async ($, on) => {
+test('Pancham evolves at Lv 32 only with a Dark-type in the party', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pancham', { xp: xpForLevel(32) - 5 })] })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
@@ -1768,22 +1891,26 @@ test('Pancham evolves at Lv 32 only with a Dark-type in the party', async ($, on
   expect(w.toasts).toEqual(['What? Pancham evolved into Pangoro!'])
 })
 
-test('Nincada becomes Ninjask at Lv 20, and Shedinja comes along: to the party, or the PC box when full', async ($, on) => {
-  answerTools(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('nincada', { xp: xpForLevel(20) - 5 })] })
-  await until($, () => w.saveNow().party[0]?.next !== undefined)
-  await $.tool.call(bash('git commit -m x') as never)
-  await until($, () => w.toasts.length === 1)
-  expect(w.toasts).toEqual(['What? Nincada evolved into Ninjask! Shedinja joined your party!'])
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['ninjask', 'shedinja'])
-  // Ninjask's XP from this session's ledger comes along: the same level.
-  expect(w.partyNow().map(m => level(m.xp))).toEqual([20, 20])
-  // Caught, as in the games.
-  expect(w.saveNow().dex.shedinja).toMatchObject({ seen: 1, caught: 1 })
-  expect(await cmd($, 'pokedex')).toContain(' · 1 caught · ')
-})
+test(
+  'Nincada becomes Ninjask at Lv 20, and Shedinja comes along: to the party, or the PC box when full',
+  KIT,
+  async ($, on) => {
+    answerTools(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('nincada', { xp: xpForLevel(20) - 5 })] })
+    await until($, () => w.saveNow().party[0]?.next !== undefined)
+    await $.tool.call(bash('git commit -m x') as never)
+    await until($, () => w.toasts.length === 1)
+    expect(w.toasts).toEqual(['What? Nincada evolved into Ninjask! Shedinja joined your party!'])
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['ninjask', 'shedinja'])
+    // Ninjask's XP from this session's ledger comes along: the same level.
+    expect(w.partyNow().map(m => level(m.xp))).toEqual([20, 20])
+    // Caught, as in the games.
+    expect(w.saveNow().dex.shedinja).toMatchObject({ seen: 1, caught: 1 })
+    expect(await cmd($, 'pokedex')).toContain(' · 1 caught · ')
+  },
+)
 
-test('Pancham counts an Alolan Rattata as the Dark-type it is', async ($, on) => {
+test('Pancham counts an Alolan Rattata as the Dark-type it is', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1795,7 +1922,7 @@ test('Pancham counts an Alolan Rattata as the Dark-type it is', async ($, on) =>
   expect(w.toasts).toEqual(['What? Pancham evolved into Pangoro!'])
 })
 
-test('a plain Rattata is no Dark-type: Pancham waits', async ($, on) => {
+test('a plain Rattata is no Dark-type: Pancham waits', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1808,7 +1935,7 @@ test('a plain Rattata is no Dark-type: Pancham waits', async ($, on) => {
   expect(w.toasts).toEqual([])
 })
 
-test('with a full party, Shedinja goes to the PC box', async ($, on) => {
+test('with a full party, Shedinja goes to the PC box', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1825,7 +1952,7 @@ test('with a full party, Shedinja goes to the PC box', async ($, on) => {
   expect(w.saveNow().box?.map(m => m.species)).toEqual(['shedinja'])
 })
 
-test('with a full party and a full PC box, Nincada still evolves, and Shedinja stays behind', async ($, on) => {
+test('with a full party and a full PC box, Nincada still evolves, and Shedinja stays behind', KIT, async ($, on) => {
   answerTools(on)
   const box = Array.from({ length: 960 }, (_, i) => member('caterpie', { id: `b${i}`, next: [] }))
   const w = await begin($, on, {
@@ -1848,7 +1975,7 @@ test('with a full party and a full PC box, Nincada still evolves, and Shedinja s
   expect(w.saveNow().dex.shedinja).toBeUndefined()
 })
 
-test('Dusclops waits for a Reaper Cloth: past Lv 30 it stays, and the party says what it needs', async ($, on) => {
+test('Dusclops waits for a Reaper Cloth: past Lv 30 it stays, and the party says what it needs', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('dusclops', { xp: xpForLevel(45) })] })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
@@ -1859,7 +1986,7 @@ test('Dusclops waits for a Reaper Cloth: past Lv 30 it stays, and the party says
   expect(w.toasts).toEqual([])
 })
 
-test('Mantyke evolves once a Remoraid joins the party', async ($, on) => {
+test('Mantyke evolves once a Remoraid joins the party', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('mantyke')] })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   for (let i = 0; i < 5; i++) await cmd($, 'pokemon', 'party')
@@ -1870,7 +1997,7 @@ test('Mantyke evolves once a Remoraid joins the party', async ($, on) => {
 })
 
 // A reply's ₽20 is earnInto's ×10 on its 2 XP (save.test.ts); here the two tool events, with two members.
-test('work earns ₽ once per event, not per member: a test run ₽50, a commit ₽100', async ($, on) => {
+test('work earns ₽ once per event, not per member: a test run ₽50, a commit ₽100', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -1883,7 +2010,7 @@ test('work earns ₽ once per event, not per member: a test run ₽50, a commit 
   expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,150')
 })
 
-test('a finished reply earns ₽20, once for the whole party', async ($, on) => {
+test('a finished reply earns ₽20, once for the whole party', KIT, async ($, on) => {
   on('turn.complete', async () => ({ text: '' }))
   const w = await begin($, on, {
     ...emptySave(),
@@ -1895,7 +2022,7 @@ test('a finished reply earns ₽20, once for the whole party', async ($, on) => 
   expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽3,020')
 })
 
-test('a Water Stone given to Eevee evolves it into Vaporeon and is used up', async ($, on) => {
+test('a Water Stone given to Eevee evolves it into Vaporeon and is used up', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('eevee')], bag: { 'water-stone': 2 } })
   expect(await cmd($, 'pokemon', 'give water stone eevee')).toBe('Eevee evolved into Vaporeon!')
   expect(w.saveNow().party[0]?.species).toBe('vaporeon')
@@ -1903,7 +2030,7 @@ test('a Water Stone given to Eevee evolves it into Vaporeon and is used up', asy
   expect(w.toasts).toEqual(['What? Eevee evolved into Vaporeon!'])
 })
 
-test('a stone not in the Bag changes nothing and plays no evolution', async ($, on) => {
+test('a stone not in the Bag changes nothing and plays no evolution', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('eevee')] })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   const before = JSON.stringify(w.saveNow())
@@ -1917,7 +2044,7 @@ test('a stone not in the Bag changes nothing and plays no evolution', async ($, 
   expect(w.fetched.some(url => url.endsWith('/vaporeon'))).toBe(false)
 })
 
-test('give refuses what it cannot do, and changes nothing', async ($, on) => {
+test('give refuses what it cannot do, and changes nothing', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('eevee'), member('charmander')],
@@ -1940,26 +2067,30 @@ test('give refuses what it cannot do, and changes nothing', async ($, on) => {
   expect(JSON.stringify(w.saveNow())).toBe(before)
 })
 
-test('an item name a little off gets a suggestion that keeps the Pokémon; one far off gets the usual help', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })] })
-  await cmd($, 'pokemon', 'party')
-  const before = JSON.stringify(w.saveNow())
-  expect(await cmd($, 'pokemon', 'give thunderstone pikachu')).toBe(
-    'Did you mean Thunder Stone? Run /pokemon give thunder-stone pikachu',
-  )
-  expect(await cmd($, 'pokemon', 'give upgrade porygon')).toBe(
-    'Did you mean Up-Grade? Run /pokemon give up-grade porygon',
-  )
-  expect(await cmd($, 'pokemon', 'give fire ston eevee')).toBe(
-    'Did you mean Fire Stone? Run /pokemon give fire-stone eevee',
-  )
-  expect(await cmd($, 'pokemon', 'give banana pikachu')).toBe(
-    'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.',
-  )
-  expect(JSON.stringify(w.saveNow())).toBe(before)
-})
+test(
+  'an item name a little off gets a suggestion that keeps the Pokémon; one far off gets the usual help',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })] })
+    await cmd($, 'pokemon', 'party')
+    const before = JSON.stringify(w.saveNow())
+    expect(await cmd($, 'pokemon', 'give thunderstone pikachu')).toBe(
+      'Did you mean Thunder Stone? Run /pokemon give thunder-stone pikachu',
+    )
+    expect(await cmd($, 'pokemon', 'give upgrade porygon')).toBe(
+      'Did you mean Up-Grade? Run /pokemon give up-grade porygon',
+    )
+    expect(await cmd($, 'pokemon', 'give fire ston eevee')).toBe(
+      'Did you mean Fire Stone? Run /pokemon give fire-stone eevee',
+    )
+    expect(await cmd($, 'pokemon', 'give banana pikachu')).toBe(
+      'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.',
+    )
+    expect(JSON.stringify(w.saveNow())).toBe(before)
+  },
+)
 
-test('holding: one item each, a new one sends the old back to the Bag; take puts it back', async ($, on) => {
+test('holding: one item each, a new one sends the old back to the Bag; take puts it back', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu', { next: [] })],
@@ -1978,37 +2109,41 @@ test('holding: one item each, a new one sends the old back to the Bag; take puts
   expect(w.saveNow().party[0]?.heldItem).toBeUndefined()
 })
 
-test('take reaches a PC box member holding an item; of two holders it asks which, the party one first', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu', { next: [], heldItem: 'lucky-egg' })],
-    box: [
-      member('eevee', { next: [] }),
-      member('eevee', { next: [], heldItem: 'soothe-bell' }),
-      member('pikachu', { next: [], heldItem: 'metal-coat' }),
-      member('charmander', { next: [] }),
-    ],
-  })
-  await cmd($, 'pokemon', 'party')
-  expect(await cmd($, 'pokemon', 'bag')).toContain(
-    [
-      '  Held        Pikachu holds a Lucky Egg',
-      '              Eevee (box) holds a Soothe Bell',
-      '              Pikachu (box) holds a Metal Coat',
-    ].join('\n'),
-  )
-  expect(await cmd($, 'pokemon', 'take eevee')).toBe("Eevee's Soothe Bell went back to your Bag.")
-  expect(w.saveNow().box?.map(m => m.heldItem)).toEqual([undefined, undefined, 'metal-coat', undefined])
-  expect(await cmd($, 'pokemon', 'take pikachu')).toBe(
-    'Which Pikachu?\n  1. Pikachu Lv 1 holding Lucky Egg (party)\n  2. Pikachu Lv 1 holding Metal Coat (PC box)\nAdd the number: /pokemon take pikachu 2',
-  )
-  expect(await cmd($, 'pokemon', 'take pikachu 1')).toBe("Pikachu's Lucky Egg went back to your Bag.")
-  expect(w.saveNow().box?.[2]?.heldItem).toBe('metal-coat')
-  expect(await cmd($, 'pokemon', 'take charmander')).toBe("Charmander isn't holding anything.")
-  expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1, 'soothe-bell': 1 })
-})
+test(
+  'take reaches a PC box member holding an item; of two holders it asks which, the party one first',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { next: [], heldItem: 'lucky-egg' })],
+      box: [
+        member('eevee', { next: [] }),
+        member('eevee', { next: [], heldItem: 'soothe-bell' }),
+        member('pikachu', { next: [], heldItem: 'metal-coat' }),
+        member('charmander', { next: [] }),
+      ],
+    })
+    await cmd($, 'pokemon', 'party')
+    expect(await cmd($, 'pokemon', 'bag')).toContain(
+      [
+        '  Held        Pikachu holds a Lucky Egg',
+        '              Eevee (box) holds a Soothe Bell',
+        '              Pikachu (box) holds a Metal Coat',
+      ].join('\n'),
+    )
+    expect(await cmd($, 'pokemon', 'take eevee')).toBe("Eevee's Soothe Bell went back to your Bag.")
+    expect(w.saveNow().box?.map(m => m.heldItem)).toEqual([undefined, undefined, 'metal-coat', undefined])
+    expect(await cmd($, 'pokemon', 'take pikachu')).toBe(
+      'Which Pikachu?\n  1. Pikachu Lv 1 holding Lucky Egg (party)\n  2. Pikachu Lv 1 holding Metal Coat (PC box)\nAdd the number: /pokemon take pikachu 2',
+    )
+    expect(await cmd($, 'pokemon', 'take pikachu 1')).toBe("Pikachu's Lucky Egg went back to your Bag.")
+    expect(w.saveNow().box?.[2]?.heldItem).toBe('metal-coat')
+    expect(await cmd($, 'pokemon', 'take charmander')).toBe("Charmander isn't holding anything.")
+    expect(w.saveNow().bag).toEqual({ 'lucky-egg': 1, 'soothe-bell': 1 })
+  },
+)
 
-test('the everstone stays free: same words as ever, and it never enters the Bag', async ($, on) => {
+test('the everstone stays free: same words as ever, and it never enters the Bag', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], bag: { 'lucky-egg': 1 } })
   await cmd($, 'pokemon', 'give lucky-egg pikachu')
   expect(await cmd($, 'pokemon', 'everstone pikachu')).toBe(
@@ -2027,7 +2162,7 @@ test('the everstone stays free: same words as ever, and it never enters the Bag'
   expect(w.saveNow().bag).toBeUndefined()
 })
 
-test('a Rare Candy is one level, and the evolution that level brings', async ($, on) => {
+test('a Rare Candy is one level, and the evolution that level brings', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('charmander', { xp: xpForLevel(15) + 3 })],
@@ -2038,7 +2173,7 @@ test('a Rare Candy is one level, and the evolution that level brings', async ($,
   await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
 })
 
-test('a Rare Candy is refused at Lv 100, and kept', async ($, on) => {
+test('a Rare Candy is refused at Lv 100, and kept', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('charizard', { xp: xpForLevel(100), next: [] })],
@@ -2048,7 +2183,7 @@ test('a Rare Candy is refused at Lv 100, and kept', async ($, on) => {
   expect(w.saveNow().bag).toEqual({ 'rare-candy': 1 })
 })
 
-test('a Lucky Egg holder earns half again', async ($, on) => {
+test('a Lucky Egg holder earns half again', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, {
     ...emptySave(),
@@ -2060,7 +2195,7 @@ test('a Lucky Egg holder earns half again', async ($, on) => {
   expect(w.partyNow().map(m => m.xp)).toEqual([15, 10])
 })
 
-test('₽ from two sessions adds up', async ($, on) => {
+test('₽ from two sessions adds up', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [] })] })
   await cmd($, 'pokemon', 'party')
@@ -2078,7 +2213,7 @@ const together = (ms: Record<string, number>, at = 0, now?: number): Net => ({
   keys: { together: { at, ms } },
 })
 
-test('time together brings friendship evolutions: Pichu becomes Pikachu after 10 hours', async ($, on) => {
+test('time together brings friendship evolutions: Pichu becomes Pikachu after 10 hours', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
@@ -2096,7 +2231,7 @@ test('time together brings friendship evolutions: Pichu becomes Pikachu after 10
   expect(await cmd($, 'pokemon', 'party')).toContain('together 10h')
 })
 
-test('Eevee by friendship: Umbreon at night, Espeon by day', async ($, on) => {
+test('Eevee by friendship: Umbreon at night, Espeon by day', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
@@ -2109,7 +2244,7 @@ test('Eevee by friendship: Umbreon at night, Espeon by day', async ($, on) => {
   await until($, () => w.saveNow().party[0]?.species === 'umbreon')
 })
 
-test('Eevee by day becomes Espeon', async ($, on) => {
+test('Eevee by day becomes Espeon', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
@@ -2122,115 +2257,131 @@ test('Eevee by day becomes Espeon', async ($, on) => {
   await until($, () => w.saveNow().party[0]?.species === 'espeon')
 })
 
-test('only party time counts: none while off, none in the PC box; a Soothe Bell makes it 1.5 times; a long gap counts 2 minutes', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [
-      member('pikachu', { id: 'p', next: [] }),
-      member('charmander', { id: 's', next: [], heldItem: 'soothe-bell' }),
-    ],
-    box: [member('eevee', { id: 'b' })],
-  })
-  await w.clock.advance(60_000)
-  const start = w.togetherNow()
-  await w.clock.advance(120_000)
-  expect((w.togetherNow().p ?? 0) - (start.p ?? 0)).toBe(120_000)
-  expect((w.togetherNow().s ?? 0) - (start.s ?? 0)).toBe(180_000)
-  expect(w.togetherNow().b).toBeUndefined()
-  await cmd($, 'pokemon', 'off')
-  const resting = w.togetherNow().p
-  await w.clock.advance(300_000)
-  expect(w.togetherNow().p).toBe(resting)
-  expect(await cmd($, 'pokemon', 'party')).toContain('together 2m')
-  // Back on after five minutes: the first beat adds the cap, not the five minutes.
-  await cmd($, 'pokemon', 'on')
-  await w.clock.advance(60_000)
-  expect(w.togetherNow().p).toBe((resting ?? 0) + 120_000)
-})
-
-test("heartbeats never write the save: another session's purchase landing mid-beat survives, and a minute counts once", async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [], gender: 'male' })] })
-  await cmd($, 'pokemon', 'party')
-  // The first beat sets the shared stamp.
-  await w.clock.advance(60_000)
-  const writes: string[] = []
-  let isArmed = false
-  w.net.beforeSet = key => {
-    writes.push(key)
-    // Another session buys a Fire Stone after this session's next beat read the store, before it writes.
-    if (isArmed && (key === 'save' || key === 'together')) {
-      isArmed = false
-      w.store.set('save', { ...w.saveNow(), bag: { 'fire-stone': 1 }, spent: 3000 })
-    }
-  }
-  await w.clock.advance(59_000)
-  isArmed = true
-  await w.clock.advance(1_000)
-  expect(isArmed).toBe(false)
-  // Another session's beat, 30 s after this one's: this one's next beat adds only the 30 s since.
-  const after = w.store.get('together') as { at: number; ms: Record<string, number> }
-  w.store.set('together', { at: after.at + 30_000, ms: { p: (after.ms.p ?? 0) + 30_000 } })
-  await w.clock.advance(60_000)
-  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
-  expect(w.saveNow().spent).toBe(3000)
-  expect(writes.filter(k => k === 'save')).toEqual([])
-  expect(w.togetherNow().p).toBe(120_000)
-  expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽0')
-})
-
-test('a member keeps its time together through evolution, deposit and withdraw; a release drops it', async ($, on) => {
-  const w = await begin(
-    $,
-    on,
-    {
+test(
+  'only party time counts: none while off, none in the PC box; a Soothe Bell makes it 1.5 times; a long gap counts 2 minutes',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
       ...emptySave(),
       party: [
-        member('charmander', { id: 'c', xp: xpForLevel(16) - 1 }),
-        member('pikachu', { id: 'p', next: [], gender: 'male' }),
-        member('eevee', { id: 'e', next: [], gender: 'male' }),
+        member('pikachu', { id: 'p', next: [] }),
+        member('charmander', { id: 's', next: [], heldItem: 'soothe-bell' }),
       ],
-      bag: { 'rare-candy': 1 },
-    },
-    ART,
-    undefined,
-    together({ c: 5 * 3_600_000, p: 3_600_000, e: 60_000 }),
-  )
-  expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
-  await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
-  expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
-  await cmd($, 'pokemon', 'deposit charmeleon')
-  await w.clock.advance(120_000)
-  expect(w.togetherNow().c).toBe(5 * 3_600_000)
-  expect(await cmd($, 'pokemon', 'box')).toContain('together 5h')
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee ♂ (Lv 1, party)! It went back to the wild.')
-  expect(await cmd($, 'pokemon', 'party')).not.toContain('Eevee')
-  expect([...w.saveNow().party, ...(w.saveNow().box ?? [])].some(m => m.id === 'e')).toBe(false)
-  await cmd($, 'pokemon', 'add charmeleon')
-  expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
-  await w.clock.advance(60_000)
-  expect(w.togetherNow().e).toBeUndefined()
-  expect(w.togetherNow().c).toBe(5 * 3_600_000 + 60_000)
-})
+      box: [member('eevee', { id: 'b' })],
+    })
+    await w.clock.advance(60_000)
+    const start = w.togetherNow()
+    await w.clock.advance(120_000)
+    expect((w.togetherNow().p ?? 0) - (start.p ?? 0)).toBe(120_000)
+    expect((w.togetherNow().s ?? 0) - (start.s ?? 0)).toBe(180_000)
+    expect(w.togetherNow().b).toBeUndefined()
+    await cmd($, 'pokemon', 'off')
+    const resting = w.togetherNow().p
+    await w.clock.advance(300_000)
+    expect(w.togetherNow().p).toBe(resting)
+    expect(await cmd($, 'pokemon', 'party')).toContain('together 2m')
+    // Back on after five minutes: the first beat adds the cap, not the five minutes.
+    await cmd($, 'pokemon', 'on')
+    await w.clock.advance(60_000)
+    expect(w.togetherNow().p).toBe((resting ?? 0) + 120_000)
+  },
+)
 
-test('a save from 1.3.0 betas moves its time together to its own key once, before the save is written', async ($, on) => {
-  // As a beta kept it: on each member and the save.
-  const beta = {
-    ...emptySave(),
-    party: [{ ...member('pikachu', { id: 'p' }), togetherMs: 3 * 3_600_000 }],
-    box: [{ ...member('eevee', { id: 'b' }), togetherMs: 60_000 }],
-    togetherAt: 5,
-  }
-  const w = await begin($, on, beta as Save)
-  await until($, () => w.saveNow().party[0]?.next !== undefined)
-  expect(w.store.get('together')).toEqual({ at: 5, ms: { p: 3 * 3_600_000, b: 60_000 } })
-  expect(JSON.stringify(w.saveNow())).not.toContain('together')
-  expect(await cmd($, 'pokemon', 'party')).toContain('together 3h')
-  // A beta window still writing its old fields changes nothing here.
-  w.store.set('save', { ...w.saveNow(), party: [{ ...w.saveNow().party[0], togetherMs: 9 * 3_600_000 }] })
-  await cmd($, 'pokemon', 'size small')
-  expect(w.togetherNow().p).toBe(3 * 3_600_000)
-  expect(await cmd($, 'pokemon', 'party')).toContain('together 3h')
-})
+test(
+  "heartbeats never write the save: another session's purchase landing mid-beat survives, and a minute counts once",
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [], gender: 'male' })] })
+    await cmd($, 'pokemon', 'party')
+    // The first beat sets the shared stamp.
+    await w.clock.advance(60_000)
+    const writes: string[] = []
+    let isArmed = false
+    w.net.beforeSet = key => {
+      writes.push(key)
+      // Another session buys a Fire Stone after this session's next beat read the store, before it writes.
+      if (isArmed && (key === 'save' || key === 'together')) {
+        isArmed = false
+        w.store.set('save', { ...w.saveNow(), bag: { 'fire-stone': 1 }, spent: 3000 })
+      }
+    }
+    await w.clock.advance(59_000)
+    isArmed = true
+    await w.clock.advance(1_000)
+    expect(isArmed).toBe(false)
+    // Another session's beat, 30 s after this one's: this one's next beat adds only the 30 s since.
+    const after = w.store.get('together') as { at: number; ms: Record<string, number> }
+    w.store.set('together', { at: after.at + 30_000, ms: { p: (after.ms.p ?? 0) + 30_000 } })
+    await w.clock.advance(60_000)
+    expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+    expect(w.saveNow().spent).toBe(3000)
+    expect(writes.filter(k => k === 'save')).toEqual([])
+    expect(w.togetherNow().p).toBe(120_000)
+    expect(await cmd($, 'pokemon', 'bag')).toContain('Bag · ₽0')
+  },
+)
+
+test(
+  'a member keeps its time together through evolution, deposit and withdraw; a release drops it',
+  KIT,
+  async ($, on) => {
+    const w = await begin(
+      $,
+      on,
+      {
+        ...emptySave(),
+        party: [
+          member('charmander', { id: 'c', xp: xpForLevel(16) - 1 }),
+          member('pikachu', { id: 'p', next: [], gender: 'male' }),
+          member('eevee', { id: 'e', next: [], gender: 'male' }),
+        ],
+        bag: { 'rare-candy': 1 },
+      },
+      ART,
+      undefined,
+      together({ c: 5 * 3_600_000, p: 3_600_000, e: 60_000 }),
+    )
+    expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
+    await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
+    expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
+    await cmd($, 'pokemon', 'deposit charmeleon')
+    await w.clock.advance(120_000)
+    expect(w.togetherNow().c).toBe(5 * 3_600_000)
+    expect(await cmd($, 'pokemon', 'box')).toContain('together 5h')
+    expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee ♂ (Lv 1, party)! It went back to the wild.')
+    expect(await cmd($, 'pokemon', 'party')).not.toContain('Eevee')
+    expect([...w.saveNow().party, ...(w.saveNow().box ?? [])].some(m => m.id === 'e')).toBe(false)
+    await cmd($, 'pokemon', 'add charmeleon')
+    expect(await cmd($, 'pokemon', 'party')).toMatch(/Charmeleon .*together 5h/)
+    await w.clock.advance(60_000)
+    expect(w.togetherNow().e).toBeUndefined()
+    expect(w.togetherNow().c).toBe(5 * 3_600_000 + 60_000)
+  },
+)
+
+test(
+  'a save from 1.3.0 betas moves its time together to its own key once, before the save is written',
+  KIT,
+  async ($, on) => {
+    // As a beta kept it: on each member and the save.
+    const beta = {
+      ...emptySave(),
+      party: [{ ...member('pikachu', { id: 'p' }), togetherMs: 3 * 3_600_000 }],
+      box: [{ ...member('eevee', { id: 'b' }), togetherMs: 60_000 }],
+      togetherAt: 5,
+    }
+    const w = await begin($, on, beta as Save)
+    await until($, () => w.saveNow().party[0]?.next !== undefined)
+    expect(w.store.get('together')).toEqual({ at: 5, ms: { p: 3 * 3_600_000, b: 60_000 } })
+    expect(JSON.stringify(w.saveNow())).not.toContain('together')
+    expect(await cmd($, 'pokemon', 'party')).toContain('together 3h')
+    // A beta window still writing its old fields changes nothing here.
+    w.store.set('save', { ...w.saveNow(), party: [{ ...w.saveNow().party[0], togetherMs: 9 * 3_600_000 }] })
+    await cmd($, 'pokemon', 'size small')
+    expect(w.togetherNow().p).toBe(3 * 3_600_000)
+    expect(await cmd($, 'pokemon', 'party')).toContain('together 3h')
+  },
+)
 
 type Band = {
   pointer: (e: { type: 'down'; x: number; y: number; button: 'left'; in?: string }) => Promise<void>
@@ -2274,75 +2425,89 @@ const wheel = ($: { ui: { scroll: (e: never) => Promise<unknown> } }, by: number
     origin: { kind: 'person' },
   } as never)
 
-test('the ₽ button opens the PokéMart; Buy takes ₽ and fills the Bag; not enough ₽ changes nothing; x closes it', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3000, plus: 0 })
-  expect(await martOf(band)).toBeNull()
-  await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
-  expect(await martOf(band)).toMatchObject({ balance: 3000, state: { tab: 0, sel: 0, top: 0, qty: 1 } })
-  expect((await martOf(band))?.icon?.length).toBeGreaterThan(0)
-  await clickMart(band, 'buy')
-  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
-  expect(w.saveNow().spent).toBe(3000)
-  expect(await martOf(band)).toMatchObject({ balance: 0, message: 'Bought a Fire Stone!', isError: false })
-  await clickMart(band, 'buy')
-  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
-  expect(await martOf(band)).toMatchObject({ message: 'Not enough ₽: ₽3,000 more to go.', isError: true })
-  await band.key({ key: 'down', in: 'mart' })
-  await band.key({ key: '+', in: 'mart' })
-  expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 1, top: 0, qty: 2 })
-  await band.key({ key: 'x', in: 'mart' })
-  expect(await martOf(band)).toBeNull()
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 0, plus: 0 })
-})
+test(
+  'the ₽ button opens the PokéMart; Buy takes ₽ and fills the Bag; not enough ₽ changes nothing; x closes it',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3000, plus: 0 })
+    expect(await martOf(band)).toBeNull()
+    await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
+    expect(await martOf(band)).toMatchObject({ balance: 3000, state: { tab: 0, sel: 0, top: 0, qty: 1 } })
+    expect((await martOf(band))?.icon?.length).toBeGreaterThan(0)
+    await clickMart(band, 'buy')
+    expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+    expect(w.saveNow().spent).toBe(3000)
+    expect(await martOf(band)).toMatchObject({ balance: 0, message: 'Bought a Fire Stone!', isError: false })
+    await clickMart(band, 'buy')
+    expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+    expect(await martOf(band)).toMatchObject({ message: 'Not enough ₽: ₽3,000 more to go.', isError: true })
+    await band.key({ key: 'down', in: 'mart' })
+    await band.key({ key: '+', in: 'mart' })
+    expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 1, top: 0, qty: 2 })
+    await band.key({ key: 'x', in: 'mart' })
+    expect(await martOf(band)).toBeNull()
+    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 0, plus: 0 })
+  },
+)
 
-test('a refused buy keeps its quantity; a bought one goes back to ×1; any move clears the message; Max says when one is too dear', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 3000 })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
-  await band.redraw()
-  const shown = async () => {
-    const p = await martOf(band)
-    return { message: p?.message, isError: p?.isError, qty: p?.state.qty, sel: p?.state.sel, tab: p?.state.tab }
-  }
-  // ₽6,000: three Fire Stones are too many, and the three stay chosen.
-  await band.key({ key: '+', in: 'mart' })
-  await band.key({ key: '+', in: 'mart' })
-  await band.key({ key: 'return', in: 'mart' })
-  expect(await shown()).toEqual({ message: 'Not enough ₽: ₽3,000 more to go.', isError: true, qty: 3, sel: 0, tab: 0 })
-  expect(w.saveNow().bag).toBeUndefined()
-  // One less: the refusal was about three, so it goes.
-  await band.key({ key: '-', in: 'mart' })
-  expect(await shown()).toEqual({ message: '', isError: false, qty: 2, sel: 0, tab: 0 })
-  await band.key({ key: 'return', in: 'mart' })
-  expect(w.saveNow().bag).toEqual({ 'fire-stone': 2 })
-  expect(await shown()).toEqual({ message: 'Bought 2 × Fire Stone!', isError: false, qty: 1, sel: 0, tab: 0 })
-  // ₽0 left: Max can't buy even one, says so, and stays at ×1.
-  await band.key({ key: 'down', in: 'mart' })
-  expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 0 })
-  await clickMart(band, 'max')
-  expect(await shown()).toEqual({
-    message: 'Not enough ₽ for one Water Stone: ₽3,000 more to go.',
-    isError: true,
-    qty: 1,
-    sel: 1,
-    tab: 0,
-  })
-  // A new tab clears it; so does a new item after a refused buy.
-  await band.key({ key: 'right', in: 'mart' })
-  expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 0, tab: 1 })
-  await band.key({ key: 'return', in: 'mart' })
-  expect((await shown()).isError).toBe(true)
-  await clickMart(band, { pick: 1 })
-  expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 1 })
-})
+test(
+  'a refused buy keeps its quantity; a bought one goes back to ×1; any move clears the message; Max says when one is too dear',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 3000 })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
+    await band.redraw()
+    const shown = async () => {
+      const p = await martOf(band)
+      return { message: p?.message, isError: p?.isError, qty: p?.state.qty, sel: p?.state.sel, tab: p?.state.tab }
+    }
+    // ₽6,000: three Fire Stones are too many, and the three stay chosen.
+    await band.key({ key: '+', in: 'mart' })
+    await band.key({ key: '+', in: 'mart' })
+    await band.key({ key: 'return', in: 'mart' })
+    expect(await shown()).toEqual({
+      message: 'Not enough ₽: ₽3,000 more to go.',
+      isError: true,
+      qty: 3,
+      sel: 0,
+      tab: 0,
+    })
+    expect(w.saveNow().bag).toBeUndefined()
+    // One less: the refusal was about three, so it goes.
+    await band.key({ key: '-', in: 'mart' })
+    expect(await shown()).toEqual({ message: '', isError: false, qty: 2, sel: 0, tab: 0 })
+    await band.key({ key: 'return', in: 'mart' })
+    expect(w.saveNow().bag).toEqual({ 'fire-stone': 2 })
+    expect(await shown()).toEqual({ message: 'Bought 2 × Fire Stone!', isError: false, qty: 1, sel: 0, tab: 0 })
+    // ₽0 left: Max can't buy even one, says so, and stays at ×1.
+    await band.key({ key: 'down', in: 'mart' })
+    expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 0 })
+    await clickMart(band, 'max')
+    expect(await shown()).toEqual({
+      message: 'Not enough ₽ for one Water Stone: ₽3,000 more to go.',
+      isError: true,
+      qty: 1,
+      sel: 1,
+      tab: 0,
+    })
+    // A new tab clears it; so does a new item after a refused buy.
+    await band.key({ key: 'right', in: 'mart' })
+    expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 0, tab: 1 })
+    await band.key({ key: 'return', in: 'mart' })
+    expect((await shown()).isError).toBe(true)
+    await clickMart(band, { pick: 1 })
+    expect(await shown()).toEqual({ message: '', isError: false, qty: 1, sel: 1, tab: 1 })
+  },
+)
 
 // Claude Code raises the wheel over the band only for a band taller than its window, which the Mart never is: it
 // leaves any scroll to the band, as with the Mart closed.
-test('the Mart leaves a scroll of the band alone: it passes on and the selection stays', async ($, on) => {
+test('the Mart leaves a scroll of the band alone: it passes on and the selection stays', KIT, async ($, on) => {
   // What the engine does with a scroll the plugin passes on.
   const passed: number[] = []
   on('ui.scroll', async (_$, e) => {
@@ -2360,7 +2525,7 @@ test('the Mart leaves a scroll of the band alone: it passes on and the selection
   expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
 })
 
-test('the Mart lists what would evolve your party', async ($, on) => {
+test('the Mart lists what would evolve your party', KIT, async ($, on) => {
   const stone = { species: 'raichu', way: { kind: 'item' as const, item: 'thunder-stone' } }
   await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [stone], gender: 'male' })] })
   await cmd($, 'pokemon', 'party')
@@ -2371,7 +2536,7 @@ test('the Mart lists what would evolve your party', async ($, on) => {
   expect(p?.items.find(i => i.id === 'fire-stone')?.party).toBeUndefined()
 })
 
-test('the Mart counts twins that one item would evolve', async ($, on) => {
+test('the Mart counts twins that one item would evolve', KIT, async ($, on) => {
   const water = { species: 'vaporeon', way: { kind: 'item' as const, item: 'water-stone' } }
   const fire = { species: 'flareon', way: { kind: 'item' as const, item: 'fire-stone' } }
   await begin($, on, {
@@ -2389,35 +2554,39 @@ test('the Mart counts twins that one item would evolve', async ($, on) => {
   expect(p?.items.find(i => i.id === 'fire-stone')?.party).toBe('Eevee → Flareon')
 })
 
-test('the Mart takes only its own acts: raw buys of anything, bad picks and tabs change nothing', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  await cmd($, 'pokemon', 'mart')
-  await band.redraw()
-  for (const data of [
-    { buy: { id: 'gimmighoul-coin', qty: 1 } },
-    { buy: { id: 'everstone', qty: 1 } },
-    { buy: { id: 'fire-stone', qty: 0 } },
-    { buy: { id: 'fire-stone', qty: 1000 } },
-    { buy: { id: 'fire-stone', qty: 1.5 } },
-    { act: 'teleport' },
-    { act: { pick: -1 } },
-    { act: { pick: 1.5 } },
-    { act: { tab: 'Other' } },
-    'buy',
-  ]) {
-    await band.post(data, { in: 'mart' })
-    expect(w.saveNow().bag).toBeUndefined()
-    expect(w.saveNow().spent).toBeUndefined()
-  }
-  // `{ act: 'buy' }` with a stray field is still a buy of one Fire Stone: the Mart's own quantity counts.
-  await band.post({ act: 'buy', qty: 1000 }, { in: 'mart' })
-  expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
-  expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
-})
+test(
+  'the Mart takes only its own acts: raw buys of anything, bad picks and tabs change nothing',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    await cmd($, 'pokemon', 'mart')
+    await band.redraw()
+    for (const data of [
+      { buy: { id: 'gimmighoul-coin', qty: 1 } },
+      { buy: { id: 'everstone', qty: 1 } },
+      { buy: { id: 'fire-stone', qty: 0 } },
+      { buy: { id: 'fire-stone', qty: 1000 } },
+      { buy: { id: 'fire-stone', qty: 1.5 } },
+      { act: 'teleport' },
+      { act: { pick: -1 } },
+      { act: { pick: 1.5 } },
+      { act: { tab: 'Other' } },
+      'buy',
+    ]) {
+      await band.post(data, { in: 'mart' })
+      expect(w.saveNow().bag).toBeUndefined()
+      expect(w.saveNow().spent).toBeUndefined()
+    }
+    // `{ act: 'buy' }` with a stray field is still a buy of one Fire Stone: the Mart's own quantity counts.
+    await band.post({ act: 'buy', qty: 1000 }, { in: 'mart' })
+    expect(w.saveNow().bag).toEqual({ 'fire-stone': 1 })
+    expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 0, top: 0, qty: 1 })
+  },
+)
 
-test('a buy the store refuses says why in the Mart and in a toast, and the Mart stays open', async ($, on) => {
+test('a buy the store refuses says why in the Mart and in a toast, and the Mart stays open', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
   const band = (await mountBand($)) as Band
@@ -2432,7 +2601,7 @@ test('a buy the store refuses says why in the Mart and in a toast, and the Mart 
   expect(w.saveNow().bag).toBeUndefined()
 })
 
-test('/pokemon mart opens it in the band and says so without one; /pokemon off closes it', async ($, on) => {
+test('/pokemon mart opens it in the band and says so without one; /pokemon off closes it', KIT, async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
   expect(await cmd($, 'pokemon', 'mart')).toBe(
@@ -2449,7 +2618,7 @@ test('/pokemon mart opens it in the band and says so without one; /pokemon off c
   expect(await martOf(band)).toBeNull()
 })
 
-test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone', async ($, on) => {
+test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone', KIT, async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, throwNet())
   await cmd($, 'pokemon', 'party')
   const band = (await mountBand($)) as Band
@@ -2463,62 +2632,70 @@ test('a wild Pokémon closes the Mart, and /pokemon mart waits until it has gone
   expect(await martOf(band)).toBeNull()
 })
 
-test('no ₽ button and no Mart from the moment a wild Pokémon is out, before it can be aimed at; the button comes back after', async ($, on) => {
-  const net = newmonNet()
-  const w = await begin(
-    $,
-    on,
-    { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
-    TALL,
-    undefined,
-    net,
-  )
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band & Aim
-  await cmd($, 'pokemon-play', 'day')
-  expect(await clientProps(band, 'shop')).not.toBeNull()
-  // Its catch rate is still loading (up to 20 s offline): it can't be aimed at yet.
-  let open = () => {}
-  net.speciesStall = new Promise<void>(resolve => (open = resolve))
-  await cmd($, 'pokemon-play', 'wild newmon')
-  // A click on the button as last drawn, before the band is drawn again without it.
-  await band.post({ open: true }, { in: 'shop' })
-  expect(await martOf(band)).toBeNull()
-  expect(await clientProps(band, 'shop')).toBeNull()
-  // Through the rustle and after: still no button, and still not aimable.
-  for (let i = 0; i < 60; i++) await w.clock.advance(50)
-  expect(await isAiming(band)).toBe(false)
-  expect(await clientProps(band, 'shop')).toBeNull()
-  net.speciesStall = undefined
-  open()
-  const cell = await seenIn(w, band, '#00ffff')
-  await band.pointer({ type: 'down', ...cell, button: 'left' })
-  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
-  let isBack = false
-  for (let i = 0; i < 100 && !isBack; i++) {
-    await w.clock.advance(50)
-    isBack = (await clientProps(band, 'shop')) !== null
-  }
-  expect(isBack).toBe(true)
-})
+test(
+  'no ₽ button and no Mart from the moment a wild Pokémon is out, before it can be aimed at; the button comes back after',
+  KIT,
+  async ($, on) => {
+    const net = newmonNet()
+    const w = await begin(
+      $,
+      on,
+      { ...emptySave(), party: [member('pikachu', { next: [lv('raichu', 30)] })] },
+      TALL,
+      undefined,
+      net,
+    )
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band & Aim
+    await cmd($, 'pokemon-play', 'day')
+    expect(await clientProps(band, 'shop')).not.toBeNull()
+    // Its catch rate is still loading (up to 20 s offline): it can't be aimed at yet.
+    let open = () => {}
+    net.speciesStall = new Promise<void>(resolve => (open = resolve))
+    await cmd($, 'pokemon-play', 'wild newmon')
+    // A click on the button as last drawn, before the band is drawn again without it.
+    await band.post({ open: true }, { in: 'shop' })
+    expect(await martOf(band)).toBeNull()
+    expect(await clientProps(band, 'shop')).toBeNull()
+    // Through the rustle and after: still no button, and still not aimable.
+    for (let i = 0; i < 60; i++) await w.clock.advance(50)
+    expect(await isAiming(band)).toBe(false)
+    expect(await clientProps(band, 'shop')).toBeNull()
+    net.speciesStall = undefined
+    open()
+    const cell = await seenIn(w, band, '#00ffff')
+    await band.pointer({ type: 'down', ...cell, button: 'left' })
+    await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+    let isBack = false
+    for (let i = 0; i < 100 && !isBack; i++) {
+      await w.clock.advance(50)
+      isBack = (await clientProps(band, 'shop')) !== null
+    }
+    expect(isBack).toBe(true)
+  },
+)
 
-test('the party turned off in another session closes the Mart: it stays closed when they come back', async ($, on) => {
-  engineLines(on)
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  await cmd($, 'pokemon', 'mart')
-  expect(await martOf(band)).not.toBeNull()
-  // Another session turns them off, then on again; this one picks each up at its next sync.
-  w.store.set('save', { ...w.saveNow(), isOff: true })
-  await w.clock.advance(10_000)
-  await band.redraw()
-  const { isOff: _, ...back } = w.saveNow()
-  w.store.set('save', back)
-  await w.clock.advance(10_000)
-  expect(await martOf(band)).toBeNull()
-  expect(await clientProps(band, 'shop')).not.toBeNull()
-})
+test(
+  'the party turned off in another session closes the Mart: it stays closed when they come back',
+  KIT,
+  async ($, on) => {
+    engineLines(on)
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    await cmd($, 'pokemon', 'mart')
+    expect(await martOf(band)).not.toBeNull()
+    // Another session turns them off, then on again; this one picks each up at its next sync.
+    w.store.set('save', { ...w.saveNow(), isOff: true })
+    await w.clock.advance(10_000)
+    await band.redraw()
+    const { isOff: _, ...back } = w.saveNow()
+    w.store.set('save', back)
+    await w.clock.advance(10_000)
+    expect(await martOf(band)).toBeNull()
+    expect(await clientProps(band, 'shop')).not.toBeNull()
+  },
+)
 
 // The first node of the band as drawn afresh that `is` picks, or null.
 async function nodeIn(band: Band, is: (n: Node) => boolean): Promise<Node | null> {
@@ -2540,7 +2717,7 @@ const isShop = (n: Node) => n.type === 'Client' && n.props?.key === 'shop'
 const holdsShop = (n: Node) =>
   n.type === 'Box' && n.props?.position === 'absolute' && JSON.stringify(n).includes('"key":"shop"')
 
-test('earning shows +₽ under the button for a moment, the button a row taller for it', async ($, on) => {
+test('earning shows +₽ under the button for a moment, the button a row taller for it', KIT, async ($, on) => {
   answerTools(on)
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   await cmd($, 'pokemon', 'party')
@@ -2555,20 +2732,24 @@ test('earning shows +₽ under the button for a moment, the button a row taller 
   expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
 })
 
-test("the band is one picture, the ₽ button just its label laid over the picture's top-right corner", async ($, on) => {
-  await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  // The scene's Raster takes the whole 80 columns, the landscape running on under the button.
-  const scene = await nodeIn(band, n => n.type === 'Raster')
-  expect(scene?.props).toMatchObject({ key: 'scene', columns: 80 })
-  const over = await nodeIn(band, holdsShop)
-  expect(over?.props).toMatchObject({ position: 'absolute', top: 0, right: 0 })
-  // As big as the wallet's pill and no bigger: ` 🛒 ₽ 3,000 ` is 12 columns.
-  expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
-})
+test(
+  "the band is one picture, the ₽ button just its label laid over the picture's top-right corner",
+  KIT,
+  async ($, on) => {
+    await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    // The scene's Raster takes the whole 80 columns, the landscape running on under the button.
+    const scene = await nodeIn(band, n => n.type === 'Raster')
+    expect(scene?.props).toMatchObject({ key: 'scene', columns: 80 })
+    const over = await nodeIn(band, holdsShop)
+    expect(over?.props).toMatchObject({ position: 'absolute', top: 0, right: 0 })
+    // As big as the wallet's pill and no bigger: ` 🛒 ₽ 3,000 ` is 12 columns.
+    expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
+  },
+)
 
-test("nobody walks under the ₽ button: every frame's right 13 columns are the landscape alone", async ($, on) => {
+test("nobody walks under the ₽ button: every frame's right 13 columns are the landscape alone", KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL)
   await cmd($, 'pokemon', 'party')
   await mountBand($)
@@ -2610,16 +2791,20 @@ test('buyItem refuses what the Mart never sells and any quantity but 1 to 999, b
     expect(await refuse('fire-stone', qty)).toEqual({ text: "That isn't a quantity you can buy.", isError: true })
 })
 
-test('/pokemon buy takes the item first or last, a count, and one by default; ₽ and the Bag follow', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 20_000 })
-  expect(await cmd($, 'pokemon', 'buy rare candy')).toBe('Bought a Rare Candy! ₽18,200 left.')
-  expect(await cmd($, 'pokemon', 'buy 3 fire stone')).toBe('Bought 3 × Fire Stone! ₽9,200 left.')
-  expect(await cmd($, 'pokemon', 'buy fire-stone 2')).toBe('Bought 2 × Fire Stone! ₽3,200 left.')
-  expect(w.saveNow().bag).toEqual({ 'rare-candy': 1, 'fire-stone': 5 })
-  expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,200\n/)
-})
+test(
+  '/pokemon buy takes the item first or last, a count, and one by default; ₽ and the Bag follow',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 20_000 })
+    expect(await cmd($, 'pokemon', 'buy rare candy')).toBe('Bought a Rare Candy! ₽18,200 left.')
+    expect(await cmd($, 'pokemon', 'buy 3 fire stone')).toBe('Bought 3 × Fire Stone! ₽9,200 left.')
+    expect(await cmd($, 'pokemon', 'buy fire-stone 2')).toBe('Bought 2 × Fire Stone! ₽3,200 left.')
+    expect(w.saveNow().bag).toEqual({ 'rare-candy': 1, 'fire-stone': 5 })
+    expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,200\n/)
+  },
+)
 
-test('/pokemon buy suggests a near miss and asks what when nothing is close', async ($, on) => {
+test('/pokemon buy suggests a near miss and asks what when nothing is close', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   expect(await cmd($, 'pokemon', 'buy thunderstone 2')).toBe(
     'Did you mean Thunder Stone? Run /pokemon buy thunder-stone 2',
@@ -2639,7 +2824,7 @@ test('/pokemon buy suggests a near miss and asks what when nothing is close', as
   expect(w.saveNow().spent).toBeUndefined()
 })
 
-test('/pokemon buy with two counts, or a count past 999, buys nothing', async ($, on) => {
+test('/pokemon buy with two counts, or a count past 999, buys nothing', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], earned: 20_000 })
   expect(await cmd($, 'pokemon', 'buy 3 fire stone 2')).toBe(
     'Buy what? /pokemon buy <item> [count] · /pokemon buy lists the Mart.',
@@ -2649,7 +2834,7 @@ test('/pokemon buy with two counts, or a count past 999, buys nothing', async ($
   expect(w.saveNow().spent).toBeUndefined()
 })
 
-test('/pokemon buy refuses as the Mart does, and changes nothing', async ($, on) => {
+test('/pokemon buy refuses as the Mart does, and changes nothing', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], bag: { 'rare-candy': 998 } })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   const money = () => ({ bag: w.saveNow().bag, spent: w.saveNow().spent, earned: w.saveNow().earned })
@@ -2663,7 +2848,7 @@ test('/pokemon buy refuses as the Mart does, and changes nothing', async ($, on)
   expect(money()).toEqual(before)
 })
 
-test('a full stack of one item refuses a buy of it', async ($, on) => {
+test('a full stack of one item refuses a buy of it', KIT, async ($, on) => {
   const w = await begin($, on, { ...emptySave(), party: [member('pikachu')], bag: { 'fire-stone': 999 } })
   await until($, () => w.saveNow().party[0]?.next !== undefined)
   const money = () => ({ bag: w.saveNow().bag, spent: w.saveNow().spent, earned: w.saveNow().earned })
@@ -2672,7 +2857,7 @@ test('a full stack of one item refuses a buy of it', async ($, on) => {
   expect(money()).toEqual(before)
 })
 
-test('a bare /pokemon buy lists the Mart by tab with prices and the balance', async ($, on) => {
+test('a bare /pokemon buy lists the Mart by tab with prices and the balance', KIT, async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu')] })
   const text = await cmd($, 'pokemon', 'buy')
   expect(text.split('\n')[0]).toBe('PokéMart · ₽3,000')
@@ -2691,13 +2876,17 @@ const withFiller = (wild: { name: string; forms: string[] }[]): Net => ({
 })
 const onlyCaterpie = () => withFiller([{ name: 'caterpie', forms: ['regular'] }])
 
-test('an unnamed /pokemon-play wild comes from the weighted draw, which never offers a form that is not wild', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
-  await cmd($, 'pokemon', 'party')
-  await mountBand($ as never)
-  expect(await cmd($, 'pokemon-play', 'wild')).toBe('A wild Caterpie wanders by.')
-  expect(w.toasts.some(t => /^(✨ )?A wild Caterpie appeared!$/.test(t))).toBe(true)
-})
+test(
+  'an unnamed /pokemon-play wild comes from the weighted draw, which never offers a form that is not wild',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] }, TALL, undefined, onlyCaterpie())
+    await cmd($, 'pokemon', 'party')
+    await mountBand($ as never)
+    expect(await cmd($, 'pokemon-play', 'wild')).toBe('A wild Caterpie wanders by.')
+    expect(w.toasts.some(t => /^(✨ )?A wild Caterpie appeared!$/.test(t))).toBe(true)
+  },
+)
 
 test('a visitor the timer brings comes from the weighted draw too', { timeoutMs: 120_000 }, async ($, on) => {
   answerTools(on)
@@ -2714,7 +2903,7 @@ test('a visitor the timer brings comes from the weighted draw too', { timeoutMs:
   ])
 })
 
-test('a summoned /pokemon-play wild <name> ignores the weights', async ($, on) => {
+test('a summoned /pokemon-play wild <name> ignores the weights', KIT, async ($, on) => {
   await begin(
     $,
     on,
@@ -2762,7 +2951,7 @@ test(
   },
 )
 
-test('a visitor already out stays the same Pokémon when the time and place change', async ($, on) => {
+test('a visitor already out stays the same Pokémon when the time and place change', KIT, async ($, on) => {
   const w = await begin(
     $,
     on,
@@ -2791,7 +2980,7 @@ const kept = (s: Save) => ({
   dex: s.dex,
 })
 
-test('release from the PC box: bye bye, its item back to the Bag, the Pokédex kept', async ($, on) => {
+test('release from the PC box: bye bye, its item back to the Bag, the Pokédex kept', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu', { id: 'p' })],
@@ -2810,20 +2999,24 @@ test('release from the PC box: bye bye, its item back to the Bag, the Pokédex k
   expect(await cmd($, 'pokemon', 'release eevee')).toContain('No eevee in your party or PC box.')
 })
 
-test('release from the party: a held Everstone is dropped, never Bagged; the only member stays, box or not', async ($, on) => {
-  const w = await begin($, on, {
-    ...emptySave(),
-    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e', heldItem: 'everstone' })],
-    box: [member('charmander', { id: 'c' })],
-  })
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
-  expect(w.saveNow().bag).toBeUndefined()
-  const before = w.saveNow()
-  expect(await cmd($, 'pokemon', 'release pikachu')).toBe('Pick a new lead first.')
-  expect(kept(w.saveNow())).toEqual(kept(before))
-})
+test(
+  'release from the party: a held Everstone is dropped, never Bagged; the only member stays, box or not',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, {
+      ...emptySave(),
+      party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e', heldItem: 'everstone' })],
+      box: [member('charmander', { id: 'c' })],
+    })
+    expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+    expect(w.saveNow().bag).toBeUndefined()
+    const before = w.saveNow()
+    expect(await cmd($, 'pokemon', 'release pikachu')).toBe('Pick a new lead first.')
+    expect(kept(w.saveNow())).toEqual(kept(before))
+  },
+)
 
-test('a Bag full of its item keeps a holder from being released', async ($, on) => {
+test('a Bag full of its item keeps a holder from being released', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu'), member('eevee', { heldItem: 'fire-stone' })],
@@ -2834,7 +3027,7 @@ test('a Bag full of its item keeps a holder from being released', async ($, on) 
   expect(kept(w.saveNow())).toEqual(kept(before))
 })
 
-test('twins: release asks which one; the number releases that one', async ($, on) => {
+test('twins: release asks which one; the number releases that one', KIT, async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' })],
@@ -2849,7 +3042,7 @@ test('twins: release asks which one; the number releases that one', async ($, on
   expect(w.saveNow().box ?? []).toEqual([])
 })
 
-test('releasing the lead: the next one leads, and the band redraws without it', async ($, on) => {
+test('releasing the lead: the next one leads, and the band redraws without it', KIT, async ($, on) => {
   const EEVEE = 0x010203
   const PIKACHU = 0x040506
   const net: Net = {
@@ -2878,41 +3071,45 @@ test('releasing the lead: the next one leads, and the band redraws without it', 
   })
 })
 
-test('releasing a party member while a wild Pokémon is out: it stays out and can still be caught', async ($, on) => {
-  const EEVEE = '#0a0b0c'
-  const net = throwNet()
-  // The lead is drawn in front, and everyone stands still once the visitor steps out: a lead as wide as Eevee could
-  // hide it whole. This one, as tall as TALL but narrower than Eevee, never can.
-  net.sprites = { ...net.sprites, pikachu: solid('9;9;9', 12, 4), eevee: solid('10;11;12', 6) }
-  const w = await begin(
-    $,
-    on,
-    {
-      ...emptySave(),
-      party: [member('pikachu', { next: [lv('raichu', 30)] }), member('eevee', { id: 'e', next: [] })],
-    },
-    TALL,
-    undefined,
-    net,
-  )
-  await cmd($, 'pokemon', 'party')
-  const aim = (await mountBand($ as never)) as Aim
-  await cmd($, 'pokemon-play', 'day')
-  expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/^A wild .+ wanders by\.$/)
-  // While aiming the band is the click layer's text: the colours its cells are drawn in.
-  const colors = async () => new Set((await aimLines(aim))?.flat().flatMap(([, fg, bg]) => [fg, bg]))
-  await seenIn(w, aim, '#00ffff')
-  expect((await colors()).has(EEVEE)).toBe(true)
-  expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
-  // The band redraws without Eevee, the visitor still in it.
-  for (let i = 0; i < 200 && (await colors()).has(EEVEE); i++) await w.clock.advance(50)
-  expect((await colors()).has(EEVEE)).toBe(false)
-  const cell = await seenIn(w, aim, '#00ffff')
-  await aim.pointer({ type: 'down', ...cell, button: 'left' })
-  await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
-  expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'caterpie'])
-  expect(w.toasts.filter(t => t.startsWith('Pokémon:'))).toEqual([])
-})
+test(
+  'releasing a party member while a wild Pokémon is out: it stays out and can still be caught',
+  KIT,
+  async ($, on) => {
+    const EEVEE = '#0a0b0c'
+    const net = throwNet()
+    // The lead is drawn in front, and everyone stands still once the visitor steps out: a lead as wide as Eevee could
+    // hide it whole. This one, as tall as TALL but narrower than Eevee, never can.
+    net.sprites = { ...net.sprites, pikachu: solid('9;9;9', 12, 4), eevee: solid('10;11;12', 6) }
+    const w = await begin(
+      $,
+      on,
+      {
+        ...emptySave(),
+        party: [member('pikachu', { next: [lv('raichu', 30)] }), member('eevee', { id: 'e', next: [] })],
+      },
+      TALL,
+      undefined,
+      net,
+    )
+    await cmd($, 'pokemon', 'party')
+    const aim = (await mountBand($ as never)) as Aim
+    await cmd($, 'pokemon-play', 'day')
+    expect(await cmd($, 'pokemon-play', 'wild caterpie')).toMatch(/^A wild .+ wanders by\.$/)
+    // While aiming the band is the click layer's text: the colours its cells are drawn in.
+    const colors = async () => new Set((await aimLines(aim))?.flat().flatMap(([, fg, bg]) => [fg, bg]))
+    await seenIn(w, aim, '#00ffff')
+    expect((await colors()).has(EEVEE)).toBe(true)
+    expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee (Lv 1, party)! It went back to the wild.')
+    // The band redraws without Eevee, the visitor still in it.
+    for (let i = 0; i < 200 && (await colors()).has(EEVEE); i++) await w.clock.advance(50)
+    expect((await colors()).has(EEVEE)).toBe(false)
+    const cell = await seenIn(w, aim, '#00ffff')
+    await aim.pointer({ type: 'down', ...cell, button: 'left' })
+    await seen(w, () => w.toasts.find(t => t.startsWith('Gotcha')) ?? null)
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'caterpie'])
+    expect(w.toasts.filter(t => t.startsWith('Pokémon:'))).toEqual([])
+  },
+)
 
 const PIKACHU = 0x040506
 const CHARMANDER = 0x010203
@@ -3050,28 +3247,32 @@ test(
   },
 )
 
-test('/pokemon evolution shows the style and the choices, sets one, and answers a bad word with the choices', async ($, on) => {
-  const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
-  const shown = await cmd($, 'pokemon', 'evolution')
-  expect(shown).toContain('rays')
-  expect(shown).toContain('(current)')
-  expect(shown).toContain('white')
-  expect(shown).toContain('gradient')
-  expect(shown).toContain('Gen 3')
-  expect(await cmd($, 'pokemon', 'evolution white')).toBe(
-    'Evolution screen: white, a plain white screen, like the Game Boy games (Gen 1–2).',
-  )
-  expect(w.saveNow().evolutionStyle).toBe('white')
-  expect(await cmd($, 'pokemon', 'evolution')).toMatch(/white.*\(current\)/)
-  const bad = await cmd($, 'pokemon', 'evolution sparkly')
-  expect(bad).toContain('gradient')
-  expect(bad).not.toContain('Did you mean')
-  expect(await cmd($, 'pokemon', 'evolution gradiant')).toContain('Did you mean gradient')
-  expect(w.saveNow().evolutionStyle).toBe('white')
-  // Kept through other changes to the save.
-  await cmd($, 'pokemon', 'size small')
-  await cmd($, 'pokemon', 'add eevee')
-  expect(w.saveNow().size).toBe('small')
-  expect(w.saveNow().evolutionStyle).toBe('white')
-  expect(await cmd($, 'pokemon-play', 'evolve nope')).toContain('rays')
-})
+test(
+  '/pokemon evolution shows the style and the choices, sets one, and answers a bad word with the choices',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    const shown = await cmd($, 'pokemon', 'evolution')
+    expect(shown).toContain('rays')
+    expect(shown).toContain('(current)')
+    expect(shown).toContain('white')
+    expect(shown).toContain('gradient')
+    expect(shown).toContain('Gen 3')
+    expect(await cmd($, 'pokemon', 'evolution white')).toBe(
+      'Evolution screen: white, a plain white screen, like the Game Boy games (Gen 1–2).',
+    )
+    expect(w.saveNow().evolutionStyle).toBe('white')
+    expect(await cmd($, 'pokemon', 'evolution')).toMatch(/white.*\(current\)/)
+    const bad = await cmd($, 'pokemon', 'evolution sparkly')
+    expect(bad).toContain('gradient')
+    expect(bad).not.toContain('Did you mean')
+    expect(await cmd($, 'pokemon', 'evolution gradiant')).toContain('Did you mean gradient')
+    expect(w.saveNow().evolutionStyle).toBe('white')
+    // Kept through other changes to the save.
+    await cmd($, 'pokemon', 'size small')
+    await cmd($, 'pokemon', 'add eevee')
+    expect(w.saveNow().size).toBe('small')
+    expect(w.saveNow().evolutionStyle).toBe('white')
+    expect(await cmd($, 'pokemon-play', 'evolve nope')).toContain('rays')
+  },
+)

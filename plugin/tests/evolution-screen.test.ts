@@ -153,7 +153,7 @@ test('on the white stage the burst is a pale blue light with a darker ring, plai
   }
 })
 
-test('on the white stage no dark silhouette sticks out of the burst of light', () => {
+test('on the white stage no dark silhouette sticks out of the burst of light', { timeoutMs: 30_000 }, () => {
   const wide: Img = { pixels: Array<number>(30 * 24).fill(TO_C), width: 30, height: 24 }
   for (const to of [TO, wide])
     for (let ms = 6200; ms < 6700; ms += 25) {

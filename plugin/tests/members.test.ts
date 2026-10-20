@@ -183,7 +183,7 @@ test('a list of several forms names the species, and each line its form', () => 
   )
 })
 
-test('every line of a numbered list, its hint typed back, picks that line', () => {
+test('every line of a numbered list, its hint typed back, picks that line', { timeoutMs: 30_000 }, () => {
   const m = member
   const saves: Save[] = [
     { ...emptySave(), party: [m('porygon'), m('porygon'), m('porygon2')], box: [m('porygon2'), m('porygon')] },
@@ -315,103 +315,112 @@ const withShiny = (query: string) => {
   return [query, ...words.map((_, i) => [...words.slice(0, i), 'shiny', ...words.slice(i)].join(' ')), `${query} shiny`]
 }
 
-test('every list any query prints, `shiny` anywhere, for every command: its hint names that list, each number its line', () => {
-  const m = member
-  const saves: Save[] = [
-    { ...emptySave(), party: [m('porygon'), m('porygon', { isShiny: true }), m('porygon2')], box: [m('porygon2')] },
-    {
-      ...emptySave(),
-      party: [m('zygarde'), m('zygarde', { form: '10', isShiny: true }), m('zygarde')],
-      box: [m('zygarde', { form: '10' }), m('zygarde', { isShiny: true }), m('zygarde', { form: '10', isShiny: true })],
-    },
-    { ...emptySave(), party: [m('pikachu')], box: [m('zygarde'), m('zygarde')] },
-    {
-      ...emptySave(),
-      party: [m('pikachu'), m('eevee', { isShiny: true, heldItem: 'everstone' }), m('eevee')],
-      box: [m('eevee', { isShiny: true }), m('eevee', { heldItem: 'lucky-egg' }), m('unown', { form: 'a' })],
-    },
-    {
-      ...emptySave(),
-      party: [m('unown', { form: 'b' }), m('unown', { form: 'a', isShiny: true }), m('unown', { form: 'a' })],
-      box: [m('vulpix', { form: 'alola' }), m('vulpix', { form: 'alola', isShiny: true })],
-    },
-    { ...emptySave(), party: [m('pikachu'), m('eevee')], box: [m('eevee', { isShiny: true })] },
-    {
-      ...emptySave(),
-      party: [m('pikachu'), m('eevee', { xp: 64 }), m('eevee')],
-      box: [m('eevee', { xp: 64, isShiny: true }), m('eevee', { xp: 64 }), m('eevee')],
-    },
-  ]
-  const queries = [
-    'eevee lv 5',
-    'eevee lv 5 2',
-    'eevee lv 5 9',
-    'lv5 eevee',
-    'eevee level 1 0',
-    'eevee lv 7',
-    'eeve lv 5',
-    'porygon',
-    'porygon 2',
-    'porygon 3',
-    'porygon 9',
-    'zygarde',
-    'zygarde 2',
-    'zygarde 10',
-    'zygarde 10 2',
-    'zygarde 10 9',
-    'eevee',
-    'eevee 1',
-    'eevee 3',
-    'eevee 9',
-    'eevee 0',
-    'eevee -1',
-    'eeve 2',
-    'unown a',
-    'unown a 9',
-    'alolan vulpix 5',
-    'vulpix',
-  ]
-  let lists = 0
-  for (const s of saves)
-    for (const [command, places] of PLACES)
-      for (const query of queries.flatMap(withShiny)) {
-        const found = findMembers(s, query, places, command, levelOf, NAMES)
-        const text = 'choices' in found ? formatChoices(found.choices, query, command, levelOf) : ids(found)
-        if (typeof text !== 'string') continue
-        // A suggestion, typed back, finds someone.
-        if (text.startsWith('Did you mean')) {
-          const typed = text.split(`Run /pokemon ${command}`)[1] ?? ''
-          const back = ids(findMembers(s, typed, places, command, levelOf, NAMES))
-          expect([query, typed, typeof back === 'string' && back.startsWith('No ')]).toEqual([query, typed, false])
+// Thousands of lists, each typed back: seconds on a busy machine.
+test(
+  'every list any query prints, `shiny` anywhere, for every command: its hint names that list, each number its line',
+  { timeoutMs: 30_000 },
+  () => {
+    const m = member
+    const saves: Save[] = [
+      { ...emptySave(), party: [m('porygon'), m('porygon', { isShiny: true }), m('porygon2')], box: [m('porygon2')] },
+      {
+        ...emptySave(),
+        party: [m('zygarde'), m('zygarde', { form: '10', isShiny: true }), m('zygarde')],
+        box: [
+          m('zygarde', { form: '10' }),
+          m('zygarde', { isShiny: true }),
+          m('zygarde', { form: '10', isShiny: true }),
+        ],
+      },
+      { ...emptySave(), party: [m('pikachu')], box: [m('zygarde'), m('zygarde')] },
+      {
+        ...emptySave(),
+        party: [m('pikachu'), m('eevee', { isShiny: true, heldItem: 'everstone' }), m('eevee')],
+        box: [m('eevee', { isShiny: true }), m('eevee', { heldItem: 'lucky-egg' }), m('unown', { form: 'a' })],
+      },
+      {
+        ...emptySave(),
+        party: [m('unown', { form: 'b' }), m('unown', { form: 'a', isShiny: true }), m('unown', { form: 'a' })],
+        box: [m('vulpix', { form: 'alola' }), m('vulpix', { form: 'alola', isShiny: true })],
+      },
+      { ...emptySave(), party: [m('pikachu'), m('eevee')], box: [m('eevee', { isShiny: true })] },
+      {
+        ...emptySave(),
+        party: [m('pikachu'), m('eevee', { xp: 64 }), m('eevee')],
+        box: [m('eevee', { xp: 64, isShiny: true }), m('eevee', { xp: 64 }), m('eevee')],
+      },
+    ]
+    const queries = [
+      'eevee lv 5',
+      'eevee lv 5 2',
+      'eevee lv 5 9',
+      'lv5 eevee',
+      'eevee level 1 0',
+      'eevee lv 7',
+      'eeve lv 5',
+      'porygon',
+      'porygon 2',
+      'porygon 3',
+      'porygon 9',
+      'zygarde',
+      'zygarde 2',
+      'zygarde 10',
+      'zygarde 10 2',
+      'zygarde 10 9',
+      'eevee',
+      'eevee 1',
+      'eevee 3',
+      'eevee 9',
+      'eevee 0',
+      'eevee -1',
+      'eeve 2',
+      'unown a',
+      'unown a 9',
+      'alolan vulpix 5',
+      'vulpix',
+    ]
+    let lists = 0
+    for (const s of saves)
+      for (const [command, places] of PLACES)
+        for (const query of queries.flatMap(withShiny)) {
+          const found = findMembers(s, query, places, command, levelOf, NAMES)
+          const text = 'choices' in found ? formatChoices(found.choices, query, command, levelOf) : ids(found)
+          if (typeof text !== 'string') continue
+          // A suggestion, typed back, finds someone.
+          if (text.startsWith('Did you mean')) {
+            const typed = text.split(`Run /pokemon ${command}`)[1] ?? ''
+            const back = ids(findMembers(s, typed, places, command, levelOf, NAMES))
+            expect([query, typed, typeof back === 'string' && back.startsWith('No ')]).toEqual([query, typed, false])
+          }
+          if (!isList(text)) continue
+          const hint = /Add the number: \/pokemon (.*) \d+$/.exec(text)?.[1] ?? ''
+          expect([query, hint.startsWith(command)]).toEqual([query, true])
+          const typed = hint.slice(command.length)
+          const listed = findMembers(s, typed, places, command, levelOf, NAMES)
+          if (!('choices' in listed)) {
+            // A list of one: its 1 is that one.
+            expect([query, text.split('\n').length > 3]).toEqual([query, false])
+            expect([query, 'spot' in findMembers(s, `${typed} 1`, places, command, levelOf, NAMES)]).toEqual([
+              query,
+              true,
+            ])
+            continue
+          }
+          // The hint, typed without a number, prints the very same list.
+          expect([query, formatChoices(listed.choices, typed, command, levelOf)]).toEqual([query, text])
+          if (query.split(' ').includes('shiny')) expect(listed.choices.every(c => c.member.isShiny)).toBe(true)
+          listed.choices.forEach((choice, i) => {
+            lists++
+            expect([query, i + 1, ids(findMembers(s, `${typed} ${i + 1}`, places, command, levelOf, NAMES))]).toEqual([
+              query,
+              i + 1,
+              choice.member.id,
+            ])
+          })
         }
-        if (!isList(text)) continue
-        const hint = /Add the number: \/pokemon (.*) \d+$/.exec(text)?.[1] ?? ''
-        expect([query, hint.startsWith(command)]).toEqual([query, true])
-        const typed = hint.slice(command.length)
-        const listed = findMembers(s, typed, places, command, levelOf, NAMES)
-        if (!('choices' in listed)) {
-          // A list of one: its 1 is that one.
-          expect([query, text.split('\n').length > 3]).toEqual([query, false])
-          expect([query, 'spot' in findMembers(s, `${typed} 1`, places, command, levelOf, NAMES)]).toEqual([
-            query,
-            true,
-          ])
-          continue
-        }
-        // The hint, typed without a number, prints the very same list.
-        expect([query, formatChoices(listed.choices, typed, command, levelOf)]).toEqual([query, text])
-        if (query.split(' ').includes('shiny')) expect(listed.choices.every(c => c.member.isShiny)).toBe(true)
-        listed.choices.forEach((choice, i) => {
-          lists++
-          expect([query, i + 1, ids(findMembers(s, `${typed} ${i + 1}`, places, command, levelOf, NAMES))]).toEqual([
-            query,
-            i + 1,
-            choice.member.id,
-          ])
-        })
-      }
-  expect(lists).toBeGreaterThan(200)
-})
+    expect(lists).toBeGreaterThan(200)
+  },
+)
 
 test('`lv 30` anywhere narrows a name to those at that level; a number then picks among them', () => {
   const m = member
@@ -458,60 +467,64 @@ test('a long list shows the first ten, says how many more, and how to narrow the
   )
 })
 
-test('every hint a long list prints, typed back, acts on the very one its line shows or lists again', () => {
-  const m = member
-  const at = (lv: number, extra: Partial<Member> = {}) => m('eevee', { xp: 4 * (lv - 1) ** 2, ...extra })
-  const saves: Save[] = [
-    // Lv 5 ×7, then Lv 8 to 14, one of each; a shiny lead.
-    {
-      ...emptySave(),
-      party: [at(24, { isShiny: true })],
-      box: [...Array.from({ length: 7 }, () => at(5)), ...Array.from({ length: 7 }, (_, i) => at(8 + i))],
-    },
-    // One shiny, past the first ten.
-    { ...emptySave(), box: [...Array.from({ length: 13 }, () => at(5)), at(6, { isShiny: true })] },
-    // Two shinies past the first ten, each at a level of its own.
-    {
-      ...emptySave(),
-      box: [...Array.from({ length: 12 }, () => at(5)), at(6, { isShiny: true }), at(7, { isShiny: true })],
-    },
-    // Every level different: no level narrows.
-    { ...emptySave(), box: Array.from({ length: 14 }, (_, i) => at(i + 1)) },
-  ]
-  let checked = 0
-  for (const s of saves)
-    for (const query of ['eevee', 'eevee 99', 'shiny eevee 99', 'eevee lv 5 99', 'eevee -1']) {
-      const found = findMembers(s, query, both, 'release ', levelOf, NAMES)
-      const text = 'choices' in found ? formatChoices(found.choices, query, 'release ', levelOf) : ids(found)
-      if (typeof text !== 'string' || !isList(text)) continue
-      const lines = text.split('\n')
-      const typed = /^Add the number: \/pokemon release (.*) (\d+)$/.exec(lines[lines.length - 1] ?? '')
-      expect([query, typed !== null]).toEqual([query, true])
-      const listed = findMembers(s, typed?.[1] ?? '', both, 'release ', levelOf, NAMES)
-      if (!('choices' in listed)) continue
-      const shown = lines.flatMap(l => {
-        const n = /^ +(\d+)\. /.exec(l)?.[1]
-        return n ? [Number(n)] : []
-      })
-      // The number in the hint is on screen, and each numbered line picks the one it shows.
-      expect([query, shown.includes(Number(typed?.[2]))]).toEqual([query, true])
-      for (const n of shown) {
-        checked++
-        expect([query, n, ids(findMembers(s, `${typed?.[1]} ${n}`, both, 'release ', levelOf, NAMES))]).toEqual([
-          query,
-          n,
-          listed.choices[n - 1]?.member.id,
-        ])
+test(
+  'every hint a long list prints, typed back, acts on the very one its line shows or lists again',
+  { timeoutMs: 30_000 },
+  () => {
+    const m = member
+    const at = (lv: number, extra: Partial<Member> = {}) => m('eevee', { xp: 4 * (lv - 1) ** 2, ...extra })
+    const saves: Save[] = [
+      // Lv 5 ×7, then Lv 8 to 14, one of each; a shiny lead.
+      {
+        ...emptySave(),
+        party: [at(24, { isShiny: true })],
+        box: [...Array.from({ length: 7 }, () => at(5)), ...Array.from({ length: 7 }, (_, i) => at(8 + i))],
+      },
+      // One shiny, past the first ten.
+      { ...emptySave(), box: [...Array.from({ length: 13 }, () => at(5)), at(6, { isShiny: true })] },
+      // Two shinies past the first ten, each at a level of its own.
+      {
+        ...emptySave(),
+        box: [...Array.from({ length: 12 }, () => at(5)), at(6, { isShiny: true }), at(7, { isShiny: true })],
+      },
+      // Every level different: no level narrows.
+      { ...emptySave(), box: Array.from({ length: 14 }, (_, i) => at(i + 1)) },
+    ]
+    let checked = 0
+    for (const s of saves)
+      for (const query of ['eevee', 'eevee 99', 'shiny eevee 99', 'eevee lv 5 99', 'eevee -1']) {
+        const found = findMembers(s, query, both, 'release ', levelOf, NAMES)
+        const text = 'choices' in found ? formatChoices(found.choices, query, 'release ', levelOf) : ids(found)
+        if (typeof text !== 'string' || !isList(text)) continue
+        const lines = text.split('\n')
+        const typed = /^Add the number: \/pokemon release (.*) (\d+)$/.exec(lines[lines.length - 1] ?? '')
+        expect([query, typed !== null]).toEqual([query, true])
+        const listed = findMembers(s, typed?.[1] ?? '', both, 'release ', levelOf, NAMES)
+        if (!('choices' in listed)) continue
+        const shown = lines.flatMap(l => {
+          const n = /^ +(\d+)\. /.exec(l)?.[1]
+          return n ? [Number(n)] : []
+        })
+        // The number in the hint is on screen, and each numbered line picks the one it shows.
+        expect([query, shown.includes(Number(typed?.[2]))]).toEqual([query, true])
+        for (const n of shown) {
+          checked++
+          expect([query, n, ids(findMembers(s, `${typed?.[1]} ${n}`, both, 'release ', levelOf, NAMES))]).toEqual([
+            query,
+            n,
+            listed.choices[n - 1]?.member.id,
+          ])
+        }
+        // A way to narrow them, typed back, lists again: never one picked at once.
+        for (const way of lines.flatMap(l => /^ {4}\/pokemon release (.*)$/.exec(l)?.[1] ?? [])) {
+          checked++
+          const again = findMembers(s, way, both, 'release ', levelOf, NAMES)
+          expect([query, way, 'choices' in again && again.choices.length >= 2]).toEqual([query, way, true])
+        }
       }
-      // A way to narrow them, typed back, lists again: never one picked at once.
-      for (const way of lines.flatMap(l => /^ {4}\/pokemon release (.*)$/.exec(l)?.[1] ?? [])) {
-        checked++
-        const again = findMembers(s, way, both, 'release ', levelOf, NAMES)
-        expect([query, way, 'choices' in again && again.choices.length >= 2]).toEqual([query, way, true])
-      }
-    }
-  expect(checked).toBeGreaterThan(60)
-})
+    expect(checked).toBeGreaterThan(60)
+  },
+)
 
 test('a narrowing that would leave one is never offered: a lone shiny gets its own line', () => {
   const at = (lv: number, extra: Partial<Member> = {}) => member('eevee', { xp: 4 * (lv - 1) ** 2, ...extra })

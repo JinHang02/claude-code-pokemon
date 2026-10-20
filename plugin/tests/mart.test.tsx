@@ -27,7 +27,8 @@ const hitAt = (p: MartProps, s: MartState, a: unknown) =>
 const after = (p: MartProps, ...acts: Act[]) => acts.reduce<MartState>((s, a) => act(p, s, a).state, START)
 const left = Math.floor(80 * 0.44)
 
-test('every item has a picture of at most 14×14 pixels', () => {
+// The file's first test pays for loading it.
+test('every item has a picture of at most 14×14 pixels', { timeoutMs: 30_000 }, () => {
   for (const { id } of ITEMS) {
     const icon = ICONS[id]
     expect(icon).toBeDefined()

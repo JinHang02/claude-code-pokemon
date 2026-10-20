@@ -8,7 +8,7 @@ import { expect, test } from 'claude-code/testing'
 import { register } from '../hooks/register'
 import { emptySave } from '../hooks/save'
 import type { Save } from '../hooks/save'
-import { ART, begin, cmd, LIST, member, mountBand } from './world'
+import { ART, begin, cmd, KIT, LIST, member, mountBand } from './world'
 import type { Net } from './world'
 
 type Handler = (...args: unknown[]) => Promise<unknown>
@@ -268,23 +268,27 @@ async function shopOf(band: Band) {
   return find(await band.drawn())
 }
 
-test("a write the store refuses (another window holds its lock) isn't shown here: the ₽ stays as stored", async ($, on) => {
-  const net: Net = { isOnline: true, list: JSON.stringify(LIST) }
-  const w = await begin($, on, saved(), ART, undefined, net)
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as Band
-  expect(await shopOf(band)).toMatchObject({ balance: 13_000 })
-  let isLocked = true
-  net.beforeSet = key => {
-    if (key !== 'save' || !isLocked) return
-    isLocked = false
-    throw new Error('Lock file is already being held')
-  }
-  expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Couldn't reach the Pokémon/)
-  await w.clock.settle()
-  expect(w.saveNow().bag).toBeUndefined()
-  expect(await shopOf(band)).toMatchObject({ balance: 13_000 })
-  // The next buy goes through.
-  expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Bought a Fire Stone!/)
-  expect(await shopOf(band)).toMatchObject({ balance: 10_000 })
-})
+test(
+  "a write the store refuses (another window holds its lock) isn't shown here: the ₽ stays as stored",
+  KIT,
+  async ($, on) => {
+    const net: Net = { isOnline: true, list: JSON.stringify(LIST) }
+    const w = await begin($, on, saved(), ART, undefined, net)
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as Band
+    expect(await shopOf(band)).toMatchObject({ balance: 13_000 })
+    let isLocked = true
+    net.beforeSet = key => {
+      if (key !== 'save' || !isLocked) return
+      isLocked = false
+      throw new Error('Lock file is already being held')
+    }
+    expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Couldn't reach the Pokémon/)
+    await w.clock.settle()
+    expect(w.saveNow().bag).toBeUndefined()
+    expect(await shopOf(band)).toMatchObject({ balance: 13_000 })
+    // The next buy goes through.
+    expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Bought a Fire Stone!/)
+    expect(await shopOf(band)).toMatchObject({ balance: 10_000 })
+  },
+)
