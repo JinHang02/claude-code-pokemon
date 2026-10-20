@@ -68,6 +68,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokemon box` printed the whole box in one reply, up to 961 lines. It shows 30 to a page now, as a box in the
   games holds: _"Your PC box (76 / 960) · page 1 of 3"_, and the next page is `/pokemon box 2`. A name shows only
   those, each with its place in the box: `/pokemon box eevee`, `/pokemon box shiny`.
+- `/pokemon bag` listed every holder, the PC box's too, on one unbroken line. It's one a line now: the party's, then
+  ten of the box's and how many more.
 
 ### Known limitations
 

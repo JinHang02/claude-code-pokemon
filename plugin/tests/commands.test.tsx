@@ -1991,7 +1991,11 @@ test('take reaches a PC box member holding an item; of two holders it asks which
   })
   await cmd($, 'pokemon', 'party')
   expect(await cmd($, 'pokemon', 'bag')).toContain(
-    '  Held        Pikachu: Lucky Egg · Eevee (box): Soothe Bell · Pikachu (box): Metal Coat',
+    [
+      '  Held        Pikachu: Lucky Egg',
+      '              Eevee (box): Soothe Bell',
+      '              Pikachu (box): Metal Coat',
+    ].join('\n'),
   )
   expect(await cmd($, 'pokemon', 'take eevee')).toBe("Eevee's Soothe Bell went back to your Bag.")
   expect(w.saveNow().box?.map(m => m.heldItem)).toEqual([undefined, undefined, 'metal-coat', undefined])

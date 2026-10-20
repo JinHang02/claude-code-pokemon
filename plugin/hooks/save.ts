@@ -568,6 +568,9 @@ export function formatParty(save: Save): string {
   ].join('\n')
 }
 
+// The most PC box holders the Bag lists by name.
+const BAG_BOX_HOLDERS = 10
+
 // The Bag by tab, the wallet, and who holds what, in the party and the PC box. `cash`: the ledgers' unfolded ₽.
 export function formatBag(save: Save, cash: number): string {
   const lines = [`Bag · ${formatMoney(balanceOf(save, cash))}`]
@@ -577,13 +580,17 @@ export function formatBag(save: Save, cash: number): string {
     )
     if (items.length) lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ×${save.bag?.[i.id]}`).join(' · ')}`)
   }
+  const holding = (where: string) => (m: Member) =>
+    m.heldItem ? [`${displayName(m.species, m.form)}${where}: ${itemName(m.heldItem)}`] : []
+  const boxed = (save.box ?? []).flatMap(holding(' (box)'))
+  const more = boxed.length - BAG_BOX_HOLDERS
   const held = [
-    ...save.party.map(m => ({ m, where: '' })),
-    ...(save.box ?? []).map(m => ({ m, where: ' (box)' })),
-  ].flatMap(({ m, where }) =>
-    m.heldItem ? [`${displayName(m.species, m.form)}${where}: ${itemName(m.heldItem)}`] : [],
-  )
-  if (held.length) lines.push(`  ${'Held'.padEnd(10)}  ${held.join(' · ')}`)
+    ...save.party.flatMap(holding('')),
+    ...boxed.slice(0, BAG_BOX_HOLDERS),
+    ...(more > 0 ? [`… and ${more} more in the PC box.`] : []),
+  ]
+  // One a line, under the first.
+  held.forEach((text, i) => lines.push(`  ${(i ? '' : 'Held').padEnd(10)}  ${text}`))
   if (lines.length === 1) lines.push('  Empty. Buy items at the PokéMart: /pokemon mart')
   return lines.join('\n')
 }

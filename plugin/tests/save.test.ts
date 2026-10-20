@@ -469,8 +469,19 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
     box: [m({ id: 'b', species: 'pichu' }), m({ id: 'c', heldItem: 'soothe-bell' })],
   })
   expect(formatBag(boxed, 0)).toBe(
-    ['Bag · ₽3,000', '  Held        Eevee: Lucky Egg · Eevee (box): Soothe Bell'].join('\n'),
+    ['Bag · ₽3,000', '  Held        Eevee: Lucky Egg', '              Eevee (box): Soothe Bell'].join('\n'),
   )
+  // One holder a line: the party's, then ten of the PC box's and how many more.
+  const many = loadSave({
+    party: [m({ id: 'p', heldItem: 'lucky-egg' })],
+    box: Array.from({ length: 14 }, (_, i) => m({ id: `b${i}`, species: 'pichu', heldItem: 'everstone' })),
+  })
+  expect(formatBag(many, 0).split('\n')).toEqual([
+    'Bag · ₽3,000',
+    '  Held        Eevee: Lucky Egg',
+    ...Array.from({ length: 10 }, () => '              Pichu (box): Everstone'),
+    '              … and 4 more in the PC box.',
+  ])
 })
 
 test('a release: from the party or the PC box, named with its level and place, its held item back to the Bag, the Pokédex kept', () => {
