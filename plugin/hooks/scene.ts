@@ -760,8 +760,9 @@ export function frame(
       const top = tops[i]
       const w = lefts[i]?.width ?? 0
       const mark = { pixels: ALERT_GLYPH.map(v => (v === 2 ? ALERT_MARK : v ? BUBBLE : CLEAR)), width: 5, height: 6 }
-      // Resting on the head, so it fits above the tallest Pokémon too.
-      if (top !== undefined) paint(out, mark, Math.round(a.x + w / 2) - 2, top)
+      // Resting on the head; for the tallest Pokémon in its startled hop that would be above the band, so it sinks
+      // onto the head instead (its bottom row is never above the glyph's height).
+      if (top !== undefined) paint(out, mark, Math.round(a.x + w / 2) - 2, Math.max(mark.height - 1, top))
     })
 
   for (const fx of s.fx) {

@@ -565,6 +565,17 @@ test('a pixel counts as the wild Pokémon only where it shows: never under the "
   expect(wildPixels).toBeGreaterThan(0)
 })
 
+test('the "!" over the tallest party member stays whole at the band top through the startled hop', () => {
+  const tallest = { pixels: Array<number>(6 * (H - 1 - HEADROOM)).fill(0xabcdef), width: 6, height: H - 1 - HEADROOM }
+  const w = { x: 40, facing: -1 as const, stride: 0, pause: 1, hasPaused: true, rustle: 0 }
+  const marks = (alert: number) => {
+    const s: Status = { ...still, alert, wild: w, actors: [{ ...newScene(10), roam: idle }] }
+    return count(frame(s, [tallest], W, ROWS, { phase: 'day' }), 0xe0352b)
+  }
+  // Every frame of the hop shows all three red cells of the "!".
+  for (let alert = 2500 / TICK_MS; alert > 0; alert -= 2) expect(marks(alert)).toBe(3)
+})
+
 test('the last frame says whose each pixel is: a party member in front of the wild Pokémon covers it', () => {
   const wildImg = { pixels: Array<number>(16).fill(0x00ffff), width: 4, height: 4 }
   const w = { x: 10, facing: -1 as const, stride: 0, pause: 1, hasPaused: true, rustle: 0 }
