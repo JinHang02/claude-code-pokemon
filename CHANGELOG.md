@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 This file is the source of truth for what the plugin does. Every feature, fix and limitation goes here as it lands, so a release can be checked line by line before it ships.
 
-## [1.5.0] - 2026-10-19
+## [1.5.0] - 2026-10-20
 
 ### Added: the evolution screen
 
@@ -48,8 +48,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   band goes on with the new form.
 - With the party off (`/pokemon off`) or no band drawn, an evolution happens with its toast, and no screen shows
   later. Putting the party away while a screen plays or waits ends it, with its toast.
-- There is no cancelling: a screen always finishes, unless the terminal gets too short for it. An Everstone is still the way to stop a Pokémon evolving by
-  itself.
+- There is no cancelling: a screen always finishes, unless the terminal gets too short for it. An Everstone is still
+  the way to stop a Pokémon evolving by itself.
 - The screen takes no keys or clicks: the prompt and commands work while it plays. A click on it does nothing. A
   command that evolves another Pokémon meanwhile (a twin's stone, a Rare Candy) answers at once, and its screen plays
   after the one playing now. When an evolution can't be worked out within a second (evolutions waiting their turn, a
@@ -101,14 +101,6 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - An open PokéMart follows ₽ earned in another window: Max and the colour of Buy are right at once.
 - A Lucky Egg gives exactly half again, rounded down (a test run's 5 XP is 7, a commit's 10 is 15).
 - `npm test && git commit` in one call earns both: 5 XP and ₽50 for the test, 10 XP and ₽100 for the commit.
-
-### Known limitations
-
-- `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save
-  has it from the start.
-
-### Fixed
-
 - Two Claude Code windows changing the save at the same moment no longer undo each other. A `/pokemon on` in one
   window could be reverted by a `/pokemon everstone` in the other, and a purchase, a catch or an evolution could be
   lost the same way. A window now reads the save again just before it writes, and makes its change on what another
@@ -128,13 +120,25 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - A first start offline, then a slow network, catches one first Pokémon. Retries could overlap and catch two, the
   first going into the PC box unasked.
 
+### Known limitations
+
+- `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save
+  has it from the start.
+
 ### Upgrading
 
-- **Restart every open Claude Code window after installing 1.5.0.** A window still running 1.4.0 drops the new save
-  fields when it writes the save: your chosen style (`evolutionStyle`, back to `rays`) and `evolvedAt` (that
-  evolution's screen then doesn't play in other windows).
+- **Restart every open Claude Code window after installing 1.5.0.** Until it restarts, a window still running an
+  older version writes the save its own way:
+  - **1.2.0** (if you're upgrading straight from it): the first time it writes, which is as soon as it opens or
+    resumes, or at its next level-up, catch or party change if it was already open, it erases your Bag, every held
+    item (Everstones too), the ₽ you've spent and earned, and your evolution style. It also evolves Pokémon by its
+    old rule: a Pokémon holding an Everstone, or one that now needs a stone or friendship (Pikachu, Eevee…),
+    evolves at Lv 30, and that can't be undone. ₽ from sessions it tidies up is lost too, and it earns no ₽
+    itself.
+  - **1.3.0 or 1.4.0**: it resets your evolution style to `rays` and drops `evolvedAt`, so that evolution's
+    screen then doesn't play in other windows. Nothing else is lost.
 
-## [1.4.0] - 2026-10-14
+## [1.4.0] - 2026-10-19
 
 ### Added: wild Pokémon that fit the place and the hour
 
@@ -288,7 +292,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   gets a suggestion: `Did you mean Thunder Stone? Run /pokemon give thunder-stone pikachu`.
 - One held item per Pokémon, as in the games: giving another puts the old one back in the Bag.
   `/pokemon take <pokemon>` puts it back by hand, from a Pokémon in the PC box too.
-- Lucky Egg: its holder earns half as much XP again. Soothe Bell: its holder's time together counts 1.5 times.
+- Lucky Egg: its holder earns half as much XP again. _(Changed in 1.5.0: rounded down, so a test run's 5 XP is 7.)_
+  Soothe Bell: its holder's time together counts 1.5 times.
 
 ### Added: friendship from time together
 
@@ -338,7 +343,7 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - **Clicking needs Claude Code's fullscreen mode:** the ₽ button, the Mart and throwing Poké Balls (`/config`, or
   `"tui": "fullscreen"` in settings). Without it, use `/pokemon mart` to look and `/pokemon buy` to shop.
 - **Close other Claude Code windows before upgrading:** a window still running 1.2.0 can write the save without the
-  new Bag, ₽ and held items.
+  new Bag, ₽ and held items. _(It does, the first time it writes: 1.5.0's Upgrading note says what it erases.)_
 - **Esc doesn't close the Mart:** Claude Code keeps Escape to give the keyboard back to the prompt. Use `x` or `✕`.
 - **Click the Mart before using its keys,** after `/pokemon mart` too: Claude Code gives a plugin's band the keyboard
   only on a click.
@@ -585,7 +590,7 @@ The first release, **Pokémon Journey for Claude Code**.
 - **A piped test run whose summary is cut off** (`pytest | head`) doesn't react, since nothing says whether it passed.
 - **Two sessions changing the party at the very same instant** (a catch in one, a release in the other) could still lose one of the two changes; XP is never lost this way.
 - **A party member saved by an older version** looks up its gender (and evolution data) once, which needs the network.
-- **Game-only rules aren't modelled:** the Let's Go starter Pikachu and Eevee evolve like any other, and evolutions by time of day, location or held item all happen at their level (or Lv 30).
+- **Game-only rules aren't modelled:** the Let's Go starter Pikachu and Eevee evolve like any other, and evolutions by time of day, location or held item all happen at their level (or Lv 30). _(Changed in 1.3.0: evolutions follow the games, by stone, trade item, friendship, time of day, gender and party; 17 that need a move, steps or a battle still go by level.)_
 - **Headless runs count:** a `claude -p` run earns XP and can evolve your party, though nothing is drawn.
 - **Narrow bands:** near the band's edges the thought bubble can be cut off (often on a 40-column band), and the "!" bubble over the tallest member loses its top for the 0.4 s startled hop.
 - **Drawn in the terminal only:** the band is made of terminal cells, so it shows in `claude` in a terminal (editors' integrated terminals included) but not in the Desktop app's Code tab, the VS Code extension's chat panel or the web. Those sessions still earn XP.
@@ -594,6 +599,7 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
+[1.5.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.1.0...v1.2.0
