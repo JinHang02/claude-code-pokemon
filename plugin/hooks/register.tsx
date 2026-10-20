@@ -12,9 +12,9 @@ import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withA
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
-import { didYouMean, findMembers, formatChoices, isList } from './members'
+import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, isSpacedOut, lookup, randomPick, slug, spell } from './lookup'
+import { guessItem, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -22,6 +22,7 @@ import {
   bagFull,
   balanceOf,
   BOX_FULL,
+  boxPages,
   buy,
   displayName,
   emptySave,
@@ -52,11 +53,11 @@ import {
   recordCaught,
   recordSeen,
   releaseMember,
+  speciesName,
   spriteBudget,
   storeCaught,
   takeFromBag,
   TIME_TEXT,
-  titleCase,
   TOGETHER,
   togetherOf,
   withExtra,
@@ -141,6 +142,11 @@ let times = loadTogether(undefined).ms
 // only.
 const viewOf = (s: Save) => withTogether(withExtra(s, extra), times)
 const view = () => viewOf(save)
+// How wide the terminal is for the command running now, so a party or a box fits it; unknown in a test.
+let replyColumns = Infinity
+// A terminal width as the engine reports it; anything but a positive number is unknown (no wrapping).
+const columnsOf = (columns: number | undefined) =>
+  columns !== undefined && Number.isFinite(columns) && columns > 0 ? columns : Infinity
 // The ledgers' XP and ₽ not yet folded into the save, counted against the save's own marks.
 function countLedgers(ledgers: Record<string, Ledger>) {
   extra = extraXp(ledgers, save.folded, save.foldedXp)
@@ -572,22 +578,27 @@ async function refreshParty($: EngineInterface) {
   }
 }
 
-// A new party member from a query (a random one when empty), spelled exactly; `shiny` anywhere forces a
-// shiny. A near miss resolves a suggestion naming `command` ('' or 'add ').
-async function catchOne($: EngineInterface, query: string, command = ''): Promise<Member | string> {
+// What a new party member from `query` would be (a random one when it names none), spelled exactly, with `shiny`
+// anywhere forcing a shiny; or the answer instead: a suggestion naming `command` ('' or 'add '), or that no Pokémon is
+// called that. Downloads no sprite.
+async function newPick($: EngineInterface, query: string, command = ''): Promise<Wanted | string> {
   const list = await loadSpecies($)
-  const words = slug(query).split('-').filter(Boolean)
-  const wantsShiny = words.includes('shiny')
-  const named = words.filter(w => w !== 'shiny')
-  if (!words.length && query.trim()) return `No Pokémon called "${query.trim()}".`
-  const found = named.length ? lookup(list, named) : { pick: randomPick(list) }
-  if ('error' in found) return found.error
-  // Spelt right but spaced apart (`porygon 2`) is that one.
-  if ('guess' in found && !isSpacedOut(found.guess, named))
-    return didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}`)
-  const pick = 'pick' in found ? found.pick : found.guess
+  const named = readName(list, query)
+  if ('error' in named) return named.error
+  if ('guess' in named) return didYouMean(named.guess, `${command}${named.wantsShiny ? 'shiny ' : ''}`)
+  return { pick: named.pick ?? randomPick(list), wantsShiny: named.wantsShiny }
+}
+type Wanted = { pick: Pick; wantsShiny: boolean }
+
+// The new member `wanted` names, its sprite downloaded.
+async function catchPick($: EngineInterface, { pick, wantsShiny }: Wanted): Promise<Member> {
   const { isShiny } = await fetchArt($, fileOf(pick), wantsShiny || Math.random() < SHINY_ODDS)
   return { id: newId(), species: pick.species, form: pick.form, isShiny, xp: 0, evolutions: 0 }
+}
+
+async function catchOne($: EngineInterface, query: string, command = ''): Promise<Member | string> {
+  const wanted = await newPick($, query, command)
+  return typeof wanted === 'string' ? wanted : catchPick($, wanted)
 }
 
 const levelNow = (m: Member) => level(m.xp)
@@ -596,7 +607,7 @@ const levelWithLedger = (m: Member) => level(m.xp + (extra[m.id] ?? 0))
 // The members `query` names in `places` of `s`, with their levels as the party stands. A spot's `at` is its place in
 // `s` too.
 const find = (s: Save, query: string, places: Place[], command: string) =>
-  findMembers(viewOf(s), query, places, command, levelNow, species ?? [])
+  findMembers(viewOf(s), query, places, command, levelNow, species ?? [], replyColumns)
 // The one member found, or the answer instead: which one (numbered), a suggestion, or who is there.
 function spotOf(found: Found, query: string, command: string): Spot | string {
   if ('spot' in found) return found.spot
@@ -606,6 +617,8 @@ const pickIn = (s: Save, query: string, places: Place[], command: string) =>
   spotOf(find(s, query, places, command), query, command)
 // A query that names none of `places`: a number past the end of the list still names some.
 const isNoneIn = (found: Found) => 'error' in found && !isList(found.error)
+// A query naming a level (`eevee lv 30`) is about one you have: it never catches a new one.
+const isLevelled = (query: string) => readLevel(query).level !== undefined
 
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
 // box comes out; a new one leads, and the old lead goes into the PC box with its level and what it holds. `shiny`
@@ -613,11 +626,13 @@ const isNoneIn = (found: Found) => 'error' in found && !isList(found.error)
 async function setLead($: EngineInterface, query: string): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
-  // Before any download: the save write checks again.
+  // A misspelt name gets its suggestion first, a full box its refusal before the sprite's download; the save write
+  // checks again.
+  const wanted = await newPick($, query)
+  if (typeof wanted === 'string') return wanted
   const lead = save.party[0]
   if (lead && isBoxFull(save)) return noRoomForLead(lead)
-  const caught = await catchOne($, query)
-  if (typeof caught === 'string') return caught
+  const caught = await catchPick($, wanted)
   let text = ''
   let isCaught = false
   await mutate($, latest => {
@@ -679,7 +694,7 @@ async function leadOwned($: EngineInterface, query: string): Promise<string | nu
     text = ''
     isMoved = false
     const found = find(s, query, ['party', 'box'], '')
-    if (isNoneIn(found)) return s
+    if (isNoneIn(found) && !isLevelled(query)) return s
     const spot = spotOf(found, query, '')
     if (typeof spot === 'string') {
       text = spot
@@ -719,7 +734,7 @@ async function addFromBox($: EngineInterface, query: string): Promise<string | n
     text = ''
     isMoved = false
     const found = find(s, query, ['box'], 'add ')
-    if (s.party.length >= MAX_PARTY || isNoneIn(found)) return s
+    if (s.party.length >= MAX_PARTY || (isNoneIn(found) && !isLevelled(query))) return s
     const spot = spotOf(found, query, 'add ')
     if (typeof spot === 'string') {
       text = spot
@@ -791,11 +806,12 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   if (!found) {
     const guess = guessItem(words)
     return guess
-      ? `Did you mean ${guess.item.name}? Run /pokemon give ${guess.item.id} ${guess.rest.join(' ') || '<pokemon>'}`
+      ? `Did you mean ${guess.item.name}? Run /pokemon give ${guess.item.id} ${typedRest(args, guess.rest) || '<pokemon>'}`
       : 'Give what to whom? /pokemon give <item> <pokemon> · /pokemon bag lists your items.'
   }
   const { item, rest } = found
-  const who = rest.join(' ')
+  // As typed, so a number in it is read as typed (`eevee -1` lists).
+  const who = typedRest(args, rest)
   if (!who) return `Give ${withArticle(item.name)} to whom? /pokemon give ${item.id} <pokemon>`
   await sync($)
   if (item.kind === 'candy') return feedCandy($, who, item)
@@ -1490,21 +1506,22 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
   if (screen) return 'No wild Pokémon comes by while an evolution is on screen.'
   try {
     const list = await loadSpecies($)
-    const words = slug(query).split('-').filter(Boolean)
-    const held = words.length ? null : wildHeld
+    const isAsked = Boolean(query.trim())
+    const named = readName(list, query)
+    if ('error' in named) return named.error
+    const shiny = named.wantsShiny ? 'shiny ' : ''
+    if ('guess' in named)
+      return `Did you mean ${displayName(named.guess.species, named.guess.form)}? Run /pokemon-play wild ${shiny}${spell(named.guess)}`
+    const held = isAsked ? null : wildHeld
     wildHeld = null
-    const found = words.length
-      ? lookup(list, words)
-      : { pick: held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex }) }
-    if ('error' in found) return found.error
-    if ('guess' in found)
-      return `Did you mean ${displayName(found.guess.species, found.guess.form)}? Run /pokemon-play wild ${spell(found.guess)}`
-    const pick = found.pick
-    const { art, isShiny } = await fetchArt($, fileOf(pick), held?.isShiny ?? Math.random() < SHINY_ODDS)
+    const pick =
+      named.pick ?? held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex })
+    const wantsShiny = named.wantsShiny || (held?.isShiny ?? Math.random() < SHINY_ODDS)
+    const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
     if (!band || !fitted || status.wild || pitch) return null
     if (screen) {
-      if (words.length) return 'No wild Pokémon comes by while an evolution is on screen.'
+      if (isAsked) return 'No wild Pokémon comes by while an evolution is on screen.'
       // The timer's visitor isn't lost: the first tick after the screen brings it.
       wildHeld = { pick, isShiny }
       wildDue = 0
@@ -1637,7 +1654,7 @@ function martProps(): MartProps {
     for (const m of party) {
       const into = (m.next ?? [])
         .filter(st => (st.way.kind === 'item' || st.way.kind === 'hold') && st.way.item === i.id)
-        .map(st => titleCase(st.species))
+        .map(st => speciesName(st.species))
       for (const species of new Set(into)) {
         const name = displayName(m.species, m.form)
         const key = `${name} → ${species}`
@@ -1999,10 +2016,61 @@ async function play($: EngineInterface, args: string): Promise<string> {
   return `Playing ${name}.`
 }
 
+// `/pokemon box [name] [page]`: a page of the PC box, or of the ones a name picks out of it. A last number is first
+// read as part of the name (`zygarde 10`, `porygon 2`: Porygon2) when that names some there, else as the page.
+async function showBox($: EngineInterface, args: string): Promise<string> {
+  await sync($)
+  const s = view()
+  if (!s.box?.length) return formatBox(s)
+  const tokens = args.trim().split(/\s+/).filter(Boolean)
+  const last = tokens[tokens.length - 1] ?? ''
+  const isNumber = /\d/.test(last) && /^[-+]?[\d.,]+$/.test(last)
+  const name = (isNumber ? tokens.slice(0, -1) : tokens).join(' ')
+  const whole = isNumber && name ? inBox(s, tokens.join(' '), 'box ', levelNow) : null
+  const picked = name ? inBox(s, name, 'box ', levelNow) : null
+  // The number of a level (`eevee lv 30`) is never a page.
+  const isLevel = readLevel(tokens.join(' ')).level !== undefined && readLevel(name).level === undefined
+  const [found, typed] = whole && (isLevel || !('error' in whole)) ? [whole, ''] : [picked, isNumber ? last : '']
+  if (found && 'error' in found) return found.error
+  const pages = boxPages(found ? found.at.length : s.box.length)
+  const page = typed ? (/^\d+$/.test(typed) ? Number(typed) : 0) : 1
+  if (page < 1 || page > pages)
+    return `There's no page ${typed}: ${pages === 1 ? 'it all fits on one' : `pages go from 1 to ${pages}`}.`
+  return formatBox(s, page, found ?? undefined, replyColumns)
+}
+
 // How long a naming command waits for a species list still downloading.
 const SPECIES_WAIT_MS = 2000
 // The `/pokemon` words that take no Pokémon's name.
-const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on'])
+const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
+const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
+
+// `/pokemon help`: every sub-command, one a line, narrow enough for a 60-column terminal.
+const HELP = [
+  'Pokémon Journey · /pokemon …',
+  ...(
+    [
+      ['<name>', 'lead with it; shiny <name>'],
+      ['add [name]', 'join the party'],
+      ['release <name> [n]', 'back to the wild; or remove'],
+      ['deposit <name>', 'into the PC box'],
+      ['party', 'your party'],
+      ['box [name] [page]', 'the PC box, 30 a page'],
+      ['bag', 'your items and ₽'],
+      ['give <item> <name>', 'evolve, level up or hold'],
+      ['take <name>', 'take back what it holds'],
+      ['everstone <name>', 'stop it evolving, or not'],
+      ['mart', 'the PokéMart, by mouse'],
+      ['buy <item> [count]', 'the PokéMart, by typing'],
+      ['size <size>', 'small, normal or auto'],
+      ['evolution <style>', 'rays, white or gradient'],
+      ['on, off', 'out, or back in their balls'],
+      ['help', 'this list'],
+    ] as const
+  ).map(([typed, what]) => `  ${typed.padEnd(19)}  ${what}`),
+  'Several of one? Add a number, shiny or lv <n>.',
+  'Also: /pokedex, and /pokemon-play to try things out.',
+].join('\n')
 
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
@@ -2012,13 +2080,13 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
   // name is read the plain way.
   if (!species && !UNNAMED.has(head.toLowerCase()))
     await Promise.race([loadSpecies($).catch(() => null), $.clock.sleep(SPECIES_WAIT_MS)])
+  if (HELP_WORDS.has(head.toLowerCase())) return HELP
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
-      return formatParty(view())
+      return formatParty(view(), replyColumns)
     case 'box':
-      await sync($)
-      return formatBox(view())
+      return showBox($, tail)
     case 'add':
       return addMember($, tail)
     case 'deposit':
@@ -2165,7 +2233,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release <name> [n] from your party or PC box · deposit <name> · party · box · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone · on/off',
+        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
@@ -2219,8 +2287,9 @@ export const register: Register = on => {
     }),
   }))
 
-  on('command.run', { command: 'pokedex' }, async $ => ({
+  on('command.run', { command: 'pokedex' }, async ($, e) => ({
     text: await promptly($, '/pokedex', async () => {
+      replyColumns = columnsOf(e.presentation?.columns)
       try {
         await ready
         await settled($)
@@ -2229,7 +2298,7 @@ export const register: Register = on => {
         return `${formatDex(
           save,
           (species ?? []).map(s => s.name),
-        )}\n\n${formatParty(view())}`
+        )}\n\n${formatParty(view(), replyColumns)}`
       } catch (err) {
         return `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}`
       }
@@ -2238,6 +2307,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'pokemon' }, async ($, e) => {
     feel('activity')
+    replyColumns = columnsOf(e.presentation?.columns)
     return {
       text: await promptly($, `/pokemon ${e.args}`.trim(), async () => {
         try {

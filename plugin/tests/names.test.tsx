@@ -3,14 +3,14 @@ import { expect, test } from 'claude-code/testing'
 
 import { emptySave, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
-import { ART, begin, cmd, LIST, member } from './world'
+import { ART, begin, cmd, LIST, member, mountBand } from './world'
 
 const NUMBERED = [...LIST, { name: 'zygarde', forms: ['regular', '10', 'complete'] }]
 const numbered = { isOnline: true, list: JSON.stringify(NUMBERED) }
 const where = (s: Save) => [s.party.map(m => `${m.id}:${m.heldItem ?? '-'}`), (s.box ?? []).map(m => m.id)]
 // The command a list's hint says to type, with `n` for its number.
 const hintOf = (text: string, n: number) => {
-  const hint = / — add the number: \/pokemon (.*) \d+$/.exec(text)?.[1]
+  const hint = /\nAdd the number: \/pokemon (.*) \d+$/.exec(text)?.[1]
   expect(hint).toBeDefined()
   return `${hint} ${n}`
 }
@@ -70,7 +70,7 @@ test('`shiny` after a number: the list is of shiny ones, and its hint, typed bac
   })
   const list = await cmd($, 'pokemon', 'release eevee 3 shiny')
   expect(list).toBe(
-    'Which Eevee? 1. ✨ Eevee Lv 1 (party) · 2. ✨ Eevee Lv 1 (PC box) — add the number: /pokemon release shiny eevee 2',
+    'Which Eevee?\n  1. ✨ Eevee Lv 1 (party)\n  2. ✨ Eevee Lv 1 (PC box)\nAdd the number: /pokemon release shiny eevee 2',
   )
   expect(await cmd($, 'pokemon', hintOf(list, 2))).toBe('Bye bye, ✨ Eevee (Lv 1, PC box)! It went back to the wild.')
   expect(where(w.saveNow())).toEqual([['p:-', 's1:-', 'p1:-'], []])
@@ -88,7 +88,7 @@ test('a number below 1 with `shiny` after it lists them and releases no one', as
   for (const query of ['eevee -1 shiny', 'eevee 0 shiny', 'shiny eevee -1', 'eevee shiny -2'])
     expect([query, await cmd($, 'pokemon', `release ${query}`)]).toEqual([
       query,
-      'Which Eevee? 1. ✨ Eevee Lv 1 (party) · 2. ✨ Eevee Lv 1 (party) — add the number: /pokemon release shiny eevee 2',
+      'Which Eevee?\n  1. ✨ Eevee Lv 1 (party)\n  2. ✨ Eevee Lv 1 (party)\nAdd the number: /pokemon release shiny eevee 2',
     ])
   expect(where(w.saveNow())).toEqual([['p:-', 's1:-', 's2:-'], []])
 })
@@ -105,8 +105,7 @@ test('take lists the party and the PC box with one numbering; every one is reach
   ]
   const list = await cmd($, 'pokemon', 'take eevee')
   expect(list).toBe(
-    'Which Eevee? 1. Eevee Lv 1 holding Everstone (party) · 2. Eevee Lv 1 holding Soothe Bell (PC box) · ' +
-      '3. Eevee Lv 1 holding Lucky Egg (PC box) — add the number: /pokemon take eevee 3',
+    'Which Eevee?\n  1. Eevee Lv 1 holding Everstone (party)\n  2. Eevee Lv 1 holding Soothe Bell (PC box)\n  3. Eevee Lv 1 holding Lucky Egg (PC box)\nAdd the number: /pokemon take eevee 3',
   )
   expect(await cmd($, 'pokemon', 'take eevee 4')).toBe(list)
   expect(await cmd($, 'pokemon', hintOf(list, 2))).toBe("Eevee's Soothe Bell went back to your Bag.")
@@ -133,13 +132,13 @@ test('give and take with a number past the end answer with the list, even of one
     bag: { 'water-stone': 1 },
   })
   expect(await cmd($, 'pokemon', 'give water stone eevee 2')).toBe(
-    'Which Eevee? 1. Eevee Lv 1 holding Lucky Egg (party) — add the number: /pokemon give water-stone eevee 1',
+    'Which Eevee?\n  1. Eevee Lv 1 holding Lucky Egg (party)\nAdd the number: /pokemon give water-stone eevee 1',
   )
   expect(await cmd($, 'pokemon', 'take eevee 3')).toBe(
-    'Which Eevee? 1. Eevee Lv 1 holding Lucky Egg (party) · 2. Eevee Lv 1 (PC box) — add the number: /pokemon take eevee 2',
+    'Which Eevee?\n  1. Eevee Lv 1 holding Lucky Egg (party)\n  2. Eevee Lv 1 (PC box)\nAdd the number: /pokemon take eevee 2',
   )
   expect(await cmd($, 'pokemon', 'deposit eevee 2')).toBe(
-    'Which Eevee? 1. Eevee Lv 1 holding Lucky Egg (party) — add the number: /pokemon deposit eevee 1',
+    'Which Eevee?\n  1. Eevee Lv 1 holding Lucky Egg (party)\nAdd the number: /pokemon deposit eevee 1',
   )
 })
 
@@ -158,7 +157,7 @@ test('zygarde 10 with two plain Zygarde owned is the 10% form; their own numbers
   )
   const list = await cmd($, 'pokemon', 'release zygarde 3')
   expect(list).toBe(
-    'Which Zygarde? 1. Zygarde Lv 1 (PC box) · 2. Zygarde Lv 1 (PC box) — add the number: /pokemon release zygarde 2',
+    'Which Zygarde?\n  1. Zygarde Lv 1 (PC box)\n  2. Zygarde Lv 1 (PC box)\nAdd the number: /pokemon release zygarde 2',
   )
   expect(await cmd($, 'pokemon', 'release zygarde 10')).toMatch(/^No zygarde 10 in your party or PC box\./)
   expect((await cmd($, 'pokemon', 'zygarde 10')).replace(/^✨ /, '')).toBe(
@@ -295,4 +294,250 @@ test('a name command never waits long for a species list that hangs: it answers 
   // Each command waits afresh, never for the stalled download's whole 20 seconds.
   expect(await timed('deposit charmander')).toBe('Charmander (Lv 1) went into the PC box.')
   expect(await timed('take eevee')).toBe("Eevee isn't holding anything.")
+})
+
+test('give with a number below 1 or not whole answers with the list, spends nothing, and echoes what was typed', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+    bag: { 'rare-candy': 2, 'fire-stone': 1 },
+  })
+  for (const n of ['-1', '0', '1.5', '+1', '-2'])
+    expect([n, await cmd($, 'pokemon', `give rare candy eevee ${n}`)]).toEqual([
+      n,
+      expect.stringMatching(/^Which Eevee\?/),
+    ])
+  expect(w.saveNow().bag).toEqual({ 'rare-candy': 2, 'fire-stone': 1 })
+  expect(w.saveNow().party.map(m => m.xp)).toEqual([0, 0, 0])
+  expect(await cmd($, 'pokemon', 'give fire stone 1.5')).toMatch(/^No 1\.5 in your party\./)
+  expect(await cmd($, 'pokemon', 'give fire stone -1')).toMatch(/^No -1 in your party\./)
+  // A hint for a misspelt item keeps the sign, so typing it back still lists.
+  expect(await cmd($, 'pokemon', 'give rare cndy eevee -1')).toBe(
+    'Did you mean Rare Candy? Run /pokemon give rare-candy eevee -1',
+  )
+  expect(await cmd($, 'pokemon', 'give rare candy eevee 2')).toBe('Eevee grew to Lv 2!')
+  expect(w.saveNow().party.map(m => m.id === 'e2' && m.xp > 0)).toEqual([false, false, true])
+})
+
+test('a fraction is not a pick: release eevee 1.5 with fifteen Eevee lists them', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: Array.from({ length: 15 }, (_, i) => member('eevee', { id: `e${i + 1}` })),
+  })
+  for (const n of ['1.5', '1,5', '15.0'])
+    expect([n, await cmd($, 'pokemon', `release eevee ${n}`)]).toEqual([n, expect.stringMatching(/^Which Eevee\?/)])
+  expect(w.saveNow().box?.length).toBe(15)
+  expect(await cmd($, 'pokemon', '-1')).toBe('No Pokémon called "-1".')
+  expect(await cmd($, 'pokemon', 'add 1.5')).toBe('No Pokémon called "1.5".')
+})
+
+test('a level narrows a name in every command, and a level none of yours is at never catches a new one', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: Array.from({ length: 25 }, (_, i) =>
+      member('eevee', { id: `e${i}`, xp: xpForLevel((i % 5) + 1), isShiny: i >= 20 }),
+    ),
+  })
+  const list = await cmd($, 'pokemon', 'release eevee')
+  expect(list.split('\n').slice(-4)).toEqual([
+    '  … and 15 more. Fewer:',
+    '    /pokemon release shiny eevee',
+    '    /pokemon release eevee lv 1',
+    'Add the number: /pokemon release eevee 10',
+  ])
+  expect(list.split('\n').length).toBe(15)
+  expect(await cmd($, 'pokemon', 'release eevee lv 3')).toBe(
+    [
+      'Which Eevee?',
+      '  1. Eevee Lv 3 (PC box)',
+      '  2. Eevee Lv 3 (PC box)',
+      '  3. Eevee Lv 3 (PC box)',
+      '  4. Eevee Lv 3 (PC box)',
+      '  5. ✨ Eevee Lv 3 (PC box)',
+      'Add the number: /pokemon release eevee lv 3 5',
+    ].join('\n'),
+  )
+  expect(await cmd($, 'pokemon', 'release shiny eevee lv 4')).toBe(
+    'Bye bye, ✨ Eevee (Lv 4, PC box)! It went back to the wild.',
+  )
+  expect(await cmd($, 'pokemon', 'release eevee lv 3 5')).toBe(
+    'Bye bye, ✨ Eevee (Lv 3, PC box)! It went back to the wild.',
+  )
+  expect(w.saveNow().box?.map(m => m.id)).not.toContain('e22')
+  expect(await cmd($, 'pokemon', 'eevee lv 99')).toMatch(/^No eevee lv 99 in your party or PC box\./)
+  expect(await cmd($, 'pokemon', 'add eevee lv 99')).toBe('No eevee lv 99 in your PC box.')
+  expect(where(w.saveNow())[0]).toEqual(['p:-'])
+  expect(await cmd($, 'pokemon', 'add eevee lv 2 1')).toBe('Eevee came out of the PC box and joined your party!')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1'])
+  expect(w.saveNow().box?.length).toBe(22)
+})
+
+test('/pokemon box shows 30 to a page, says which page, and how to see the next; a name narrows it', async ($, on) => {
+  const kinds = ['caterpie', 'eevee', 'pikachu']
+  const box = Array.from({ length: 75 }, (_, i) =>
+    member(kinds[i % 3] ?? 'caterpie', { id: `b${i + 1}`, isShiny: i === 4 || i === 70, next: [] }),
+  )
+  box.push(member('porygon2', { id: 'p2', next: [] }))
+  const list = JSON.stringify([
+    ...LIST,
+    { name: 'porygon', forms: ['regular'] },
+    { name: 'porygon2', forms: ['regular'] },
+  ])
+  await begin($, on, { ...emptySave(), party: [member('raichu', { next: [] })], box }, undefined, undefined, {
+    isOnline: true,
+    list,
+  })
+  const rows = (text: string) => text.split('\n').filter(l => /^ {2}\d+\. /.test(l))
+  const numbers = (text: string) => rows(text).map(l => Number(/\d+/.exec(l)?.[0]))
+  const first = await cmd($, 'pokemon', 'box')
+  expect(first.split('\n')[0]).toBe('Your PC box (76 / 960) · page 1 of 3:')
+  expect(numbers(first)).toEqual(Array.from({ length: 30 }, (_, i) => i + 1))
+  expect(first.split('\n').at(-1)).toBe('Next page: /pokemon box 2')
+  const last = await cmd($, 'pokemon', 'box 3')
+  expect(last.split('\n')[0]).toBe('Your PC box (76 / 960) · page 3 of 3:')
+  expect(numbers(last)).toEqual(Array.from({ length: 16 }, (_, i) => i + 61))
+  expect(last.split('\n').at(-1)).toMatch(/^ {2}76\. /)
+  for (const page of ['4', '0', '-1', '1.5', '+2'])
+    expect([page, await cmd($, 'pokemon', `box ${page}`)]).toEqual([
+      page,
+      `There's no page ${page}: pages go from 1 to 3.`,
+    ])
+  // A name: only those, each with its place in the box, paged the same way.
+  const eevees = await cmd($, 'pokemon', 'box eevee')
+  expect(eevees.split('\n')[0]).toBe('Eevee in your PC box (25 of 76):')
+  expect(numbers(eevees)).toEqual(Array.from({ length: 25 }, (_, i) => 3 * i + 2))
+  expect(eevees.split('\n').at(-1)).toMatch(/^ {2}74\. /)
+  const shiny = await cmd($, 'pokemon', 'box shiny')
+  expect(shiny.split('\n')[0]).toBe('Shiny ones in your PC box (2 of 76):')
+  expect(numbers(shiny)).toEqual([5, 71])
+  expect(numbers(await cmd($, 'pokemon', 'box shiny eevee'))).toEqual([5, 71])
+  expect(await cmd($, 'pokemon', 'box shiny pikachu')).toBe('No shiny pikachu in your PC box.')
+  expect(await cmd($, 'pokemon', 'box eevee 2')).toBe("There's no page 2: it all fits on one.")
+  expect(await cmd($, 'pokemon', 'box 🔥')).toBe('No Pokémon called "🔥" in your PC box.')
+  expect(await cmd($, 'pokemon', 'box ?')).toBe('No Pokémon called "?" in your PC box.')
+  expect(await cmd($, 'pokemon', 'box eeve')).toBe('Did you mean Eevee? Run /pokemon box eevee')
+  expect(await cmd($, 'pokemon', 'box mewtwo')).toBe('No mewtwo in your PC box.')
+  // `porygon 2` is Porygon2 when no Porygon is there to have a page 2.
+  expect(numbers(await cmd($, 'pokemon', 'box porygon 2'))).toEqual([76])
+})
+
+const PORYGONS = JSON.stringify([
+  ...LIST,
+  { name: 'porygon', forms: ['regular'] },
+  { name: 'porygon2', forms: ['regular'] },
+])
+
+test('/pokemon-play wild reads a name as /pokemon does: spaced apart, and symbols or a number name no one', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('raichu')] }, undefined, undefined, {
+    isOnline: true,
+    list: PORYGONS,
+  })
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild 🔥')).toBe('No Pokémon called "🔥".')
+  expect(await cmd($, 'pokemon-play', 'wild 1.5')).toBe('No Pokémon called "1.5".')
+  expect(await cmd($, 'pokemon-play', 'wild shiny pikchu')).toBe(
+    'Did you mean Pikachu? Run /pokemon-play wild shiny pikachu',
+  )
+  expect(w.toasts.filter(t => t.includes('appeared'))).toEqual([])
+  expect(await cmd($, 'pokemon-play', 'wild porygon 2')).toBe('A wild Porygon2 wanders by.')
+})
+
+test('/pokemon-play wild shiny <name> brings a shiny one, as /pokemon shiny <name> does', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('raichu')] })
+  await cmd($, 'pokemon', 'party')
+  await mountBand($ as never)
+  expect(await cmd($, 'pokemon-play', 'wild pikachu shiny')).toBe('A wild Pikachu wanders by.')
+  expect(w.toasts).toContain('✨ A wild Pikachu appeared!')
+  expect(w.saveNow().dex.pikachu?.shiny).toBe(1)
+})
+
+test('a full PC box answers a misspelt name with a suggestion before it refuses a new lead', async ($, on) => {
+  const box = Array.from({ length: 960 }, (_, i) => member('caterpie', { id: `b${i}`, next: [] }))
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { next: [] })], box })
+  await cmd($, 'pokemon', 'party')
+  const before = JSON.stringify(w.saveNow())
+  expect(await cmd($, 'pokemon', 'charmandr')).toBe('Did you mean Charmander? Run /pokemon charmander')
+  expect(await cmd($, 'pokemon', 'agumon')).toBe('No Pokémon called "agumon".')
+  expect(await cmd($, 'pokemon', 'charmander')).toMatch(/^There's no more room in your PC box! Pikachu /)
+  expect(JSON.stringify(w.saveNow())).toBe(before)
+})
+
+test('a plain name with only another form of it in the PC box points at that one; a lead still catches a new one', async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    box: [member('rattata', { id: 'a1', form: 'alola' }), member('rattata', { id: 'a2', form: 'alola' })],
+  })
+  expect(await cmd($, 'pokemon', 'release rattata')).toBe(
+    'Did you mean Rattata (Alola)? Run /pokemon release rattata alola',
+  )
+  expect(await cmd($, 'pokemon', 'take rattata')).toBe('Did you mean Rattata (Alola)? Run /pokemon take rattata alola')
+  expect(await cmd($, 'pokemon', 'release rattata 2')).toBe(
+    'Did you mean Rattata (Alola)? Run /pokemon release rattata alola 2',
+  )
+  expect(await cmd($, 'pokemon', 'release rattata alola 2')).toBe(
+    'Bye bye, Rattata (Alola) (Lv 1, PC box)! It went back to the wild.',
+  )
+  expect((await cmd($, 'pokemon', 'rattata')).replace(/^✨ /, '')).toMatch(
+    /^A wild Rattata appeared! It's your new lead\./,
+  )
+  expect(w.saveNow().box?.map(m => m.id)).toEqual(['a1', 'p'])
+})
+
+test('/pokemon help lists every sub-command, one a line, short enough for a narrow terminal', async ($, on) => {
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p' })] })
+  const help = await cmd($, 'pokemon', 'help')
+  const heads = help.split('\n').flatMap(l => /^ {2}(\S+)/.exec(l)?.[1] ?? [])
+  for (const sub of ['<name>', 'add', 'release', 'deposit', 'party', 'box', 'bag', 'give', 'take', 'everstone'])
+    expect([sub, heads.includes(sub)]).toEqual([sub, true])
+  for (const sub of ['mart', 'buy', 'size', 'evolution', 'on,', 'help'])
+    expect([sub, heads.includes(sub)]).toEqual([sub, true])
+  expect(help).toContain('remove')
+  expect(help).toContain('/pokedex')
+  expect(help).toContain('/pokemon-play')
+  expect(Math.max(...help.split('\n').map(l => [...l].length))).toBeLessThanOrEqual(55)
+  for (const typed of ['--help', '-h', '?', 'HELP'])
+    expect([typed, await cmd($, 'pokemon', typed)]).toEqual([typed, help])
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p'])
+})
+
+test('box reads a name and a number as a name first (zygarde 10, porygon 2), and a level as other commands do', async ($, on) => {
+  const list = JSON.stringify([
+    ...LIST,
+    { name: 'porygon', forms: ['regular'] },
+    { name: 'porygon2', forms: ['regular'] },
+    { name: 'zygarde', forms: ['regular', '10'] },
+  ])
+  const box = [
+    member('zygarde', { id: 'z', form: '10', next: [] }),
+    member('porygon', { id: 'p1', next: [] }),
+    member('porygon2', { id: 'p2', next: [] }),
+    ...Array.from({ length: 7 }, (_, i) => member('eevee', { id: `e${i}`, xp: xpForLevel(5), next: [] })),
+    member('eevee', { id: 'e7', xp: xpForLevel(9), next: [] }),
+  ]
+  await begin($, on, { ...emptySave(), party: [member('raichu', { next: [] })], box }, undefined, undefined, {
+    isOnline: true,
+    list,
+  })
+  const numbers = (text: string) =>
+    text.split('\n').flatMap(l => (/^ {2}(\d+)\. /.exec(l)?.[1] ? [Number(/\d+/.exec(l)?.[0])] : []))
+  expect((await cmd($, 'pokemon', 'box zygarde 10')).split('\n')[0]).toBe('Zygarde (10) in your PC box (1 of 11):')
+  expect(numbers(await cmd($, 'pokemon', 'box porygon 2'))).toEqual([3])
+  expect(numbers(await cmd($, 'pokemon', 'box porygon'))).toEqual([2])
+  const fives = await cmd($, 'pokemon', 'box eevee lv 5')
+  expect(fives.split('\n')[0]).toBe('Eevee at Lv 5 in your PC box (7 of 11):')
+  expect(numbers(fives)).toEqual([4, 5, 6, 7, 8, 9, 10])
+  expect(numbers(await cmd($, 'pokemon', 'box lv 9'))).toEqual([11])
+  expect((await cmd($, 'pokemon', 'box lv 9')).split('\n')[0]).toBe('Pokémon at Lv 9 in your PC box (1 of 11):')
+  expect(await cmd($, 'pokemon', 'box eevee lv 30')).toBe('No eevee lv 30 in your PC box.')
+  expect(await cmd($, 'pokemon', 'box eevee lv 5 2')).toBe("There's no page 2: it all fits on one.")
+})
+
+test('a form an answer says a Pokémon lacks is quoted as typed', async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+  expect(await cmd($, 'pokemon', 'add burmy 1.5')).toBe('Burmy has no "1.5" form. Try: sandy.')
+  expect(await cmd($, 'pokemon', 'add alolan rattata 1.5')).toBe('Rattata has no "alolan 1.5" form. Try: alola.')
 })

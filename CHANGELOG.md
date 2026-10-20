@@ -59,6 +59,37 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   mid-screen doesn't bring it back (the evolution is saved either way).
 - Releasing or depositing the evolving Pokémon mid-screen lets the screen finish; nothing is written back for it.
 
+### Fixed
+
+- `/pokemon give <item> <name> -1` (or `0`, `1.5`) gave the item to the first one: only a whole number from 1 picks,
+  as in `release`, and anything else answers with the numbered list. A fraction is no pick anywhere now
+  (`release eevee 1.5` no longer releases the 15th), and the answer quotes what you typed: _"No -1 in your party"_,
+  where it said _"No 1"_.
+- The numbered _"Which Eevee?"_ list was one long line, and with a full box of them a wall of text. Now it's one
+  Pokémon per line, the first ten only, then _"… and 15 more"_ with how to narrow them down. Any number still picks.
+  A level narrows a name in every command that takes one: `/pokemon release eevee lv 30` (or `lv30`, `level 30`),
+  and a number then picks among those. A level none of yours is at never catches a new one.
+- `/pokemon box` printed the whole box in one reply, up to 961 lines. It shows 30 to a page now, as a box in the
+  games holds: _"Your PC box (76 / 960) · page 1 of 3"_, and the next page is `/pokemon box 2`. A name shows only
+  those, each with its place in the box: `/pokemon box eevee`, `/pokemon box shiny`, `/pokemon box eevee lv 5`.
+- `/pokemon bag` listed every holder, the PC box's too, on one unbroken line. It's one a line now: the party's, then
+  ten of the box's and how many more.
+- In a narrow terminal, `/pokemon party`, `/pokemon box` and `/pokedex` broke their rows mid-column, leaving
+  _"· final form"_ alone on a line. Where a row doesn't fit, its name and level now share a line, and the rest wraps
+  beneath the name, without the XP to the next level when even that doesn't fit.
+- XP kept raising the level past 100 (_"Lv 101 (794 xp to Lv 102)"_) while a Rare Candy said _"already Lv 100"_. The
+  level stops at 100 everywhere now, shown as _"Lv 100 (max level)"_.
+- Names lost their punctuation (_"Farfetchd"_, _"Mr Mime"_, _"Ho Oh"_, _"Nidoran F"_). They're written as in the
+  games now: Farfetch'd, Sirfetch'd, Mr. Mime, Mime Jr., Mr. Rime, Nidoran♀, Nidoran♂, Ho-Oh, Porygon-Z,
+  Type: Null, Jangmo-o, Hakamo-o, Kommo-o and Flabébé.
+- `/pokemon-play wild` reads a name as `/pokemon` does: `wild porygon 2` brings Porygon2, `wild shiny pikachu` a shiny
+  Pikachu, and `wild 🔥` answers _"No Pokémon called "🔥""_ instead of bringing a random visitor.
+- With the PC box full, a misspelt `/pokemon <name>` gets its _"Did you mean …?"_ before the box-full refusal.
+- `/pokemon release vulpix`, `take` and the like, with only an Alolan Vulpix in the PC box, said there was none. They
+  ask _"Did you mean Vulpix (Alola)?"_ now. `/pokemon vulpix` and `add vulpix` still catch a plain one, as before.
+- `/pokemon help` (or `--help`, `?`) answered _"No Pokémon called "help""_. It lists every sub-command now, and the
+  command's one-line description names `remove` too.
+
 ### Known limitations
 
 - `/pokemon party`, `/pokedex` and other commands you run while a screen plays already show the new form: the save

@@ -4,6 +4,7 @@ import {
   addTogether,
   balanceOf,
   buy,
+  displayName,
   earnInto,
   emptySave,
   evolveLevel,
@@ -22,6 +23,7 @@ import {
   loadSave,
   loadTogether,
   MAX_BOX,
+  nameOf,
   putInBag,
   recordCaught,
   recordSeen,
@@ -459,7 +461,7 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
       '  Stones      Fire Stone ×2 · Thunder Stone ×1',
       '  Hold items  Metal Coat ×1',
       '  Other       Rare Candy ×3',
-      '  Held        Eevee: Soothe Bell',
+      '  Held        Eevee holds a Soothe Bell',
     ].join('\n'),
   )
   expect(formatBag(loadSave({}), 0)).toBe('Bag · ₽3,000\n  Empty. Buy items at the PokéMart: /pokemon mart')
@@ -469,8 +471,21 @@ test('the party says how each one evolves, and the Bag lists what you have', () 
     box: [m({ id: 'b', species: 'pichu' }), m({ id: 'c', heldItem: 'soothe-bell' })],
   })
   expect(formatBag(boxed, 0)).toBe(
-    ['Bag · ₽3,000', '  Held        Eevee: Lucky Egg · Eevee (box): Soothe Bell'].join('\n'),
+    ['Bag · ₽3,000', '  Held        Eevee holds a Lucky Egg', '              Eevee (box) holds a Soothe Bell'].join(
+      '\n',
+    ),
   )
+  // One holder a line: the party's, then ten of the PC box's and how many more.
+  const many = loadSave({
+    party: [m({ id: 'p', heldItem: 'lucky-egg' })],
+    box: Array.from({ length: 14 }, (_, i) => m({ id: `b${i}`, species: 'pichu', heldItem: 'everstone' })),
+  })
+  expect(formatBag(many, 0).split('\n')).toEqual([
+    'Bag · ₽3,000',
+    '  Held        Eevee holds a Lucky Egg',
+    ...Array.from({ length: 10 }, () => '              Pichu (box) holds an Everstone'),
+    '              … and 4 more in the PC box.',
+  ])
 })
 
 test('a release: from the party or the PC box, named with its level and place, its held item back to the Bag, the Pokédex kept', () => {
@@ -511,4 +526,132 @@ test('evolutionStyle: absent loads as rays, a valid one is kept, an invalid one 
   expect(styleOf(bad)).toBe('rays')
   const written = JSON.parse(JSON.stringify({ ...loadSave(old), evolutionStyle: 'gradient' }))
   expect(loadSave(written).evolutionStyle).toBe('gradient')
+})
+
+test('the level stops at 100 everywhere it shows, however much XP comes after', () => {
+  expect(level(xpForLevel(100) - 1)).toBe(99)
+  expect(level(xpForLevel(100))).toBe(100)
+  expect(level(xpForLevel(100) + 5000)).toBe(100)
+  expect(level(1e12)).toBe(100)
+  const top = { ...emptySave(), party: [{ ...pikachu, xp: 40_010, next: [] }] }
+  expect(formatParty(top)).toBe(['Your party:', '  Lead  Pikachu  Lv 100  (max level)  · final form'].join('\n'))
+  expect(formatBox({ ...emptySave(), box: [{ ...pikachu, xp: 1e12 }] })).toBe(
+    ['Your PC box (1 / 960):', '  1.  Pikachu  Lv 100  (max level)'].join('\n'),
+  )
+})
+
+test("names keep the games' punctuation: Farfetch'd, Mr. Mime, Nidoran♀, Type: Null, Ho-Oh, Flabébé", () => {
+  const shown = (species: string, form?: string) => displayName(species, form)
+  expect(
+    [
+      'farfetchd',
+      'sirfetchd',
+      'mr-mime',
+      'mime-jr',
+      'mr-rime',
+      'nidoran-f',
+      'nidoran-m',
+      'type-null',
+      'ho-oh',
+      'porygon-z',
+      'porygon2',
+      'jangmo-o',
+      'hakamo-o',
+      'kommo-o',
+      'flabebe',
+      'tapu-koko',
+    ].map(n => shown(n)),
+  ).toEqual([
+    "Farfetch'd",
+    "Sirfetch'd",
+    'Mr. Mime',
+    'Mime Jr.',
+    'Mr. Rime',
+    'Nidoran♀',
+    'Nidoran♂',
+    'Type: Null',
+    'Ho-Oh',
+    'Porygon-Z',
+    'Porygon2',
+    'Jangmo-o',
+    'Hakamo-o',
+    'Kommo-o',
+    'Flabébé',
+    'Tapu Koko',
+  ])
+  expect(shown('mr-mime', 'galar')).toBe('Mr. Mime (Galar)')
+  expect(shown('farfetchd', 'galar')).toBe("Farfetch'd (Galar)")
+  // Nidoran's sign is its name: it isn't shown twice.
+  expect(nameOf({ ...pikachu, species: 'nidoran-f', gender: 'female' })).toBe('Nidoran♀')
+  expect(nameOf({ ...pikachu, species: 'nidoran-m', gender: 'male', isShiny: true })).toBe('✨ Nidoran♂')
+  const party = { ...emptySave(), party: [{ ...pikachu, species: 'nidoran-f', gender: 'female' as const }] }
+  expect(formatParty(party)).toContain('Lead  Nidoran♀  Lv 1')
+  const dex = recordSeen(recordSeen(emptySave(), 'ho-oh', true, 1), 'type-null', false, 2)
+  expect(formatDex(dex, ['ho-oh', 'type-null'])).toContain('Shinies: Ho-Oh\nRecently seen: Type: Null, Ho-Oh')
+})
+
+test('in a narrow terminal each row keeps its name and level on one line, the rest wrapped beneath', () => {
+  const thunder = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as const
+  const save = {
+    ...emptySave(),
+    party: [
+      {
+        ...pikachu,
+        xp: 400,
+        gender: 'female' as const,
+        heldItem: 'kings-rock',
+        next: [thunder],
+        togetherMs: 3 * 3_600_000,
+      },
+      { ...pikachu, id: 'p2', species: 'charizard', form: 'mega-x', isShiny: true, xp: 40_010, next: [] },
+    ],
+  }
+  // At 100 the XP to the next level still fits beside the level.
+  expect(formatParty(save, 100).split('\n').slice(1, 3)).toEqual([
+    '  Lead  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    "        together 3h · holds a King's Rock · evolves with a Thunder Stone",
+  ])
+  const wide = formatParty(save, 150)
+  expect(wide).toBe(formatParty(save))
+  expect(wide.split('\n')).toHaveLength(3)
+  expect(formatParty(save, 60).split('\n')).toEqual([
+    'Your party:',
+    '  Lead  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    "        together 3h · holds a King's Rock",
+    '        evolves with a Thunder Stone',
+    '  2.    ✨ Charizard (Mega X)  Lv 100  (max level)',
+    '        final form',
+  ])
+  // Narrower still, the XP to the next level is left out: the level says enough.
+  expect(formatParty(save, 50).split('\n').slice(1, 4)).toEqual([
+    '  Lead  Pikachu ♀              Lv 11',
+    "        together 3h · holds a King's Rock",
+    '        evolves with a Thunder Stone',
+  ])
+  // Every line fits the 60 columns less the 5 the reply is indented by.
+  for (const columns of [40, 60, 80])
+    for (const line of formatParty(save, columns).split('\n'))
+      expect([columns, line, [...line].length + (line.includes('✨') ? 1 : 0) <= Math.max(columns - 5, 40)]).toEqual([
+        columns,
+        line,
+        true,
+      ])
+  const box = { ...emptySave(), box: save.party }
+  expect(formatBox(box, 1, undefined, 60).split('\n').slice(0, 3)).toEqual([
+    'Your PC box (2 / 960):',
+    '  1.  Pikachu ♀              Lv 11   (84 xp to Lv 12)',
+    "      together 3h · holds a King's Rock",
+  ])
+})
+
+test('a width that is not a positive number keeps the wide layout; a Type: Null holder reads one way', () => {
+  const thunder = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as const
+  const save = {
+    ...emptySave(),
+    party: [{ ...pikachu, heldItem: 'kings-rock', next: [thunder], togetherMs: 3 * 3_600_000 }],
+  }
+  for (const columns of [Number.NaN, 0, -10])
+    expect([columns, formatParty(save, columns)]).toEqual([columns, formatParty(save)])
+  const nulls = { ...emptySave(), party: [{ ...pikachu, species: 'type-null', heldItem: 'kings-rock' }] }
+  expect(formatBag(nulls, 0)).toContain("Held        Type: Null holds a King's Rock")
 })

@@ -324,7 +324,8 @@ export function foldLedger(save: Save, key: string, ledger: Ledger): Save {
   }
 }
 
-export const level = (xp: number) => 1 + Math.floor(Math.sqrt(xp / 4))
+// As in the games, no further than MAX_LEVEL: XP past it still counts, and changes nothing.
+export const level = (xp: number) => Math.min(MAX_LEVEL, 1 + Math.floor(Math.sqrt(xp / 4)))
 export const xpForLevel = (lv: number) => 4 * (lv - 1) ** 2
 
 // The level it evolves at by itself: the lowest level way; null when none is by level; undefined until looked up.
@@ -486,13 +487,37 @@ export const titleCase = (name: string) =>
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
 
-export const displayName = (species: string, form = 'regular') =>
-  titleCase(species) + (form === 'regular' ? '' : ` (${titleCase(form)})`)
+// The names the sprite list spells without the games' punctuation (every other one title-cases as it is).
+const SPECIES_NAMES: Record<string, string> = {
+  'nidoran-f': 'Nidoran♀',
+  'nidoran-m': 'Nidoran♂',
+  farfetchd: "Farfetch'd",
+  sirfetchd: "Sirfetch'd",
+  'mr-mime': 'Mr. Mime',
+  'mime-jr': 'Mime Jr.',
+  'mr-rime': 'Mr. Rime',
+  'ho-oh': 'Ho-Oh',
+  'porygon-z': 'Porygon-Z',
+  'type-null': 'Type: Null',
+  'jangmo-o': 'Jangmo-o',
+  'hakamo-o': 'Hakamo-o',
+  'kommo-o': 'Kommo-o',
+  flabebe: 'Flabébé',
+}
 
-// A member as its line in a numbered list names it, so an answer says which one went: "✨ Eevee ♂". The sign is
-// left out while its gender is unknown (a member saved before genders, or not looked up yet).
-export const nameOf = (m: Member) =>
-  `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''}`
+// A species as the games write it: "Mr. Mime", "Farfetch'd", "Ho-Oh".
+export const speciesName = (species: string) => SPECIES_NAMES[species] ?? titleCase(species)
+
+export const displayName = (species: string, form = 'regular') =>
+  speciesName(species) + (form === 'regular' ? '' : ` (${titleCase(form)})`)
+
+// " ♀" or " ♂" after a member's name; nothing while its gender is unknown (a member saved before genders, or not
+// looked up yet), or when the name says it already (Nidoran♀).
+const signOf = (m: Member) =>
+  /[♀♂]$/.test(speciesName(m.species)) ? '' : m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
+
+// A member as its line in a numbered list names it, so an answer says which one went: "✨ Eevee ♂".
+export const nameOf = (m: Member) => `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${signOf(m)}`
 
 const bar = (done: number, total: number, width = 10) => {
   const full = Math.round((done / total) * width)
@@ -507,7 +532,7 @@ function wayText(w: Way, m: Member): string {
     return `at Lv ${w.level}${when}${w.partyType ? ` with a ${titleCase(w.partyType)}-type in the party` : ''}`
   if (w.kind === 'item') return `with ${withArticle(itemName(w.item))}${when}`
   if (w.kind === 'hold') return `holding ${withArticle(itemName(w.item))}${when}`
-  if (w.kind === 'party') return `with ${titleCase(w.species)} in the party`
+  if (w.kind === 'party') return `with ${speciesName(w.species)} in the party`
   if (w.kind === 'friendship') {
     const ms = m.togetherMs ?? 0
     const left = FRIENDSHIP_MS - ms
@@ -531,11 +556,10 @@ export function evolvesText(m: Member): string {
 function memberColumns(m: Member): string[] {
   const lv = level(m.xp)
   const evolves = evolvesText(m)
-  const sign = m.gender === 'female' ? ' ♀' : m.gender === 'male' ? ' ♂' : ''
   return [
-    `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${sign}${m.isCaught ? ' ◓' : ''}`,
+    `${nameOf(m)}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
-    `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})`,
+    lv < MAX_LEVEL ? `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})` : '(max level)',
     m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
     m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
     evolves ? `· ${evolves}` : '',
@@ -559,14 +583,63 @@ function lineUp(rows: string[][]): string[] {
   )
 }
 
-// One row per member, every column lined up.
-export function formatParty(save: Save): string {
+// Claude Code indents a command's reply this many columns (under its "⎿").
+const REPLY_INDENT = 5
+
+// `segments` joined with " · ", broken between them (a segment longer than `width` between its words) so each line
+// fits `width`.
+function wrapSegments(segments: string[], width: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const segment of segments)
+    if (line && widthOf(`${line} · ${segment}`) <= width) line = `${line} · ${segment}`
+    else {
+      if (line) lines.push(line)
+      line = ''
+      for (const word of segment.split(' '))
+        if (line && widthOf(`${line} ${word}`) > width) {
+          lines.push(line)
+          line = word
+        } else line = line ? `${line} ${word}` : word
+    }
+  return line ? [...lines, line] : lines
+}
+
+// Rows of a label and a member's columns, lined up; where that is wider than a terminal of `columns`, each row's
+// label, name and level lined up on a line of their own (with the XP to the next level where it fits, else without)
+// and the rest wrapped beneath the name.
+function fitRows(rows: string[][], columns: number): string[] {
+  const wide = lineUp(rows)
+  const room = columns - REPLY_INDENT
+  // An unknown width (or not a positive number) keeps every row on one line.
+  if (!(columns > 0) || wide.every(line => widthOf(line) <= room)) return wide
+  const withXp = lineUp(rows.map(r => r.slice(0, 4)))
+  const isXpKept = withXp.every(line => widthOf(line) <= room)
+  const heads = isXpKept ? withXp : lineUp(rows.map(r => r.slice(0, 3)))
+  const indent = ' '.repeat(2 + Math.max(...rows.map(r => widthOf(r[0] ?? ''))) + 2)
+  return rows.flatMap((r, i) => [
+    heads[i] ?? '',
+    ...wrapSegments(
+      r.slice(4).flatMap(text => (text ? [text.replace(/^· /, '')] : [])),
+      Math.max(room - indent.length, 20),
+    ).map(line => indent + line),
+  ])
+}
+
+// One row per member, every column lined up, for a terminal `columns` wide.
+export function formatParty(save: Save, columns = Infinity): string {
   if (!save.party.length) return 'Your party is empty. /pokemon <name> picks a lead.'
   return [
     'Your party:',
-    ...lineUp(save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)])),
+    ...fitRows(
+      save.party.map((m, i) => [i === 0 ? 'Lead' : `${i + 1}.`, ...memberColumns(m)]),
+      columns,
+    ),
   ].join('\n')
 }
+
+// The most PC box holders the Bag lists by name.
+const BAG_BOX_HOLDERS = 10
 
 // The Bag by tab, the wallet, and who holds what, in the party and the PC box. `cash`: the ledgers' unfolded ₽.
 export function formatBag(save: Save, cash: number): string {
@@ -577,23 +650,46 @@ export function formatBag(save: Save, cash: number): string {
     )
     if (items.length) lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ×${save.bag?.[i.id]}`).join(' · ')}`)
   }
+  const holding = (where: string) => (m: Member) =>
+    m.heldItem ? [`${displayName(m.species, m.form)}${where} holds ${withArticle(itemName(m.heldItem))}`] : []
+  const boxed = (save.box ?? []).flatMap(holding(' (box)'))
+  const more = boxed.length - BAG_BOX_HOLDERS
   const held = [
-    ...save.party.map(m => ({ m, where: '' })),
-    ...(save.box ?? []).map(m => ({ m, where: ' (box)' })),
-  ].flatMap(({ m, where }) =>
-    m.heldItem ? [`${displayName(m.species, m.form)}${where}: ${itemName(m.heldItem)}`] : [],
-  )
-  if (held.length) lines.push(`  ${'Held'.padEnd(10)}  ${held.join(' · ')}`)
+    ...save.party.flatMap(holding('')),
+    ...boxed.slice(0, BAG_BOX_HOLDERS),
+    ...(more > 0 ? [`… and ${more} more in the PC box.`] : []),
+  ]
+  // One a line, under the first.
+  held.forEach((text, i) => lines.push(`  ${(i ? '' : 'Held').padEnd(10)}  ${text}`))
   if (lines.length === 1) lines.push('  Empty. Buy items at the PokéMart: /pokemon mart')
   return lines.join('\n')
 }
 
-export function formatBox(save: Save): string {
+// Rows on one page of /pokemon box, as many as one of the games' boxes holds.
+export const BOX_PAGE = 30
+
+// Some of the PC box: what `/pokemon box <words>` names (`at`: their places in it) under its own title.
+export type BoxPick = { title: string; at: number[]; words: string }
+
+export const boxPages = (count: number) => Math.max(1, Math.ceil(count / BOX_PAGE))
+
+// One page of the PC box (from 1), or of `picked`, for a terminal `columns` wide; each row numbered by its place in
+// the box, then where the next page is.
+export function formatBox(save: Save, page = 1, picked?: BoxPick, columns = Infinity): string {
   const box = save.box ?? []
   if (!box.length) return 'Your PC box is empty.'
+  const at = picked?.at ?? box.map((_, i) => i)
+  const pages = boxPages(at.length)
+  const title = picked
+    ? `${picked.title} in your PC box (${at.length} of ${box.length})`
+    : `Your PC box (${box.length} / ${MAX_BOX})`
+  const rows = at
+    .slice((page - 1) * BOX_PAGE, page * BOX_PAGE)
+    .flatMap(i => (box[i] ? [[`${i + 1}.`, ...memberColumns(box[i])]] : []))
   return [
-    `Your PC box (${box.length} / ${MAX_BOX}):`,
-    ...lineUp(box.map((m, i) => [`${i + 1}.`, ...memberColumns(m)])),
+    `${title}${pages > 1 ? ` · page ${page} of ${pages}` : ''}:`,
+    ...fitRows(rows, columns),
+    ...(page < pages ? [`Next page: /pokemon box ${picked ? `${picked.words} ` : ''}${page + 1}`] : []),
   ].join('\n')
 }
 
@@ -610,8 +706,8 @@ export function formatDex(save: Save, names: string[]): string {
   return [
     `Pokédex: ${seen.length} / ${names.length} seen · ${caught.length} caught · ${shinies.length} shiny`,
     ...gens,
-    `Shinies: ${shinies.length ? shinies.map(n => titleCase(n)).join(', ') : 'none yet'}`,
-    `Recently seen: ${save.recent.length ? save.recent.map(n => titleCase(n)).join(', ') : 'nothing yet'}`,
+    `Shinies: ${shinies.length ? shinies.map(speciesName).join(', ') : 'none yet'}`,
+    `Recently seen: ${save.recent.length ? save.recent.map(speciesName).join(', ') : 'nothing yet'}`,
   ].join('\n')
 }
 

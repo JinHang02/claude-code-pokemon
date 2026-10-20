@@ -1,6 +1,6 @@
 import { ITEMS } from './items'
 import type { Item } from './items'
-import { titleCase } from './save'
+import { speciesName } from './save'
 
 export type Species = { name: string; forms: string[] }
 
@@ -19,6 +19,26 @@ export const slug = (text: string) =>
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-')
+
+// `rest`, a run of `slug(text)`'s words at its front or back, as typed: with the signs and dots `slug` drops, so
+// `eevee -1` stays a number below 1 and `1.5` is no 15. The words themselves when a typed word straddles the run.
+export function typedRest(text: string, rest: string[]): string {
+  const words = slug(text).split('-').filter(Boolean)
+  const tail = words.length - rest.length
+  const isTail = rest.every((w, i) => words[tail + i] === w)
+  const [from, to] = isTail ? [tail, words.length] : [0, rest.length]
+  const edge = isTail ? from : to
+  const kept: string[] = []
+  let at = 0
+  for (const token of text.trim().split(/\s+/).filter(Boolean)) {
+    const start = at
+    at += slug(token).split('-').filter(Boolean).length
+    if (start < edge && at > edge) return rest.join(' ')
+    // A token of no words (`-`) at the edge goes with the run.
+    if (start >= from && at <= to) kept.push(token)
+  }
+  return at === words.length ? kept.join(' ') : rest.join(' ')
+}
 
 export type Pick = { dex: number; species: string; form: string }
 
@@ -71,6 +91,24 @@ function findForm(forms: string[], rest: string[]): string | undefined {
 
 export type Lookup = { pick: Pick } | { guess: Pick } | { error: string }
 
+// The tokens of `typed` outside its words `from` to `to` (the species), as typed, so `unown 1.5` says "1.5", not
+// "15". Null when `typed` doesn't split into `words` along its tokens.
+function typedOutside(typed: string, words: string[], from: number, to: number): string | null {
+  const kept: string[] = []
+  let at = 0
+  for (const token of typed.trim().split(/\s+/).filter(Boolean)) {
+    const start = at
+    at += slug(token).split('-').filter(Boolean).length
+    if (at === start) continue
+    if (start >= from && at <= to) continue
+    if (start < to && at > from) return null
+    kept.push(token)
+  }
+  return at === words.length && words.join('-') === slug(typed).split('-').filter(Boolean).join('-')
+    ? kept.join(' ')
+    : null
+}
+
 const sameWords = (a: string[], b: string[]) => a.length === b.length && a.every(w => b.includes(w))
 
 // The species and form a query names, spelled right: a run of its words is exactly a species and the
@@ -90,8 +128,9 @@ function exact(list: Species[], words: string[]): Pick | null {
 }
 
 // The closest species and form to a misspelt or partial query: a run of its words is the species (exact,
-// then a prefix, then a near miss), the words left over a form of it. Resolves an error text when nothing fits.
-function closestPick(list: Species[], words: string[]): Pick | string {
+// then a prefix, then a near miss), the words left over a form of it. Resolves an error text when nothing fits, naming
+// the query as `typed` (the words by default).
+function closestPick(list: Species[], words: string[], typed = words.join(' ')): Pick | string {
   let failure: string | undefined
   const formWords = new Set([...Object.keys(ADJECTIVES), ...list.flatMap(p => p.forms.flatMap(f => f.split('-')))])
   for (const match of ['exact', 'prefix', 'typo'] as const)
@@ -107,20 +146,46 @@ function closestPick(list: Species[], words: string[]): Pick | string {
         const forms = found.forms.filter(f => f !== 'regular')
         const form = findForm(forms, rest)
         if (form) return pickOf(list, dex, form)
-        const label = titleCase(found.name)
+        const label = speciesName(found.name)
+        const asTyped = typedOutside(typed, words, at, at + len) ?? rest.join(' ')
         failure ??= forms.length
-          ? `${label} has no "${rest.join(' ')}" form. Try: ${forms.join(', ')}.`
+          ? `${label} has no "${asTyped}" form. Try: ${forms.join(', ')}.`
           : `${label} has no other forms.`
       }
-  return failure ?? `No Pokémon called "${words.join(' ')}".`
+  return failure ?? `No Pokémon called "${typed}".`
 }
 
-// Only an exact spelling picks a Pokémon; a near miss or a partial name comes back as a guess to confirm.
-export function lookup(list: Species[], words: string[]): Lookup {
+// Only an exact spelling picks a Pokémon; a near miss or a partial name comes back as a guess to confirm. `typed`: the
+// query as typed, for the answer that names it.
+export function lookup(list: Species[], words: string[], typed?: string): Lookup {
   const pick = exact(list, words)
   if (pick) return { pick }
-  const guess = closestPick(list, words)
+  const guess = closestPick(list, words, typed)
   return typeof guess === 'string' ? { error: guess } : { guess }
+}
+
+// What a query names among every species and form, read one way by every command that catches or summons one:
+// `shiny` anywhere asks for a shiny one; words spelling a name right but spaced apart (`porygon 2`) are that name; a
+// near miss is a guess to confirm. No name (nothing, or `shiny` alone) leaves the pick to the caller (null); words of
+// symbols only name no Pokémon. An answer quotes the query as typed.
+export function readName(
+  list: Species[],
+  query: string,
+): { pick: Pick | null; wantsShiny: boolean } | { guess: Pick; wantsShiny: boolean } | { error: string } {
+  const words = slug(query).split('-').filter(Boolean)
+  const wantsShiny = words.includes('shiny')
+  const named = words.filter(w => w !== 'shiny')
+  if (!words.length && query.trim()) return { error: `No Pokémon called "${query.trim()}".` }
+  if (!named.length) return { pick: null, wantsShiny }
+  const typed = query
+    .trim()
+    .split(/\s+/)
+    .filter(t => slug(t) !== 'shiny')
+    .join(' ')
+  const found = lookup(list, named, typed)
+  if ('error' in found) return found
+  if ('guess' in found && !isSpacedOut(found.guess, named)) return { guess: found.guess, wantsShiny }
+  return { pick: 'pick' in found ? found.pick : found.guess, wantsShiny }
 }
 
 // The item a give most likely meant when none is spelled exactly (`thunderstone`, `upgrade`, `fire ston`): a run of

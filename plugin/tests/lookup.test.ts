@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { guessItem, lookup, randomPick, slug, spell } from '../hooks/lookup'
+import { guessItem, lookup, randomPick, readName, slug, spell, typedRest } from '../hooks/lookup'
 
 const LIST = [
   { name: 'charizard', forms: ['regular', 'gmax', 'mega-x', 'mega-y'] },
@@ -75,4 +75,25 @@ test('an item name a little off is guessed, with the words left for the Pokémon
   expect(guess('kings rok slowpoke')).toEqual(['kings-rock', 'slowpoke'])
   expect(guess('banana pikachu')).toBeNull()
   expect(guess('eevee')).toBeNull()
+})
+
+test('the words after an item, as typed: a sign or a dot stays, a word split across the run falls back', () => {
+  expect(typedRest('rare candy eevee -1', ['eevee', '1'])).toBe('eevee -1')
+  expect(typedRest('eevee 1.5 fire stone', ['eevee', '15'])).toBe('eevee 1.5')
+  expect(typedRest('fire stone  Nidoran♀ -2', ['nidoran', 'f', '2'])).toBe('Nidoran♀ -2')
+  expect(typedRest('fire stone - eevee', ['eevee'])).toBe('- eevee')
+  expect(typedRest('fire-stone-eevee 2', ['eevee', '2'])).toBe('eevee 2')
+  expect(typedRest('rare candy', [])).toBe('')
+})
+
+test('one reader for a name to catch or summon: shiny anywhere, spaced apart, symbols, and the query as typed', () => {
+  const list = [...LIST, { name: 'porygon', forms: ['regular'] }, { name: 'porygon2', forms: ['regular'] }]
+  const pick = (species: string, form = 'regular') => ({ dex: list.findIndex(p => p.name === species), species, form })
+  expect(readName(list, 'porygon 2')).toEqual({ pick: pick('porygon2'), wantsShiny: false })
+  expect(readName(list, 'tauros SHINY')).toEqual({ pick: pick('tauros'), wantsShiny: true })
+  expect(readName(list, 'shiny')).toEqual({ pick: null, wantsShiny: true })
+  expect(readName(list, '  ')).toEqual({ pick: null, wantsShiny: false })
+  expect(readName(list, 'shiny taurus')).toEqual({ guess: pick('tauros'), wantsShiny: true })
+  expect(readName(list, '🔥')).toEqual({ error: 'No Pokémon called "🔥".' })
+  expect(readName(list, 'shiny 1.5')).toEqual({ error: 'No Pokémon called "1.5".' })
 })
