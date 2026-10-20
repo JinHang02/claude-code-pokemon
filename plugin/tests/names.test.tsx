@@ -551,6 +551,8 @@ test('/pokemon help lists every sub-command, one a line, short enough for a narr
   for (const sub of ['mart', 'buy', 'size', 'evolution', 'on,', 'help'])
     expect([sub, heads.includes(sub)]).toEqual([sub, true])
   expect(help).toContain('remove')
+  // Plain /pokemon changes the lead, so the list says so.
+  expect(help).toContain('  (nothing)            a random new lead; old to PC box')
   expect(help).toContain('/pokedex')
   expect(help).toContain('/pokemon-play')
   expect(Math.max(...help.split('\n').map(l => [...l].length))).toBeLessThanOrEqual(55)

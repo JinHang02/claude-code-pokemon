@@ -2052,6 +2052,7 @@ const HELP = [
   'Pokémon Journey · /pokemon …',
   ...(
     [
+      ['(nothing)', 'a random new lead; old to PC box'],
       ['<name>', 'lead with it; shiny <name>'],
       ['add [name]', 'join the party'],
       ['release <name> [n]', 'back to the wild; or remove'],
@@ -2191,7 +2192,9 @@ async function load($: EngineInterface) {
 
 // Claude Code gives a command ten seconds, then drops its answer (and unloads a plugin that keeps overrunning). A
 // command not done by this time (a stalled download another one started, a store held up) answers that it is still
-// at it. When it's done, what it changed is told in a toast; a list says it's ready to be asked for again.
+// at it. When it's done, what it changed is told in a toast; a list says it's ready to be asked for again. That
+// "run it again" is safe only because every multi-line reply is read-only: a command that changes the save must
+// answer in time or, late, say in one line what it did, never "run it again".
 const COMMAND_MS = 6000
 const STILL_WORKING = "Still working on it… What comes of it is told in a notification when it's done."
 async function promptly($: EngineInterface, line: string, work: () => Promise<string>): Promise<string> {
@@ -2235,7 +2238,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'pokemon',
       description:
-        'Your Pokémon: /pokemon <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
+        'Your Pokémon: /pokemon alone brings a random new lead (the old one goes to the PC box) · <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
     })
     await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
     await $.command.register({
