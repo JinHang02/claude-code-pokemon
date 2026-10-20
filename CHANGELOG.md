@@ -49,10 +49,12 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - There is no cancelling: a screen always finishes. An Everstone is still the way to stop a Pokémon evolving by
   itself.
 - The screen takes no keys or clicks: the prompt and commands work while it plays. A click on it does nothing. A
-  command that evolves another Pokémon meanwhile (a twin's stone, a Rare Candy) answers when that one's screen
-  begins, after the screen playing now: up to about ten seconds, as evolutions go one at a time. A screen already
-  playing finishes after a `/clear`; a reload or restart mid-screen doesn't bring it back (the evolution is saved
-  either way).
+  command that evolves another Pokémon meanwhile (a twin's stone, a Rare Candy) answers at once, and its screen plays
+  after the one playing now. When an evolution can't be worked out within a second (evolutions waiting their turn, a
+  slow download), its command doesn't wait for it: _"Giving the Water Stone to Eevee: what it does shows after the one
+  on screen."_ (or _"Previewing Eevee's evolution in the rays style after the one on screen."_), and a stone it can't
+  use is told in a toast when its turn comes. A screen already playing finishes after a `/clear`; a reload or restart
+  mid-screen doesn't bring it back (the evolution is saved either way).
 - Releasing or depositing the evolving Pokémon mid-screen lets the screen finish; nothing is written back for it.
 
 ### Known limitations
@@ -68,6 +70,10 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   whose write was overwritten anyway makes its change again on the newer save, within ten seconds.
 - A save write the store refuses (another window holding its lock) is no longer shown as done: the ₽, the Bag and the
   party drawn stay as stored, and the command says it couldn't reach the Pokémon.
+- Every command answers within a few seconds, whatever it waits on. Commands queued behind evolutions or a stalled
+  download could run past Claude Code's ten seconds for a command: their answers were lost, and after a few the plugin
+  was unloaded until a restart, the band gone. A command still waiting after six seconds now answers _"Still working
+  on it: a download is slow. Anything this changes is told when it's done."_, and what it then does comes as a toast.
 - A first start offline, then a slow network, catches one first Pokémon. Retries could overlap and catch two, the
   first going into the PC box unasked.
 

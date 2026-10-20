@@ -38,7 +38,7 @@ async function sceneOf(band: Band): Promise<Set<number>> {
 const WHITE = 0xffffff
 
 test(
-  'a second stone given while the first evolution plays waits for it to finish, then plays its own',
+  'a second stone given while the first evolution plays answers at once, waits for it to finish, then plays its own',
   { timeoutMs: 30_000 },
   async ($, on) => {
     const VAPOREON = 0x070809
@@ -76,10 +76,9 @@ test(
       shown.push((await sceneOf(band)).has(VAPOREON))
     }
     expect(shown).toEqual(Array(10).fill(false))
-    expect(said).toBe('')
-    for (let i = 0; i < 100 && !said; i++) await w.clock.advance(100)
+    // It has answered already, without waiting for its turn.
     await second
-    expect(said).toBe('Eevee evolved into Vaporeon!')
+    expect(said).toBe('Giving the Water Stone to Eevee: what it does shows after the one on screen.')
     // The second one has its own whole animation: a white silhouette, then both stand as Vaporeon. The silhouette
     // swaps between the two forms; at least the Eevee one shows past the lead.
     await w.clock.advance(1500)
@@ -210,7 +209,7 @@ test("a stone given to a Pokémon another session just released says it's gone, 
   expect(w.toasts).toEqual([])
 })
 
-test('a stone waiting its turn behind another evolution, for a Pokémon released meanwhile, keeps the stone', async ($, on) => {
+test('a stone waiting its turn behind another evolution, for a Pokémon released meanwhile, keeps the stone, and says so in a toast', async ($, on) => {
   const w = await begin($, on, {
     ...emptySave(),
     party: [member('eevee', { id: 'e1', gender: 'male' }), member('eevee', { id: 'e2', gender: 'female' })],
@@ -226,7 +225,11 @@ test('a stone waiting its turn behind another evolution, for a Pokémon released
   expect(await cmd($, 'pokemon', 'release eevee')).toBe('Bye bye, Eevee ♀ (Lv 1, party)! It went back to the wild.')
   for (let i = 0; i < 100 && !said; i++) await w.clock.advance(100)
   await waiting
-  expect(said).toBe('Eevee is no longer in your party. Your Water Stone is still in your Bag.')
+  // The command doesn't wait for its turn; what came of it is told when it comes.
+  expect(said).toBe('Giving the Water Stone to Eevee: what it does shows after the one on screen.')
+  const gone = 'Eevee is no longer in your party. Your Water Stone is still in your Bag.'
+  for (let i = 0; i < 100 && !w.toasts.includes(gone); i++) await w.clock.advance(100)
+  expect(w.toasts.filter(t => t === gone)).toHaveLength(1)
   expect(w.saveNow().party.map(m => [m.id, m.species])).toEqual([['e1', 'vaporeon']])
   expect(w.saveNow().bag).toEqual({ 'water-stone': 1 })
 })
