@@ -213,8 +213,8 @@ export function guessItem(
   return best && { item: best.item, rest: best.rest }
 }
 
-// The words that pick `p` exactly: "charizard mega x".
-export const spell = (p: Omit<Pick, 'dex'>) =>
+// The words that pick `p` exactly: "charizard mega x". A party member, which has no dex number, spells the same way.
+export const spell = (p: Omit<Pick, 'dex'> & { dex?: number }) =>
   [p.species, ...(p.form === 'regular' ? [] : [p.form])].join(' ').replace(/-/g, ' ')
 
 // Whether `words` spell `p` right, only spaced apart: `porygon 2` is Porygon2.
