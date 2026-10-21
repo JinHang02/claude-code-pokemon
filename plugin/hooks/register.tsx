@@ -1534,9 +1534,10 @@ async function evolveNow(
         look ? s.species === look.species && formOf(s) === look.form : named.includes(pickOf(s))
       const due = allowed.filter(isNamed)
       const duePicks = [...new Set(due.map(pickOf))]
-      if ((!named.length || !options.some(isNamed)) && allowed.length)
+      // Not ready yet, it names every stage it has.
+      if ((!named.length || !options.some(isNamed)) && options.length)
         return {
-          text: `${name} can't evolve into ${speciesName(slug(into))}. It can evolve into ${orList(picks.map(labelOf))}.`,
+          text: `${name} can't evolve into ${speciesName(slug(into))}. It can evolve into ${orList((allowed.length ? picks : all).map(labelOf))}.`,
         }
       // A branch it has, but not now: how it gets there.
       if (named.length && options.some(isNamed) && !due.length) {

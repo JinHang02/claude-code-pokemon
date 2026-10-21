@@ -98,7 +98,11 @@ test("/pokemon evolve says why when it can't", async ($, on) => {
   })
   expect(await cmd($, 'pokemon', 'evolve')).toMatch(/^Evolution is manual\. .*\/pokemon evolve <name>/)
   expect(await cmd($, 'pokemon', 'evolve charmander')).toBe('Charmander evolves at Lv 16.')
+  expect(await cmd($, 'pokemon', 'evolve charmander pikachu')).toBe(
+    "Charmander can't evolve into Pikachu. It can evolve into Charmeleon.",
+  )
   expect(await cmd($, 'pokemon', 'evolve charizard')).toBe("Charizard doesn't evolve any further.")
+  expect(await cmd($, 'pokemon', 'evolve charizard pikachu')).toBe("Charizard doesn't evolve any further.")
   expect(await cmd($, 'pokemon', 'evolve pikachu')).toBe("Pikachu holds an everstone: it won't evolve.")
   expect(await cmd($, 'pokemon', 'evolve vaporeon')).toContain('No vaporeon in your party.')
   await cmd($, 'pokemon', 'off')
