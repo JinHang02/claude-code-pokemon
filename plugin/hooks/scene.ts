@@ -23,6 +23,12 @@ const FLEE = WILD * 3
 const ACCEL = 0.03
 
 const SPARK = [0xffffff, 0xfff27a, 0xffd84a]
+// Ready-to-evolve motes: gold as they rise, paler higher up, a white twinkle near the top.
+const MOTE = [0xffdf5e, 0xfff1a8, 0xfffbe8]
+const MOTES = 6
+// They move every other calm frame: a ready Pokémon can wait for days, and each move is a redraw.
+const MOTE_STEP = CALM_EVERY * 2
+const MOTE_LIFE = ticks(3600)
 const DUST = [0xb5ab99, 0x968d7e, 0x6f685e]
 const ZZZ = [0xffffff, 0xdde4ff, 0xb8c2e0, 0x8c96b4]
 const CONFETTI = [0xff5a5a, 0xffd23f, 0x3fd1ff, 0x7dff6a, 0xd57bff, 0xffffff]
@@ -655,11 +661,44 @@ function thoughtBubble(out: Pixels, lead: Scene, width: number, top: number, t: 
   paint(out, dot(BUBBLE), far, bottom + 2, out.height - 2, true)
 }
 
+// Gold motes drifting up from a Pokémon's feet and twinkling out above its head: it's ready to evolve.
+// They stay left of `right`, in the party's part of the band (never in the ₽ button's corner).
+function motes(out: Pixels, { img, left, floor }: Placed, clip: number, t: number, seed: number, right: number) {
+  const top = floor + 1 - img.height
+  for (let j = 0; j < MOTES; j++) {
+    const offset = Math.floor(((j * 0.618 + seed * 0.37) % 1) * MOTE_LIFE)
+    const age = (t + offset) % MOTE_LIFE
+    const p = age / MOTE_LIFE
+    // Fading out: drawn every other step.
+    if (p > 0.8 && Math.floor(t / MOTE_STEP) % 2) continue
+    const cycle = Math.floor((t + offset) / MOTE_LIFE)
+    const x = left + Math.floor(noise(j + seed * 31, cycle) * (img.width + 4)) - 2
+    const y = floor - Math.round(p * (img.height + 4))
+    const color = p > 0.55 && (t + j) % 6 < 2 ? MOTE[2] : p < 0.25 ? MOTE[0] : MOTE[1]
+    if (x >= 0 && x < Math.min(right, out.width) && y >= Math.max(0, top - 6) && y <= clip)
+      out.pixels[y * out.width + x] = color ?? CLEAR
+  }
+}
+
+// A steady pseudo-random number in [0, 1) for a pair of numbers.
+const noise = (a: number, b: number) => {
+  const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453
+  return x - Math.floor(x)
+}
+
 export { phaseAt } from './backdrop'
 export type { Landscape, Phase } from './backdrop'
 
 // `overlays`: painted last, over everything (a Poké Ball and its sparkles).
-export type Look = { phase: Phase; landscape?: Landscape; wild?: Pixels; evolveFrom?: Pixels; overlays?: Placed[] }
+// `ready`: per party member, whether it's waiting to evolve (gold motes rise around it).
+export type Look = {
+  phase: Phase
+  landscape?: Landscape
+  wild?: Pixels
+  evolveFrom?: Pixels
+  overlays?: Placed[]
+  ready?: boolean[]
+}
 
 // The landscape alone, `total` columns wide at tick `t`, the ₽ button's corner included. The sun and moon stay in
 // the scene's left `scene` columns, so they never hide under the wallet nor go when the button does.
@@ -730,6 +769,7 @@ export function frame(
   }
 
   const tops: number[] = []
+  const ready: (Placed & { seed: number })[] = []
   // Last over the lead, so a Pokémon standing behind it never evolves out of sight.
   const evolving = s.mood?.kind === 'evolve' ? s.mood.actor : undefined
   const order = s.actors.map((_, i) => s.actors.length - 1 - i).filter(i => i !== evolving)
@@ -748,7 +788,9 @@ export function frame(
     const p = pose(s, facing.height, i)
     let sprite = dim(scaleY(facing, p.scale), p.light * night)
     if (isWhite) sprite = silhouette(sprite)
-    paint(out, sprite, Math.round(a.x) + p.shake, ground - p.lift + p.sink, ground, false, PARTY)
+    const at: Placed = { img: sprite, left: Math.round(a.x) + p.shake, floor: ground - p.lift + p.sink }
+    if (look.ready?.[i] && !isWhite) ready.push({ ...at, seed: i })
+    paint(out, sprite, at.left, at.floor, ground, false, PARTY)
     tops[i] = ground + 1 - sprite.height - p.lift + p.sink
   }
 
@@ -792,6 +834,8 @@ export function frame(
       paint(out, glyph(Z_GLYPH, 3, pick(ZZZ, age)), fx.x + drift, (tops[fx.y] ?? ground) + 2 - rise, ground, true)
     }
   }
+  // Not while one evolves: everyone watches it, and nothing is painted over it.
+  if (s.mood?.kind !== 'evolve') for (const r of ready) motes(out, r, ground, s.t - (s.t % MOTE_STEP), r.seed, width)
   for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
   return out
 }

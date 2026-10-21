@@ -50,7 +50,7 @@ test('a missing or broken save loads as a fresh one', () => {
   expect(loadSave(undefined)).toEqual(emptySave())
   expect(loadSave('garbage')).toEqual(emptySave())
   const broken = loadSave({ party: [pikachu, { species: 3 }, null], size: 'huge', dex: null, recent: ['eevee', 4] })
-  expect(broken).toEqual({ party: [pikachu], size: 'auto', dex: {}, recent: ['eevee'] })
+  expect(broken).toEqual({ party: [pikachu], size: 'auto', evolution: 'manual', dex: {}, recent: ['eevee'] })
   expect(loadSave({ party: [pikachu, pikachu, pikachu, pikachu] }).party.length).toBe(3)
 })
 
@@ -234,7 +234,7 @@ test('sprite size: small halves it, auto goes small on a short terminal, all fit
 
 test('a 1.0.0 save loads with no box and no caught counts; box entries that are not Pokémon are dropped', () => {
   const old = { party: [pikachu], size: 'auto', dex: { pikachu: { seen: 1, shiny: 0, first: 1 } }, recent: ['pikachu'] }
-  expect(loadSave(old)).toEqual(old)
+  expect(loadSave(old)).toEqual({ ...old, evolution: 'manual' })
   const eevee = { ...pikachu, id: 'b1', species: 'eevee', isCaught: true }
   const s = loadSave({
     ...old,
@@ -676,4 +676,29 @@ test('a width that is not a positive number keeps the wide layout; a Type: Null 
     expect([columns, formatParty(save, columns)]).toEqual([columns, formatParty(save)])
   const nulls = { ...emptySave(), party: [{ ...pikachu, species: 'type-null', heldItem: 'kings-rock' }] }
   expect(formatBag(nulls, 0)).toContain("Held        Type: Null holds a King's Rock")
+})
+
+test('a Pokémon waiting for /pokemon evolve reads "ready to evolve", with how to evolve it', () => {
+  const due = {
+    ...pikachu,
+    xp: xpForLevel(30),
+    next: [{ species: 'raichu', way: { kind: 'level' as const, level: 30 } }],
+  }
+  const save = { ...emptySave(), party: [due] }
+  const ready = formatParty(save, Infinity, [due.id])
+  expect(ready).toContain('· ready to evolve')
+  expect(ready.endsWith("/pokemon evolve <name> evolves a Pokémon that's ready.")).toBe(true)
+  const waiting = formatParty(save)
+  expect(waiting).toContain('· evolves at Lv 30')
+  expect(waiting).not.toContain('/pokemon evolve')
+})
+
+test("the evolution setting and a member's announcement survive a reload; anything else is manual", () => {
+  const told = { ...pikachu, isAnnounced: true as const }
+  expect(loadSave({ ...emptySave(), evolution: 'auto', party: [told] })).toMatchObject({
+    evolution: 'auto',
+    party: [told],
+  })
+  expect(loadSave({ ...emptySave(), evolution: 'sometimes' }).evolution).toBe('manual')
+  expect(loadSave({ ...emptySave(), party: [{ ...pikachu, isAnnounced: 'yes' }] }).party[0]).toEqual(pikachu)
 })

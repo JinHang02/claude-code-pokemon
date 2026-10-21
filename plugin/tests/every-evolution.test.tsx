@@ -83,7 +83,7 @@ PATHS.forEach((p, n) =>
           ...(p.gender ? { gender: p.gender } : {}),
         })
         const party: Member[] = [start]
-        const save: Save = { ...emptySave(), party }
+        const save: Save = { ...emptySave(), evolution: 'auto', party }
         if (w.kind === 'level') start.xp = xpForLevel(w.level) - 5
         if (w.kind === 'level' && w.partyType) party.push(member('umbreon'))
         if (w.kind === 'shed') start.xp = xpForLevel(p.siblingLevel ?? 20) - 5

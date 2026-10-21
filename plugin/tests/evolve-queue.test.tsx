@@ -133,6 +133,7 @@ test(
       on,
       {
         ...emptySave(),
+        evolution: 'auto',
         party: [
           member('pikachu', { id: 'm', ...plain }),
           member('charmander', { id: 'c', xp: xpForLevel(16), gender: 'male', heldItem: 'everstone' }),
