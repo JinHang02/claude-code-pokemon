@@ -26,7 +26,9 @@ const SPARK = [0xffffff, 0xfff27a, 0xffd84a]
 // Ready-to-evolve motes: gold as they rise, paler higher up, a white twinkle near the top.
 const MOTE = [0xffdf5e, 0xfff1a8, 0xfffbe8]
 const MOTES = 6
-const MOTE_LIFE = ticks(1800)
+// They move every other calm frame: a ready Pokémon can wait for days, and each move is a redraw.
+const MOTE_STEP = CALM_EVERY * 2
+const MOTE_LIFE = ticks(3600)
 const DUST = [0xb5ab99, 0x968d7e, 0x6f685e]
 const ZZZ = [0xffffff, 0xdde4ff, 0xb8c2e0, 0x8c96b4]
 const CONFETTI = [0xff5a5a, 0xffd23f, 0x3fd1ff, 0x7dff6a, 0xd57bff, 0xffffff]
@@ -667,8 +669,8 @@ function motes(out: Pixels, { img, left, floor }: Placed, clip: number, t: numbe
     const offset = Math.floor(((j * 0.618 + seed * 0.37) % 1) * MOTE_LIFE)
     const age = (t + offset) % MOTE_LIFE
     const p = age / MOTE_LIFE
-    // Fading out: drawn every other calm frame.
-    if (p > 0.8 && Math.floor(t / CALM_EVERY) % 2) continue
+    // Fading out: drawn every other step.
+    if (p > 0.8 && Math.floor(t / MOTE_STEP) % 2) continue
     const cycle = Math.floor((t + offset) / MOTE_LIFE)
     const x = left + Math.floor(noise(j + seed * 31, cycle) * (img.width + 4)) - 2
     const y = floor - Math.round(p * (img.height + 4))
@@ -833,8 +835,7 @@ export function frame(
     }
   }
   // Not while one evolves: everyone watches it, and nothing is painted over it.
-  // They move at the calm pace, so they never make the band redraw more often than a still party does.
-  if (s.mood?.kind !== 'evolve') for (const r of ready) motes(out, r, ground, s.t - (s.t % CALM_EVERY), r.seed, width)
+  if (s.mood?.kind !== 'evolve') for (const r of ready) motes(out, r, ground, s.t - (s.t % MOTE_STEP), r.seed, width)
   for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
   return out
 }

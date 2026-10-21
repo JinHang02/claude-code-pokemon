@@ -29,7 +29,7 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   here or in another session, and one that evolves only at night stops showing motes by day, within a minute.
 - A Pokémon whose evolution screen is still to play (a wild visitor out, another screen first) isn't told ready in
   its new form until the screen has shown it, so the screen keeps the surprise.
-- The motes move at the meadow's calm pace, so a Pokémon waiting for days doesn't keep the terminal busier.
+- The motes move every 0.4 s, so a Pokémon waiting for days adds at most two or three frames a second to the band.
 - Known limit: a Claude Code window still running a version without manual evolution (1.5.0 and before) evolves
   Pokémon by itself, and its saves drop the evolution setting and which Pokémon were announced. Restart other
   windows after updating.
