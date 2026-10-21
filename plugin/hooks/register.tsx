@@ -1244,6 +1244,15 @@ const dueFor = (m: Member, c: Surroundings): Stage[] =>
     partyTypes: c.partyTypes,
   })
 
+// The stages `m` reaches by itself in save `s`: with that save's party, and the types `c` looked up for it (one that
+// joined since, not looked up yet, counts as none).
+const dueIn = (s: Save, m: Member, c: Surroundings): Stage[] =>
+  dueFor(m, {
+    ...c,
+    party: s.party.map(p => p.species),
+    partyTypes: c.partyTypes.length ? s.party.flatMap(p => types.get(pokeapiForm(p.species, p.form)) ?? []) : [],
+  })
+
 // Evolution checks run one at a time, so no Pokémon evolves twice. A failed check was already reported
 // by its caller and doesn't hold up the next.
 let learning: Promise<void> = Promise.resolve()
@@ -1310,14 +1319,8 @@ async function announceReady($: EngineInterface) {
     )
   }
   const isHeld = (m: Member) => isComing(m) || [screen, ...screensDue].some(d => d && !d.isPreview && d.key === m.id)
-  // Due in save `s`, with its own party and the types looked up for it (one not looked up yet counts as none, and
-  // waits for the next check).
-  const isDueIn = (s: Save, m: Member) => {
-    const partyTypes = context.partyTypes.length
-      ? s.party.flatMap(p => types.get(pokeapiForm(p.species, p.form)) ?? [])
-      : []
-    return dueFor(m, { ...context, party: s.party.map(p => p.species), partyTypes }).length > 0
-  }
+  // A partner not looked up yet waits for the next check.
+  const isDueIn = (s: Save, m: Member) => dueIn(s, m, context).length > 0
   readyKeys = new Set(
     save.isOff
       ? []
@@ -1587,11 +1590,7 @@ async function evolveNow(
       const latest = s.party.find(m => m.id === member.id && m.species === member.species)
       if (!later || !latest) return true
       const grown = withTime({ ...latest, xp: latest.xp + (extra[member.id] ?? 0), next: stages }, times)
-      // That party's types as looked up for the context (one that joined since, not looked up, counts as none).
-      const partyTypes = later.partyTypes.length
-        ? s.party.flatMap(m => types.get(pokeapiForm(m.species, m.form)) ?? [])
-        : []
-      return dueFor(grown, { ...later, party: s.party.map(m => m.species), partyTypes }).includes(next)
+      return dueIn(s, grown, later).includes(next)
     }
     const notDue = () => `${name} ${evolvesText(withTime({ ...member, next: stages }, times))}.`
     if (!isStillDue(save)) return { text: notDue() }
