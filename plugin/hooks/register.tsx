@@ -2225,15 +2225,13 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   // The scene keeps moving underneath; nothing is drawn over the Mart.
   if (mart.isOpen) return
-  const look = lookNow()
-  // Rising motes move at the calm pace too: a Pokémon may wait to evolve for days.
   if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return
   const cells = screen
     ? screenCells(screen, band.total, band.rows)
-    : toCells(frame(status, fitted.lefts, band.columns, band.rows, look, band.total)).cells
+    : toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total)).cells
   if (cells === lastCells && !isHidden) return
   if (isAiming) {
     // The redraw makes this frame again and records it as drawn.
