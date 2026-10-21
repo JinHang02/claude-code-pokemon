@@ -1501,6 +1501,9 @@ async function evolveNow(
       const [species = '', form = 'regular'] = pick.split('|')
       return displayName(species, form)
     }
+    const pickOne = (ps: string[]) => ({
+      text: `${name} can evolve into ${orList(ps.map(labelOf))}.\nPick one: /pokemon evolve ${ask?.as ?? spell(member)} <name>`,
+    })
     const picks = [...new Set(allowed.map(pickOf))]
     let choices = allowed
     if (isAsked && into) {
@@ -1541,15 +1544,9 @@ async function evolveNow(
         const label = look ? displayName(look.species, look.form) : orList(named.map(labelOf))
         return { text: `${name} ${ways.replace(/^evolves/, `evolves into ${label}`)}.` }
       }
-      if (duePicks.length > 1)
-        return {
-          text: `${name} can evolve into ${orList(duePicks.map(labelOf))}.\nPick one: /pokemon evolve ${ask?.as ?? spell(member)} <name>`,
-        }
+      if (duePicks.length > 1) return pickOne(duePicks)
       choices = due
-    } else if (isAsked && picks.length > 1)
-      return {
-        text: `${name} can evolve into ${orList(picks.map(labelOf))}.\nPick one: /pokemon evolve ${ask?.as ?? spell(member)} <name>`,
-      }
+    } else if (isAsked && picks.length > 1) return pickOne(picks)
     // A preview shows any branch; a real evolution takes this Pokémon's own.
     const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, choices)
     if (!next) {
