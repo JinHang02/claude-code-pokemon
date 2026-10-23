@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![996 tests](https://img.shields.io/badge/tests-996_passing-27c93f?style=flat-square)](plugin/tests)
+[![998 tests](https://img.shields.io/badge/tests-998_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
@@ -189,9 +189,9 @@ A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Gho
 /pokedex
 
 Pokédex: 37 / 905 seen · 4 caught · 2 shiny
-  Gen 1  █░░░░░░░░░  21/151
-  Gen 2  █░░░░░░░░░  9/100
-  Gen 3  ░░░░░░░░░░  4/135
+  Gen 1  ▓░░░░░░░░░  21/151 seen · 3 caught · 1 shiny
+  Gen 2  ▓░░░░░░░░░  9/100 seen · 1 caught · 1 shiny
+  Gen 3  ░░░░░░░░░░  4/135 seen · 0 caught · 0 shiny
   ...
 Shinies: Pikachu, Granbull
 Recently seen: Bulbasaur, Golurk, Eevee, Charmander
@@ -340,7 +340,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                                                                                                                           |
 | `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                                                                                                                                      |
 | `/pokemon help`                         | Every sub-command, one a line                                                                                                                                                                                                                                                               |
-| `/pokedex`                              | Everything you've seen, per generation, plus your shinies                                                                                                                                                                                                                                   |
+| `/pokedex`                              | Everything you've seen and caught, per generation, plus your shinies                                                                                                                                                                                                                        |
 | `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve [style]` (your lead's evolution on that screen, nothing saved), `wild [shiny] [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                   |
 
 ---

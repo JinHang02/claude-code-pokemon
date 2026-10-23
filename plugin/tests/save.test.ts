@@ -178,10 +178,23 @@ test('the Pokédex counts per generation and lists shinies', () => {
   save = recordSeen(save, 'chikorita', false, 2)
   const text = formatDex(save, names)
   expect(text).toContain('Pokédex: 2 / 905 seen · 0 caught · 1 shiny')
-  expect(text).toContain('Gen 1  ░░░░░░░░░░  1/151')
-  expect(text).toContain('Gen 2  ░░░░░░░░░░  1/100')
+  expect(text).toContain('Gen 1  ░░░░░░░░░░  1/151 seen · 0 caught · 1 shiny')
+  expect(text).toContain('Gen 2  ░░░░░░░░░░  1/100 seen · 0 caught · 0 shiny')
   expect(text).toContain('Shinies: Bulbasaur')
   expect(text).toContain('Recently seen: Chikorita, Bulbasaur')
+})
+
+test("a generation's bar shows its caught cells, then the ones only seen", () => {
+  const names = Array.from({ length: 905 }, (_, i) => `mon-${i}`)
+  let save = emptySave()
+  for (let i = 0; i < 76; i++) save = recordSeen(save, `mon-${i}`, false, i)
+  for (let i = 0; i < 31; i++) save = recordCaught(save, `mon-${i}`, i)
+  // A catch never seen before counts as seen too.
+  save = recordCaught(save, 'mon-151', 1)
+  const text = formatDex(save, names)
+  expect(text).toContain('Gen 1  ██▓▓▓░░░░░  76/151 seen · 31 caught · 0 shiny')
+  expect(text).toContain('Gen 2  ░░░░░░░░░░  1/100 seen · 1 caught · 0 shiny')
+  expect(text).toContain('Gen 3  ░░░░░░░░░░  0/135 seen · 0 caught · 0 shiny')
 })
 
 test('the party lists levels, xp to go and when each evolves', () => {

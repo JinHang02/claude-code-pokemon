@@ -24,6 +24,8 @@ import {
   BOX_FULL,
   boxPages,
   buy,
+  CAUGHT_GREEN,
+  DEX_CELL,
   displayName,
   emptySave,
   formatBag,
@@ -2802,6 +2804,39 @@ export const register: Register = on => {
           </Text>{' '}
           <Text color={COLORS.blue}>for {formatDuration(e.props.durationMs)}</Text>
         </Text>
+      </Box>
+    )
+  })
+
+  // The Pokédex with each bar's caught cells green over the seen ones. A tree of our own takes the row's whole place,
+  // so it draws the gutter as the engine does (the text starts with the plugin's name); the text keeps the cells apart.
+  on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
+    const { command, text, isErrored } = e.props
+    const hasBars = Object.values(DEX_CELL).some(cell => text.includes(cell))
+    if (e.surface !== 'terminal' || command !== 'pokedex' || isErrored || !hasBars) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    // A line's caught cells green, its seen ones as solid as before.
+    const runs = (line: string) =>
+      line.split(new RegExp(`(${DEX_CELL.caught}+|${DEX_CELL.seen}+)`)).map((run, i) =>
+        run.startsWith(DEX_CELL.caught) ? (
+          <Text key={`c${i}`} color={CAUGHT_GREEN}>
+            {run}
+          </Text>
+        ) : run.startsWith(DEX_CELL.seen) ? (
+          DEX_CELL.caught.repeat(run.length)
+        ) : (
+          run
+        ),
+      )
+    return (
+      <Box flexDirection="row">
+        <Text color="inactive">{'  ⎿  '}</Text>
+        <Box flexDirection="column">
+          {text.split('\n').map((line, y) => (
+            // An empty Text would take no row.
+            <Text key={`r${y}`}>{line ? runs(line) : ' '}</Text>
+          ))}
+        </Box>
       </Box>
     )
   })

@@ -6,7 +6,7 @@ import { FRIENDSHIP_MS } from '../hooks/evolution'
 import { martRows } from '../hooks/mart'
 import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
-import { displayName, emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
+import { CAUGHT_GREEN, displayName, emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 import {
@@ -919,6 +919,50 @@ test('/pokemon off leaves the spinner and the closing line as the engine draws t
   expect(engine.at(-1)).toEqual(DURATION)
   expect((await done.find({ type: 'Text' }))?.text).toBe(JSON.stringify(DURATION))
 })
+
+const DEX = {
+  command: 'pokedex',
+  args: '',
+  text: 'pokemon: Pokédex: 77 / 905 seen · 31 caught · 0 shiny\n  Gen 1  ██▓▓▓░░░░░  76/151 seen · 31 caught · 0 shiny\n\nYour party:',
+  isErrored: false,
+} as const
+
+test(
+  "the Pokédex draws each bar's caught cells green over the seen ones, under the engine's gutter",
+  KIT,
+  async ($, on) => {
+    const engine = engineLines(on)
+    await begin($, on, { ...emptySave(), party: [member('pikachu')] })
+    const row = await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'CommandOutput', props: DEX })
+    expect(engine).toEqual([])
+    expect((await row.find({ type: 'Text', text: /⎿/ }))?.props.color).toBe('inactive')
+    const lines = (await row.findAll({ type: 'Text' })).map(t => t.text)
+    expect(lines).toContain('pokemon: Pokédex: 77 / 905 seen · 31 caught · 0 shiny')
+    expect(lines).toContain('  Gen 1  █████░░░░░  76/151 seen · 31 caught · 0 shiny')
+    // The blank line before the party keeps its row.
+    expect(lines).toContain(' ')
+    const green = await row.findAll({ type: 'Text', text: /^█+$/ })
+    expect(green.map(t => [t.text, t.props.color])).toEqual([['██', CAUGHT_GREEN]])
+
+    // Every generation seen in full leaves no unseen cell, and is drawn the same way.
+    const full = { ...DEX, text: 'pokemon: Pokédex\n  Gen 1  ████▓▓▓▓▓▓  151/151 seen · 60 caught · 0 shiny' }
+    const whole = await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'CommandOutput', props: full })
+    expect(engine).toEqual([])
+    const filled = await whole.findAll({ type: 'Text', text: /^█+$/ })
+    expect(filled.map(t => [t.text, t.props.color])).toEqual([['████', CAUGHT_GREEN]])
+
+    for (const props of [
+      { ...DEX, command: 'pokemon' },
+      { ...DEX, isErrored: true },
+      { ...DEX, text: "Couldn't open the Pokédex: offline" },
+    ]) {
+      await $.ui.mount({ plugin: 'pokemon', surface: 'terminal', component: 'CommandOutput', props })
+      expect(engine.at(-1)).toEqual(props)
+    }
+    await $.ui.mount({ plugin: 'pokemon', surface: 'desktop', component: 'CommandOutput', props: DEX })
+    expect(engine.at(-1)).toEqual(DEX)
+  },
+)
 
 test("the desktop spinner keeps its own words: there it names the step it's on", KIT, async ($, on) => {
   const engine = engineLines(on)
