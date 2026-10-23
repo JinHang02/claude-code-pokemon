@@ -526,9 +526,20 @@ const signOf = (m: Member) =>
 // A member as its line in a numbered list names it, so an answer says which one went: "✨ Eevee ♂".
 export const nameOf = (m: Member) => `${m.isShiny ? '✨ ' : ''}${displayName(m.species, m.form)}${signOf(m)}`
 
-const bar = (done: number, total: number, width = 10) => {
-  const full = Math.round((done / total) * width)
-  return '█'.repeat(full) + '░'.repeat(width - full)
+// The Pokédex bar's cells: caught, seen but not caught, not seen yet. The terminal draws the caught ones green over
+// the seen ones (see register.tsx), so where colour can't show, the text tells them apart itself.
+export const DEX_CELL = { caught: '█', seen: '▓', unseen: '░' } as const
+
+// The caught cells' green, a shade darker than the theme's own.
+export const CAUGHT_GREEN = '#3FA33F'
+
+const bar = (caught: number, seen: number, total: number, width = 10) => {
+  const cells = (n: number) => Math.round((n / total) * width)
+  return (
+    DEX_CELL.caught.repeat(cells(caught)) +
+    DEX_CELL.seen.repeat(cells(seen) - cells(caught)) +
+    DEX_CELL.unseen.repeat(width - cells(seen))
+  )
 }
 
 export const TIME_TEXT: Record<Time, string> = { day: 'by day', night: 'at night', dusk: 'at dusk' }
@@ -712,8 +723,11 @@ export function formatDex(save: Save, names: string[]): string {
   const caught = names.filter(n => (save.dex[n]?.caught ?? 0) > 0)
   const gens = GENERATIONS.map((end, g) => {
     const start = g === 0 ? 0 : (GENERATIONS[g - 1] ?? 0)
-    const inGen = names.slice(start, end).filter(n => save.dex[n]).length
-    return `  Gen ${g + 1}  ${bar(inGen, end - start)}  ${inGen}/${end - start}`
+    const gen = names.slice(start, end)
+    const inGen = gen.filter(n => save.dex[n]).length
+    const caughtInGen = gen.filter(n => (save.dex[n]?.caught ?? 0) > 0).length
+    const shinyInGen = gen.filter(n => (save.dex[n]?.shiny ?? 0) > 0).length
+    return `  Gen ${g + 1}  ${bar(caughtInGen, inGen, end - start)}  ${inGen}/${end - start} seen · ${caughtInGen} caught · ${shinyInGen} shiny`
   })
   return [
     `Pokédex: ${seen.length} / ${names.length} seen · ${caught.length} caught · ${shinies.length} shiny`,

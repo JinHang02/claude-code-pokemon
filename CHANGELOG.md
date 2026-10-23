@@ -34,6 +34,12 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   Pokémon by itself, and its saves drop the evolution setting and which Pokémon were announced. Restart other
   windows after updating.
 
+### Added: caught in the Pokédex bars
+
+- Each generation's bar in `/pokedex` shows how many you caught as well as saw: the caught part is green, over the
+  seen part, and the line counts them with its shinies, as the Pokédex's first line does
+  (`89/151 seen · 22 caught · 3 shiny`). Where there's no colour, the caught cells are `█` and the ones only seen `▓`.
+
 ## [1.5.0] - 2026-10-20
 
 ### Added: the evolution screen
