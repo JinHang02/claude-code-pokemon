@@ -1979,11 +1979,30 @@ test(
     expect(w.saveNow().party.map(m => m.species)).toEqual(['ninjask', 'shedinja'])
     // Ninjask's XP from this session's ledger comes along: the same level.
     expect(w.partyNow().map(m => level(m.xp))).toEqual([20, 20])
-    // Caught, as in the games.
+    // Both caught, as in the games; Shedinja isn't from a Poké Ball, as Nincada wasn't.
+    expect(w.saveNow().dex.ninjask).toMatchObject({ seen: 1, caught: 1 })
     expect(w.saveNow().dex.shedinja).toMatchObject({ seen: 1, caught: 1 })
-    expect(await cmd($, 'pokedex')).toContain(' · 1 caught · ')
+    expect(w.saveNow().party[1]?.isCaught).toBeUndefined()
+    expect(await cmd($, 'pokedex')).toContain(' · 2 caught · ')
   },
 )
+
+test('Shedinja from a Nincada caught with a Poké Ball is marked ◓ like it', KIT, async ($, on) => {
+  answerTools(on)
+  const w = await begin($, on, {
+    ...emptySave(),
+    evolution: 'auto',
+    party: [member('nincada', { xp: xpForLevel(20) - 5, isCaught: true })],
+  })
+  await until($, () => w.saveNow().party[0]?.next !== undefined)
+  await $.tool.call(bash('git commit -m x') as never)
+  await until($, () => w.saveNow().party.length === 2)
+  expect(w.saveNow().party.map(m => [m.species, m.isCaught])).toEqual([
+    ['ninjask', true],
+    ['shedinja', true],
+  ])
+  expect(await cmd($, 'pokemon', 'party')).toMatch(/Shedinja ◓/)
+})
 
 test('Pancham counts an Alolan Rattata as the Dark-type it is', KIT, async ($, on) => {
   answerTools(on)
@@ -2250,6 +2269,23 @@ test('a Rare Candy is one level, and the evolution that level brings', KIT, asyn
   expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
   expect(w.saveNow().bag).toBeUndefined()
   await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
+  expect(w.saveNow().dex.charmeleon).toMatchObject({ seen: 1, caught: 1 })
+})
+
+test('Rare Candies through two stages count each stage caught once', KIT, async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    evolution: 'auto',
+    party: [member('charmander', { xp: xpForLevel(15) + 3 })],
+    bag: { 'rare-candy': 21 },
+  })
+  expect(await cmd($, 'pokemon', 'give rare candy charmander')).toBe('Charmander grew to Lv 16!')
+  await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
+  for (let lv = 17; lv <= 36; lv++) await cmd($, 'pokemon', 'give rare candy charmeleon')
+  await until($, () => w.saveNow().party[0]?.species === 'charizard')
+  const { dex } = w.saveNow()
+  expect([dex.charmander?.caught, dex.charmeleon?.caught, dex.charizard?.caught]).toEqual([undefined, 1, 1])
+  expect(await cmd($, 'pokedex')).toContain(' · 2 caught · ')
 })
 
 test('a Rare Candy is refused at Lv 100, and kept', KIT, async ($, on) => {
@@ -2307,6 +2343,7 @@ test('time together brings friendship evolutions: Pichu becomes Pikachu after 10
   await w.clock.advance(180_000)
   await until($, () => w.saveNow().party[0]?.species === 'pikachu')
   expect(w.toasts).toEqual(['What? Pichu evolved into Pikachu!'])
+  expect(w.saveNow().dex.pikachu?.caught).toBe(1)
   expect(await cmd($, 'pokemon', 'party')).toContain('together 10h')
 })
 

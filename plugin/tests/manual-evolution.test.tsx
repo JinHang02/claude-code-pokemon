@@ -46,6 +46,7 @@ test('a Pokémon that can evolve waits, is announced once, and evolves when aske
   expect(await cmd($, 'pokemon', 'evolve charmander')).toBe('Charmander evolved into Charmeleon!')
   expect(w.toasts.at(-1)).toBe('What? Charmander evolved into Charmeleon!')
   expect(w.saveNow().party[0]).toMatchObject({ species: 'charmeleon', evolutions: 1 })
+  expect(w.saveNow().dex.charmeleon).toMatchObject({ seen: 1, caught: 1 })
   expect(w.saveNow().party[0]?.isAnnounced).toBeUndefined()
   expect(await cmd($, 'pokemon', 'party')).not.toContain('ready to evolve')
 })
@@ -124,6 +125,7 @@ test('evolution is manual by default; /pokemon evolve auto evolves anyone waitin
   )
   await until($, () => w.saveNow().party[0]?.species === 'charmeleon')
   expect(w.saveNow().evolution).toBe('auto')
+  expect(w.saveNow().dex.charmeleon?.caught).toBe(1)
   expect(await cmd($, 'pokemon', 'evolve MANUAL')).toContain('Evolution: manual.')
   expect(w.saveNow()).toMatchObject({ evolution: 'manual', evolutionStyle: 'white' })
 })
@@ -231,6 +233,7 @@ test('a stone still evolves at once with evolution manual', async ($, on) => {
   )
   expect(await cmd($, 'pokemon', 'give thunder stone pikachu')).toBe('Pikachu evolved into Raichu!')
   expect(w.saveNow().party[0]?.species).toBe('raichu')
+  expect(w.saveNow().dex.raichu).toMatchObject({ seen: 1, caught: 1 })
   expect(w.saveNow().bag?.['thunder-stone'] ?? 0).toBe(0)
 })
 
@@ -309,6 +312,8 @@ test('a request waiting its turn for one another session evolved meanwhile takes
   expect(await first).toBe('Pikachu evolved into Raichu!')
   expect(await second).toBe('Charmander already evolved.')
   expect(w.saveNow().party[1]).toMatchObject({ species: 'charmeleon', evolutions: 1 })
+  // Each counted once: the one evolved here, and the other session's, whose save didn't count it.
+  expect([w.saveNow().dex.raichu?.caught, w.saveNow().dex.charmeleon?.caught]).toEqual([1, 1])
 })
 
 test('losing what it evolves by while the sprite downloads stops the evolution', async ($, on) => {
