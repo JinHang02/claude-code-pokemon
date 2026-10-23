@@ -217,6 +217,10 @@ export function loadSave(raw: unknown): Save {
         first: count(e.first),
         ...(count(e.caught) ? { caught: count(e.caught) } : {}),
       }
+  // An evolution counts as caught; a save from before that counts the evolved ones it still has, once each.
+  for (const m of [...party, ...box])
+    if (m.evolutions > 0 && !dex[m.species]?.caught)
+      dex[m.species] = { ...(dex[m.species] ?? { seen: 1, shiny: 0, first: m.evolvedAt ?? 0 }), caught: 1 }
   return {
     party,
     size: SIZES.includes(s.size as Size) ? (s.size as Size) : 'auto',

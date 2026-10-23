@@ -6,6 +6,16 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Changed: an evolution counts as caught
+
+- The species a Pokémon evolves into counts as caught in the Pokédex, not just seen: every evolution, whichever way
+  it comes (a level, a stone, a held item, friendship, `/pokemon evolve`, auto), and each stage of a Rare Candy
+  chain. Nincada's evolution counts Ninjask and Shedinja both.
+- ◓ still means a Pokémon came from a Poké Ball and stays through evolution; Shedinja now has it when Nincada did.
+- An existing save counts each evolved species it still has in the party or PC box as caught, once, when it loads.
+  Stages passed through on the way (Ivysaur, for a Venusaur) aren't in the save, so they stay seen.
+- A Pokémon brought with `/pokemon <name>` or `/pokemon add` is still seen only until it evolves.
+
 ## [1.6.0] - 2026-10-23
 
 ### Added: you decide when they evolve
