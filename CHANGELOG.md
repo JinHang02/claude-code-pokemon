@@ -6,6 +6,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-23
+
 ### Changed: an evolution counts as caught
 
 - The species a Pokémon evolves into counts as caught in the Pokédex, not just seen: every evolution, whichever way
@@ -651,7 +653,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.3.0...v1.4.0
