@@ -7,6 +7,7 @@ import type { Click, Throw, ThrowEvent } from './catch'
 import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Gender, Stage } from './evolution'
+import { ALL_HELP, COMMANDS, POKEMON_HELP, suggest } from './commands'
 import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -2344,36 +2345,6 @@ const SPECIES_WAIT_MS = 2000
 const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
 
-// `/pokemon help`: every sub-command, one a line, narrow enough for a 60-column terminal.
-const HELP = [
-  'Pokémon Journey · /pokemon …',
-  ...(
-    [
-      ['(nothing)', 'a random new lead; old to PC box'],
-      ['<name>', 'lead with it; shiny <name>'],
-      ['add [name]', 'join the party'],
-      ['release <name> [n]', 'back to the wild; or remove'],
-      ['deposit <name>', 'into the PC box'],
-      ['party', 'your party'],
-      ['box [name] [page]', 'the PC box, 30 a page'],
-      ['bag', 'your items and ₽'],
-      ['give <item> <name>', 'evolve, level up or hold'],
-      ['take <name>', 'take back what it holds'],
-      ['everstone <name>', 'stop it evolving, or not'],
-      ['evolve <name> [n]', "evolve one that's ready"],
-      ['evolve manual, auto', 'by /pokemon evolve, or by itself'],
-      ['mart', 'the PokéMart, by mouse'],
-      ['buy <item> [count]', 'the PokéMart, by typing'],
-      ['size <size>', 'small, normal or auto'],
-      ['evolution <style>', 'rays, white or gradient'],
-      ['on, off', 'out, or back in their balls'],
-      ['help', 'this list'],
-    ] as const
-  ).map(([typed, what]) => `  ${typed.padEnd(19)}  ${what}`),
-  'Several of one? Add a number, shiny or lv <n>.',
-  'Also: /pokedex, and /pokemon-play to try things out.',
-].join('\n')
-
 async function pokemon($: EngineInterface, args: string): Promise<string> {
   const [head = '', ...rest] = args.trim().split(/\s+/)
   const tail = rest.join(' ')
@@ -2382,7 +2353,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
   // name is read the plain way.
   if (!species && !UNNAMED.has(head.toLowerCase()))
     await Promise.race([loadSpecies($).catch(() => null), $.clock.sleep(SPECIES_WAIT_MS)])
-  if (HELP_WORDS.has(head.toLowerCase())) return HELP
+  if (HELP_WORDS.has(head.toLowerCase())) return POKEMON_HELP
   switch (head.toLowerCase()) {
     case 'party':
       await sync($)
@@ -2536,16 +2507,7 @@ async function restore($: EngineInterface) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'pokemon',
-      description:
-        'Your Pokémon: /pokemon alone brings a random new lead (the old one goes to the PC box) · <name> picks a lead · add [name] · release|remove <name> [n] from your party or PC box · deposit <name> · party · box [name] [page] · bag · give <item> <name> · take <name> · evolve <name> [into] · evolve manual|auto · mart · buy <item> [count] · size small|normal|auto · evolution rays|white|gradient · everstone <name> · on/off · help',
-    })
-    await $.command.register({ name: 'pokedex', description: 'Every Pokémon you have seen, and your party' })
-    await $.command.register({
-      name: 'pokemon-play',
-      description: `Play an animation, or show a time of day and landscape (e.g. dusk lake): ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES].join(', ')} · evolve ${EVOLUTION_STYLES.join('|')} previews that evolution screen`,
-    })
+    for (const command of Object.values(COMMANDS)) await $.command.register(command)
     ready = load($)
     started = ready
       .then(() => start($))
@@ -2610,6 +2572,15 @@ export const register: Register = on => {
       }
     }),
   }))
+
+  on('command.run', { command: 'pokemon-help' }, async () => ({ text: ALL_HELP }))
+
+  // While a Pokémon command is typed, the typeahead previews what each word can be.
+  on('prompt.autocomplete', async ($, e, next) => {
+    const rows = suggest(e.text, e.cursor, e.token, e.start, { ...view(), levelOf: levelNow })
+    if (!rows.length) return next(e)
+    return { suggestions: [...(await next(e)).suggestions, ...rows] }
+  })
 
   on('command.run', { command: 'pokemon' }, async ($, e) => {
     feel('activity')
