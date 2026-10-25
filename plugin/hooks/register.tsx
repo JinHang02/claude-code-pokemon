@@ -313,9 +313,14 @@ const looksOf = (mons: Mon[]) => mons.map(m => `${m.key}|${m.name}|${m.isShiny}`
 // Every place that adopts a save checks, or the band keeps drawing the old one.
 const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !== was.party.map(lookOf).join()
 
+// The engine's clock as last read (each tick and each band drawn): the band reads the hour while it draws, which
+// can't wait on the clock, and the engine's clock is the one a test sets.
+let clockMs: number | null = null
+const readClock = async ($: EngineInterface) => (clockMs = await $.clock.now())
+
 // Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
 // when it claims UTC, the host's answer from session start is used.
-const localHour = (ms = Date.now()) => {
+const localHour = (ms = clockMs ?? Date.now()) => {
   const own = -new Date().getTimezoneOffset()
   return Math.floor((ms / 60_000 + (own !== 0 ? own : (tzOffsetMin ?? 0))) / 60)
 }
@@ -2191,6 +2196,7 @@ function screenCells(s: Screen, columns: number, rows: number): string {
 async function tick($: EngineInterface) {
   if (!band || !fitted || save.isOff) return
   tickNo++
+  await readClock($)
   // A visitor due while a screen plays comes once it has ended.
   if (--wildDue <= 0 && !status.wild && !isAsleep(status) && !screen) {
     wildDue = between(...WILD_EVERY)
@@ -2692,6 +2698,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const mons = await read($, party)
+    await readClock($)
     // Another surface drawing at the same time leaves the terminal's band alone.
     if (e.surface !== 'terminal') return next(e)
     if (!mons.length || save.isOff || e.props.hasSurvey) {
