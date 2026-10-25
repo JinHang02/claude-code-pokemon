@@ -6,6 +6,23 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-25
+
+### Added: `/pokemon-help` and a typeahead that previews every command
+
+- `/pokemon-help` lists every command of the plugin and every word each one takes (`/pokemon`, `/pokemon-play`,
+  `/pokedex`), one a line and no wider than 60 columns. `/pokemon help` still lists `/pokemon`'s own.
+- While you type a Pokémon command, the typeahead previews what can go next. `/pokemon` alone lists every
+  sub-command with how it's used (`give <item> <name>`, `box [name] [page]`); `/pokemon g` narrows that to
+  `give <item> <name>`; `/pokemon give t` offers the items starting with it, the Bag's first with how many you have
+  and the Mart's with how to buy them; `/pokemon give thunder-stone c` offers the party's Pokémon starting with `c`,
+  with their level and where they are. Each word that names one of yours (`release`, `deposit`, `take`, `box`,
+  `everstone`, `evolve`) offers just the ones it can reach; `size`, `evolution`, `evolve manual|auto` and `buy`
+  offer their choices; `add`, a lead's name and `/pokemon-play wild` offer species once two letters say which.
+  `/pokemon-play` previews its animations, then the other half of a time and place (`dusk` then `lake`).
+- `/pokemon` and `/pokemon-play` have one short line each in the typeahead and `/help` again, instead of every word
+  they take run together and cut off, and `/pokemon ` and `/pokemon-play ` show a dim hint of what follows.
+
 ## [1.6.0] - 2026-10-23
 
 ### Added: you decide when they evolve
@@ -641,7 +658,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.3.0...v1.4.0
