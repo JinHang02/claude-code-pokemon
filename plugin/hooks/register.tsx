@@ -1681,7 +1681,13 @@ async function evolveNow(
         evolvedAt,
       }
       evolvedHere.add(lookOf(grown))
-      const seen = recordSeen(given ? takeFromBag(s, given) : s, next.species, isShiny, Date.now())
+      // The species it becomes counts as caught, as one caught with a Poké Ball does.
+      const now = Date.now()
+      const seen = recordCaught(
+        recordSeen(given ? takeFromBag(s, given) : s, next.species, isShiny, now),
+        next.species,
+        now,
+      )
       const after = { ...seen, party: seen.party.map((m, j) => (j === i ? grown : m)) }
       if (!shed) return after
       const shedinja: Member = {
@@ -1692,6 +1698,8 @@ async function evolveNow(
         // Its ledger XP too: the same level as Ninjask.
         xp: latest.xp + (extra[member.id] ?? 0),
         evolutions: 1,
+        // From a Poké Ball if Nincada was.
+        ...(latest.isCaught ? { isCaught: true as const } : {}),
       }
       const shedName = displayName(shed.species)
       // As in the games, it comes along only where there's room for it.
