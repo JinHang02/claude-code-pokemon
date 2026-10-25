@@ -670,3 +670,22 @@ test("another session's evolution older than 30 s is just drawn", SLOW, async ($
   expect(seen.some(l => l.kind === 'screen')).toBe(false)
   expect(seen[seen.length - 1]?.colors.has(VAPOREON)).toBe(true)
 })
+
+// The band reads the hour from the engine's clock, not the machine's: these run at any hour of the day.
+const BRIGHT = '200;160;120'
+async function eeveeAt($: never, on: never, hour: number) {
+  const w = await stoneWorld($, on, withEevee(), 6, { now: hourAt(hour), sprites: { eevee: solid(BRIGHT, 6) } })
+  const band = await mount($ as never)
+  await w.clock.advance(500)
+  return (await look(band)).colors
+}
+
+test('at noon on the engine clock Eevee is drawn as it is', SLOW, async ($, on) => {
+  const colors = await eeveeAt($ as never, on as never, 12)
+  expect([colors.has(0xc8a078), colors.has(0xaa8866)]).toEqual([true, false])
+})
+
+test('at midnight on the engine clock Eevee is dimmed for the night', SLOW, async ($, on) => {
+  const colors = await eeveeAt($ as never, on as never, 0)
+  expect([colors.has(0xc8a078), colors.has(0xaa8866)]).toEqual([false, true])
+})

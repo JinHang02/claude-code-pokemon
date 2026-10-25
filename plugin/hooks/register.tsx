@@ -314,9 +314,14 @@ const looksOf = (mons: Mon[]) => mons.map(m => `${m.key}|${m.name}|${m.isShiny}`
 // Every place that adopts a save checks, or the band keeps drawing the old one.
 const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !== was.party.map(lookOf).join()
 
+// The engine's clock as last read (each tick and each band drawn): the band reads the hour while it draws, which
+// can't wait on the clock, and the engine's clock is the one a test sets.
+let clockMs: number | null = null
+const readClock = async ($: EngineInterface) => (clockMs = await $.clock.now())
+
 // Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
 // when it claims UTC, the host's answer from session start is used.
-const localHour = (ms = Date.now()) => {
+const localHour = (ms = clockMs ?? Date.now()) => {
   const own = -new Date().getTimezoneOffset()
   return Math.floor((ms / 60_000 + (own !== 0 ? own : (tzOffsetMin ?? 0))) / 60)
 }
@@ -1677,7 +1682,13 @@ async function evolveNow(
         evolvedAt,
       }
       evolvedHere.add(lookOf(grown))
-      const seen = recordSeen(given ? takeFromBag(s, given) : s, next.species, isShiny, Date.now())
+      // The species it becomes counts as caught, as one caught with a Poké Ball does.
+      const now = Date.now()
+      const seen = recordCaught(
+        recordSeen(given ? takeFromBag(s, given) : s, next.species, isShiny, now),
+        next.species,
+        now,
+      )
       const after = { ...seen, party: seen.party.map((m, j) => (j === i ? grown : m)) }
       if (!shed) return after
       const shedinja: Member = {
@@ -1688,6 +1699,8 @@ async function evolveNow(
         // Its ledger XP too: the same level as Ninjask.
         xp: latest.xp + (extra[member.id] ?? 0),
         evolutions: 1,
+        // From a Poké Ball if Nincada was.
+        ...(latest.isCaught ? { isCaught: true as const } : {}),
       }
       const shedName = displayName(shed.species)
       // As in the games, it comes along only where there's room for it.
@@ -2192,6 +2205,7 @@ function screenCells(s: Screen, columns: number, rows: number): string {
 async function tick($: EngineInterface) {
   if (!band || !fitted || save.isOff) return
   tickNo++
+  await readClock($)
   // A visitor due while a screen plays comes once it has ended.
   if (--wildDue <= 0 && !status.wild && !isAsleep(status) && !screen) {
     wildDue = between(...WILD_EVERY)
@@ -2663,6 +2677,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const mons = await read($, party)
+    await readClock($)
     // Another surface drawing at the same time leaves the terminal's band alone.
     if (e.surface !== 'terminal') return next(e)
     if (!mons.length || save.isOff || e.props.hasSurvey) {

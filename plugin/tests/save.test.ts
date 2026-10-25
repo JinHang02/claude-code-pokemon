@@ -197,6 +197,39 @@ test("a generation's bar shows its caught cells, then the ones only seen", () =>
   expect(text).toContain('Gen 3  ░░░░░░░░░░  0/135 seen · 0 caught · 0 shiny')
 })
 
+test('a save from before evolutions counted as caught counts the evolved ones it has, once each', () => {
+  const raw = {
+    party: [
+      { ...pikachu, species: 'excadrill', evolutions: 1, evolvedAt: 5 },
+      { ...pikachu, species: 'charizard', evolutions: 0 },
+    ],
+    box: [
+      { ...pikachu, id: 'b1', species: 'lycanroc', form: 'midnight', evolutions: 1 },
+      { ...pikachu, id: 'b2', species: 'excadrill', evolutions: 1 },
+    ],
+    dex: {
+      excadrill: { seen: 3, shiny: 1, first: 2 },
+      lycanroc: { seen: 1, shiny: 0, first: 4, caught: 2 },
+      charizard: { seen: 1, shiny: 0, first: 1 },
+    },
+  }
+  const { dex } = loadSave(raw)
+  expect(dex.excadrill).toEqual({ seen: 3, shiny: 1, first: 2, caught: 1 })
+  // Already caught: left as it is.
+  expect(dex.lycanroc).toEqual({ seen: 1, shiny: 0, first: 4, caught: 2 })
+  // Added as it is, never evolved: seen only.
+  expect(dex.charizard).toEqual({ seen: 1, shiny: 0, first: 1 })
+  // Loading again changes nothing.
+  expect(loadSave({ ...raw, dex }).dex).toEqual(dex)
+  // Not in the Pokédex at all: seen and caught once, first seen when it evolved.
+  expect(loadSave({ party: [{ ...pikachu, species: 'raichu', evolutions: 1, evolvedAt: 7 }] }).dex.raichu).toEqual({
+    seen: 1,
+    shiny: 0,
+    first: 7,
+    caught: 1,
+  })
+})
+
 test('the party lists levels, xp to go and when each evolves', () => {
   const save = {
     ...emptySave(),

@@ -128,6 +128,9 @@ PATHS.forEach((p, n) =>
           problems.push(`got ${got?.species}:${got?.form}`)
         if (got?.evolutions !== 1) problems.push(`evolved ${got?.evolutions} times`)
         if (!after.dex[p.to]?.seen) problems.push(`${p.to} not seen in the Pokédex`)
+        // What it became is caught, once.
+        if (got && after.dex[got.species]?.caught !== 1)
+          problems.push(`${got.species} caught ${after.dex[got.species]?.caught ?? 0} times in the Pokédex`)
         if ((w.kind === 'item' || w.kind === 'hold') && (after.bag?.[w.item] ?? 0) !== 0)
           problems.push(`${w.item} not used up`)
         if (w.kind === 'hold' && got?.heldItem) problems.push(`still holds ${got.heldItem}`)
