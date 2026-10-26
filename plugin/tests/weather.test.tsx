@@ -130,7 +130,7 @@ test('/pokemon-help and the typeahead offer the weather words', () => {
   }
   expect(texts('/pokemon-play r')).toEqual(['rain '])
   expect(texts('/pokemon-play s')).toContain('snow ')
-  expect(texts('/pokemon-play f')).toEqual(['faint', 'forest ', 'fog '])
+  expect(texts('/pokemon-play f')).toEqual(['faint', 'forest ', 'fog ', 'full moon'])
   expect(texts('/pokemon-play rain ')).toEqual(LANDSCAPES)
 })
 
