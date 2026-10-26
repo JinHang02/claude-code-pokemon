@@ -89,10 +89,12 @@ const mix = (a: number, b: number, p: number) => {
   return m(16) | m(8) | m(0)
 }
 
-// What each pixel of the still layer is, so moving parts only land where they belong.
-const SKY = 0
-const WATER = 1
-const LAND = 2
+// What each pixel of the still layer is, so moving parts only land where they belong. `LIGHT`: the sun or moon,
+// which nothing (clouds, rain, snow) ever covers.
+export const SKY = 0
+export const WATER = 1
+export const LAND = 2
+export const LIGHT = 3
 
 type Still = { pixels: number[]; kind: Uint8Array }
 
@@ -118,7 +120,7 @@ function sky(still: Still, width: number, ground: number, p: Palette, phase: Pha
   }
   if (phase === 'night') {
     for (let i = 0; i < MOON_GLYPH.length; i++)
-      if (MOON_GLYPH[i]) set(still, width, scene - 8 + (i % 5), 1 + Math.floor(i / 5), p.sun, LAND)
+      if (MOON_GLYPH[i]) set(still, width, scene - 8 + (i % 5), 1 + Math.floor(i / 5), p.sun, LIGHT)
     return
   }
   const [sx, sy] = sunAt(phase, scene, ground)
@@ -127,7 +129,7 @@ function sky(still: Still, width: number, ground: number, p: Palette, phase: Pha
       const d = dx * dx + dy * dy
       const y = sy + dy
       if (y < 0 || y >= ground) continue
-      if (d <= 4) set(still, width, sx + dx, y, p.sun, LAND)
+      if (d <= 4) set(still, width, sx + dx, y, p.sun, LIGHT)
       else if (d <= 10) set(still, width, sx + dx, y, mix(still.pixels[y * width + sx + dx] ?? p.sun, p.sun, 0.35), SKY)
     }
 }
@@ -240,6 +242,7 @@ let cached: { key: string; layer: Still } | null = null
 
 // Paints the landscape into `out` (sized to the band): the still layer, then drifting clouds, twinkling
 // stars, shimmering water and fireflies at tick `t`. The sun and moon stay within the left `scene` columns.
+// Returns what each pixel is (`SKY`, `WATER`, `LAND`, `LIGHT`), for weather drawn on top.
 export function backdrop(
   out: Pixels,
   phase: Phase,
@@ -296,4 +299,5 @@ export function backdrop(
       const y = ground - 2 - Math.round(2 + 2 * Math.sin(seconds / 1.3 + i * 2))
       if (x >= 0 && x < width && y >= 0 && y < ground) out.pixels[y * width + x] = FIREFLY
     }
+  return kind
 }

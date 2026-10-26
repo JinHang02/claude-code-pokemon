@@ -226,6 +226,8 @@ The meadow follows your local clock: a rising sun at dawn, drifting clouds by da
 
 Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it for 15 seconds.
 
+Some hours it rains, snows (on the mountains, hills and forest) or a fog rolls in, the same in every window; a Water-type Pokémon now and then hops for joy in the rain. It's only for the eye. Try `/pokemon-play rain`, `snow`, `fog` or `clear`, alone or with a time and place: `/pokemon-play night rain lake`.
+
 ---
 
 ## Catch 'em

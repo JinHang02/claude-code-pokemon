@@ -115,6 +115,8 @@ import { fit, parseAnsi, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
 import { shopSize } from './shop'
 import type { ShopProps } from './shop'
+import { stir, weatherAt, WEATHERS } from './weather'
+import type { Weather } from './weather'
 
 const BASE = 'https://gitlab.com/phoneybadger/pokemon-colorscripts/-/raw/main'
 const POKEAPI = 'https://pokeapi.co/api/v2'
@@ -264,7 +266,7 @@ function recheck($: EngineInterface) {
   checkedInputs = inputs
   background($, learnEvolutions($))
 }
-let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
+let shown: { phase?: Phase; landscape?: Landscape; weather?: Weather; until: number } | null = null
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
 let ready: Promise<void> = Promise.resolve()
@@ -343,6 +345,15 @@ function landscapeNow(): Landscape {
   if (isShowing() && shown?.landscape) return shown.landscape
   return landscapeAt(localHour())
 }
+
+// Rain, snow or fog some hours, the same in every session.
+function weatherNow(): Weather {
+  if (isShowing() && shown?.weather) return shown.weather
+  return weatherAt(localHour(), landscapeNow())
+}
+
+// Who each actor of the band is, for the weather's fans.
+const actorsNow = () => (fitted?.keys ?? []).map(id => save.party.find(m => m.id === id))
 
 // A download, failing after FETCH_TIMEOUT_MS.
 async function fetchText($: EngineInterface, url: string) {
@@ -2123,6 +2134,7 @@ function openMartCommand($: EngineInterface): string {
 const lookNow = (): Look => ({
   phase: phaseNow(),
   landscape: landscapeNow(),
+  weather: weatherNow(),
   wild: (wild && (pitch ? wildLook(pitch, wild.left) : wild.left)) ?? undefined,
   evolveFrom: evolveFrom ?? undefined,
   ...(pitch ? { overlays: ballOverlays(pitch) } : {}),
@@ -2308,6 +2320,7 @@ async function tick($: EngineInterface) {
     Math.random,
     band.total,
   )
+  status = stir(status, weatherNow(), actorsNow(), isAsleep(status))
   if (pitch) {
     const { pitch: next, event } = stepThrow(pitch)
     pitch = next
@@ -2360,10 +2373,13 @@ async function play($: EngineInterface, args: string): Promise<string> {
   const words = name.split(/\s+/)
   const phase = PHASES.find(p => words.includes(p))
   const landscape = LANDSCAPES.find(l => words.includes(l))
+  const weather = WEATHERS.find(w => words.includes(w))
   // After `wild` every word belongs to the name: `wild lycanroc dusk` is a Pokémon, not a scene.
-  if ((phase || landscape) && words[0] !== 'wild') {
-    shown = { phase, landscape, until: tickNo + ticks(15_000) }
-    return `Showing ${[phase, landscape].filter(Boolean).join(' ')} for 15 seconds.`
+  if ((phase || landscape || weather) && words[0] !== 'wild') {
+    shown = { phase, landscape, weather, until: tickNo + ticks(15_000) }
+    // A Water type previewing the rain (an Ice type the snow) hops for it at once.
+    if (weather) status = stir(status, weather, actorsNow(), isAsleep(status), () => 0)
+    return `Showing ${[phase, weather, landscape].filter(Boolean).join(' ')} for 15 seconds.`
   }
   if (name === 'hop') feel('turn-answer')
   else if (name === 'cheer') feel('cheer')
@@ -2401,7 +2417,7 @@ async function play($: EngineInterface, args: string): Promise<string> {
     const said = await spawnWild($, words.slice(1).join(' '))
     if (said) return said
     return wild ? `A wild ${wild.mon.name} wanders by.` : 'No wild Pokémon showed up.'
-  } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES].join(', ')}.`
+  } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES, ...WEATHERS].join(', ')}.`
   return `Playing ${name}.`
 }
 
