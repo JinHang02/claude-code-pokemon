@@ -3,17 +3,33 @@
 // the party's names).
 import { LANDSCAPES } from './backdrop'
 import type { Phase } from './backdrop'
+import { dexRows } from './dex-entry'
 import { EVOLUTION_STYLES } from './evolution-style'
 import { forSale, ITEMS } from './items'
 import { slug } from './lookup'
+import { REGION_TEXT, REGION_WORDS } from './region'
 import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
+import type { Weather } from './weather'
 
-// What a word of a command can be: a Pokémon of yours (in the party, the PC box, or either), any species, an item
-// (one in the Bag first, or one the Mart sells), or one of a fixed few.
+// What a word of a command can be: a Pokémon of yours (in the party, the PC box, or either; `search`, either, for a
+// command that picks no one), any species, an item (one in the Bag first, or one the Mart sells), or one of a fixed few.
 type Arg =
-  'party' | 'box' | 'owned' | 'species' | 'visitor' | 'bag' | 'sale' | 'size' | 'style' | 'mode' | 'landscape' | 'phase'
+  | 'party'
+  | 'box'
+  | 'owned'
+  | 'search'
+  | 'species'
+  | 'visitor'
+  | 'bag'
+  | 'sale'
+  | 'size'
+  | 'style'
+  | 'mode'
+  | 'landscape'
+  | 'phase'
+  | 'region'
 
 type Sub = {
   // The word typed after the command; `''` for one that is the whole command (`/pokemon` alone, `/pokemon <name>`).
@@ -36,6 +52,7 @@ export const POKEMON: Sub[] = [
   { word: 'deposit', usage: 'deposit <name>', about: 'into the PC box', args: ['party'] },
   { word: 'party', usage: 'party', about: 'your party' },
   { word: 'box', usage: 'box [name] [page]', about: 'the PC box, 30 a page', args: ['box'] },
+  { word: 'find', usage: 'find <name>', about: 'search party and PC box', args: ['search'] },
   { word: 'bag', usage: 'bag', about: 'your items and ₽' },
   { word: 'give', usage: 'give <item> <name>', about: 'evolve, level up or hold', args: ['bag', 'party'] },
   { word: 'take', usage: 'take <name>', about: 'take back what it holds', args: ['owned'] },
@@ -46,6 +63,7 @@ export const POKEMON: Sub[] = [
   { word: 'buy', usage: 'buy <item> [count]', about: 'the PokéMart, by typing', args: ['sale'] },
   { word: 'size', usage: 'size <size>', about: 'small, normal or auto', args: ['size'] },
   { word: 'evolution', usage: 'evolution <style>', about: 'rays, white or gradient', args: ['style'] },
+  { word: 'region', usage: 'region <region>', about: 'regional forms when evolving', args: ['region'] },
   { word: 'on', usage: 'on, off', about: 'out, or back in their balls', only: 'help' },
   { word: 'on', usage: 'on', about: 'out of their Poké Balls', only: 'typeahead' },
   { word: 'off', usage: 'off', about: 'back in their Poké Balls', only: 'typeahead' },
@@ -60,12 +78,35 @@ const ANIMATION_ABOUT: [string, string][] = [
   ['squash', 'squashed, as while compacting'],
   ['work', 'busy, as while Claude works'],
   ['clones', 'clones, as for subagents'],
+  ['push', 'a Pidgey flies off, as on git push'],
+  ['boulder', 'Strength, as on a long test or build'],
+  ['boxes', 'boxes carried, as after an install'],
+  ['confused', 'confused, as at a merge conflict'],
 ]
+// The moons /pokemon-play shows by name (moon.ts reads the same words).
+const MOON_ABOUT: [string, string][] = [
+  ['full', 'a full-moon night'],
+  ['new', 'a new moon, barely there'],
+  ['crescent', 'a thin crescent moon'],
+  ['half', 'a half moon'],
+  ['gibbous', 'a moon nearly full'],
+]
+const moons = (from: number, to?: number) =>
+  MOON_ABOUT.slice(from, to)
+    .map(([word]) => `${word} moon`)
+    .join(', ')
 const PHASE_ABOUT: Record<Phase, string> = {
   day: 'daytime',
   dusk: 'the sun going down',
   night: 'night and stars',
   dawn: 'the sun coming up',
+}
+
+const WEATHER_ABOUT: Record<Weather, string> = {
+  rain: 'rain, splashing on the grass',
+  snow: 'snowfall, on high ground and woods',
+  fog: 'fog over the far landscape',
+  clear: 'no weather',
 }
 
 export const PLAY: Sub[] = [
@@ -79,6 +120,14 @@ export const PLAY: Sub[] = [
     args: ['landscape' as const],
   })),
   ...LANDSCAPES.map(word => ({ word, usage: `${word} [time]`, about: `the ${word}`, args: ['phase' as const] })),
+  ...(Object.keys(WEATHER_ABOUT) as Weather[]).map(word => ({
+    word,
+    usage: `${word} [place]`,
+    about: WEATHER_ABOUT[word],
+    args: ['landscape' as const],
+  })),
+  { word: 'moon', usage: 'moon', about: "tonight's moon, as it really is" },
+  ...MOON_ABOUT.map(([word, about]) => ({ word: `${word} moon`, usage: `${word} moon`, about })),
 ]
 
 // The commands' own lines in the typeahead and /help: one short line each, so none is cut off, and the hint the
@@ -91,10 +140,14 @@ export const COMMANDS = {
   },
   play: {
     name: 'pokemon-play',
-    description: 'Try an animation, a time of day or a landscape · /pokemon-help lists all',
-    argumentHint: '[animation | time | landscape]',
+    description: 'Try an animation, a time of day, a landscape or weather · /pokemon-help lists all',
+    argumentHint: '[animation | time | landscape | weather | moon]',
   },
-  dex: { name: 'pokedex', description: 'Every Pokémon you have seen, and your party' },
+  dex: {
+    name: 'pokedex',
+    description: 'Every Pokémon you have seen, and your party; or one species: /pokedex <name>',
+    argumentHint: '[name]',
+  },
   help: { name: 'pokemon-help', description: 'Every Pokémon command and what it takes' },
 } as const
 
@@ -107,7 +160,7 @@ export const POKEMON_HELP = [
   'Pokémon Journey · /pokemon …',
   ...listed(POKEMON).map(line),
   'Several of one? Add a number, shiny or lv <n>.',
-  'Also: /pokedex, and /pokemon-play to try things out.',
+  'Also: /pokedex [name]; /pokemon-play tries things out.',
 ].join('\n')
 
 // `/pokemon-help`: every command of the plugin with every word it takes, under 60 columns too.
@@ -125,16 +178,22 @@ export const ALL_HELP = [
   line({ word: '', usage: '<time> <place>', about: 'e.g. dusk lake, for 15 s' }),
   `    times: ${Object.keys(PHASE_ABOUT).join(', ')}`,
   `    places: ${LANDSCAPES.join(', ')}`,
+  `    weather: ${Object.keys(WEATHER_ABOUT).join(', ')}, e.g. night rain lake`,
+  line({ word: '', usage: 'moon', about: "tonight's moon, as it really is" }),
+  `    or: ${moons(0, 3)},`,
+  `    ${moons(3)}`,
   '',
   '/pokedex             all you have seen and caught',
+  '/pokedex <name>      one species: types, evolutions',
   '/pokemon-help        this list',
   '',
   'Type /pokemon and a letter: the typeahead previews',
   'each command, then your items and Pokémon.',
 ].join('\n')
 
-// What the typeahead knows of the save: the party, the PC box and the Bag, and a member's level now.
-export type Owned = Pick<Save, 'party' | 'box' | 'bag'> & { levelOf: (m: Member) => number }
+// What the typeahead knows of the save: the party, the PC box and the Bag, and a member's level now; the Pokédex,
+// for /pokedex.
+export type Owned = Pick<Save, 'party' | 'box' | 'bag'> & { levelOf: (m: Member) => number; dex?: Save['dex'] }
 
 export type Suggestion = { text: string; label?: string; description?: string }
 
@@ -146,6 +205,12 @@ const SPECIES_NAMES = Object.keys(SPECIES)
 // anything else. On the command itself every word it takes, then on each word what can go there.
 export function suggest(text: string, cursor: number, token: string, start: number, owned: Owned): Suggestion[] {
   const typed = text.slice(0, cursor)
+  // `/pokedex <name>`: any species, its words typed so far before the token.
+  const dex = /^\s*\/pokedex(?=\s|$)/.exec(typed)
+  if (dex && start >= dex[0].length) {
+    const words = typed.slice(dex[0].length, start).trim().split(/\s+/).filter(Boolean)
+    return dexRows(words, token, owned.dex).slice(0, MAX_ROWS)
+  }
   const m = /^\s*\/(pokemon|pokemon-play)(?=\s|$)/.exec(typed)
   if (!m) return []
   const isPlay = m[1] === 'pokemon-play'
@@ -209,7 +274,7 @@ const subRow = (s: Sub, command: string): Suggestion => ({
 })
 
 // The words that are names, maybe several words long: a token after the first goes on the name.
-const NAMED: Arg[] = ['party', 'box', 'owned', 'species', 'visitor', 'sale']
+const NAMED: Arg[] = ['party', 'box', 'owned', 'search', 'species', 'visitor', 'sale']
 
 // `wordsBefore`: a name's first words already typed (`mr`), so a row writes only the rest of it (`mime`).
 function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] = []): Suggestion[] {
@@ -218,9 +283,12 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
     case 'party':
       return members(typed, owned.party, owned, '', wordsBefore)
     case 'box':
-      return members(typed, owned.box ?? [], owned, '', wordsBefore)
+      // `box eevee 2` reads the 2 as a page, and the box lists every Eevee anyway: one row for them all.
+      return members(typed, owned.box ?? [], owned, '', wordsBefore, false)
     case 'owned':
       return members(typed, [...owned.party, ...(owned.box ?? [])], owned, '', wordsBefore)
+    case 'search':
+      return members(typed, [...owned.party, ...(owned.box ?? [])], owned, '', wordsBefore, false)
     case 'species':
       return species(typed, owned, name => `catch ${name}`, wordsBefore)
     case 'visitor':
@@ -248,6 +316,11 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
         lower,
         EVOLUTION_STYLES.map(s => [s, 'evolution screen style']),
       )
+    case 'region':
+      return fixed(
+        lower,
+        REGION_WORDS.map(r => [r, REGION_TEXT[r]]),
+      )
     case 'mode':
       return fixed(lower, [
         ['manual', 'they wait for /pokemon evolve'],
@@ -272,8 +345,18 @@ const fixed = (typed: string, words: [string, string][]): Suggestion[] =>
 // A name as a command reads it back: the species, then its form (`typhlosion hisui`).
 const typedName = (m: Member) => (m.form === 'regular' ? m.species : `${m.species} ${m.form}`)
 
-// Your Pokémon whose name starts with what's typed, each once, with its level and where it is.
-function members(typed: string, list: Member[], owned: Owned, then = '', wordsBefore: string[] = []): Suggestion[] {
+// Your Pokémon whose name starts with what's typed, with its level and where it is. `list` is the places the command
+// looks in, party first then the PC box, as findMembers (members.ts) numbers them: several of one name get a row each,
+// numbered among that name there (`eevee 2`), so the row typed back picks that one and no "Which Eevee?" follows.
+// `isNumbered` false: one row for them all, for a command that reads no number as a pick.
+function members(
+  typed: string,
+  list: Member[],
+  owned: Owned,
+  then = '',
+  wordsBefore: string[] = [],
+  isNumbered = true,
+): Suggestion[] {
   const want = slug([...wordsBefore, typed].join(' '))
   const isLong = (name: string) => name.split(/[\s-]+/).length > wordsBefore.length
   return list
@@ -282,9 +365,11 @@ function members(typed: string, list: Member[], owned: Owned, then = '', wordsBe
       const where = owned.party.includes(m) ? (owned.party[0] === m ? 'lead' : 'party') : 'PC box'
       const holds = m.heldItem ? ` · holds ${ITEMS.find(i => i.id === m.heldItem)?.name ?? m.heldItem}` : ''
       const lead = then && where !== 'lead' ? ` · make it ${then}` : ''
+      const twins = list.filter(o => typedName(o) === typedName(m))
+      const n = isNumbered && twins.length > 1 ? ` ${twins.indexOf(m) + 1}` : ''
       return {
-        text: rest(typedName(m), wordsBefore),
-        label: typedName(m),
+        text: `${rest(typedName(m), wordsBefore)}${n}`,
+        label: `${typedName(m)}${n}`,
         description: `${nameOf(m)} · Lv ${owned.levelOf(m)} · ${where}${holds}${lead}`,
       }
     })

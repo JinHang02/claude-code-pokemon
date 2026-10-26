@@ -6,6 +6,96 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-26
+
+### Added: /pokedex <name>
+
+- `/pokedex <name>` shows one species' entry: its national Pokédex number, types, rarity, and what your Pokédex has
+  of it (seen, caught, shiny; "not seen yet" for one you haven't met), what it evolves from and into and how, its
+  forms, and which of yours are that species, with their levels and where they are (six at most, then how many more).
+- It reads a name as `/pokemon` does: forms in any order (`/pokedex alolan vulpix` shows the form's own types),
+  regional adjectives, full-width letters; a misspelt one answers "Did you mean Pikachu? Run /pokedex pikachu".
+- Evolutions come from the same lookup as the party's. Offline with nothing cached, the entry says "Evolution info
+  needs a connection." and shows the rest; a download still under way after four seconds says to run it again.
+- Every line fits the terminal's width, as the other lists do. While you type `/pokedex` and two letters, the
+  typeahead previews the species they start, with each one's number, types and whether you've seen or caught it.
+- `/pokedex` alone shows the whole Pokédex and your party, as before.
+
+### Added: /pokemon find, and the typeahead tells twins apart
+
+- `/pokemon find <query>` searches the party and the PC box at once: by name (`find eevee`; a species plainly is
+  every form of it, a form only that one), by the start of one (`find char`: Charmander and Charizard), by `shiny`,
+  by `lv 30`, or all of them together (`find shiny eevee lv 5`). Each one found shows its level, where it is (the
+  lead, `party #2`, or `PC box #34, page 2` once the box takes several pages), its gender, ✨ and what it holds,
+  fitted to narrow terminals. More than ten: the first ten, how many more, and how to narrow them. A misspelt name
+  gets "Did you mean". It only reads: nothing in the save changes.
+- With several Pokémon of one name, the typeahead offers a row each, numbered the way the command reads a pick:
+  `/pokemon release ee` shows `eevee 1`, `eevee 2`, `eevee 3` (the party first, then the PC box), each with its
+  gender, level, place and held item. Taking a row writes the number too, so no "Which Eevee?" follows. Commands
+  that look in the party alone (`deposit`, `give`, `evolve`, `everstone`) number the party's alone; `box` and
+  `find`, which read no number as a pick, keep one row for the name.
+
+### Added: weather
+
+- Some hours it rains, snows or a fog rolls in over the landscape, picked by the hour like the place, so every
+  window shows the same sky: about 15 hours in a hundred rain, 8 fog and 7 snow (a little more in the night and dawn
+  hours), and snow falls only on the mountains, hills and forest. The rest are clear.
+- Rain greys the sky and falls in slanting streaks, splashing on the grass and ringing the lake; snow drifts down
+  and settles white on the grass; fog lies pale over the far landscape. Nothing ever covers the sun or moon.
+- A Water-type Pokémon hops for joy in the rain now and then (an Ice type in the snow), on its own. A sleeping party
+  stays asleep: the weather moves only on the frames the band already draws, so a sleeping band still draws at most
+  five a second.
+- `/pokemon-play rain`, `snow`, `fog` and `clear` show that weather for 15 seconds, with a time and place too
+  (`/pokemon-play night rain lake`); `/pokemon-help` and the typeahead list them. It's only for the eye: nothing
+  evolves, appears or levels differently for it.
+
+### Added: the real moon, and dusk visitors
+
+- The night sky shows the moon as it really is tonight, worked out from the date (no network): eight shapes from a
+  faint new moon through crescent, half and gibbous to full. `/pokemon-play moon` shows tonight's, and
+  `/pokemon-play full moon` (or `new`, `crescent`, `half`, `gibbous moon`) any of them for 15 seconds.
+- Ursaring becomes Ursaluna with a Peat Block only under a full moon (a night within a day of it), as in the games,
+  not on any night; the reply says when the next full moon is.
+- About one wild visit in four at dusk (17:00–19:00) is a dusk Pokémon: Rockruff, Murkrow, Misdreavus, Hoothoot,
+  Zubat, Gastly, Houndour or Sableye. On a full-moon night about one visit in ten is a Clefairy.
+
+### Added: more reactions
+
+- A `git push` that went through sends a Pidgey across the band with a letter. One git turned down (rejected,
+  non-fast-forward, an error), a dry run or one with nothing to send (`Everything up-to-date`) sends nothing; a push
+  piped into `tail` counts when git printed a branch it sent.
+- A test or build still running after 30 seconds: the lead stops by a grey boulder and heaves at it (Strength), a
+  bigger one for a tall Pokémon, until the call ends; then it dusts itself off. A pass still cheers as before.
+- A package install that finished (`npm install`, `pnpm add`, `yarn add`, `pip install`, `uv add`, `cargo add`,
+  `bundle install`, `go get` and the like): every party member carries a box over its head for four seconds.
+- A merge conflict in a command's output (`CONFLICT (content)`, `Automatic merge failed`): the party spins on the spot,
+  confused, with a "?!" over the lead.
+- None of them pays XP: pushes and installs would be too easy to farm.
+- `/pokemon-play push`, `boulder`, `boxes` and `confused` preview them; `/pokemon-help` and the typeahead list them.
+
+### Added: /pokemon region
+
+- `/pokemon region alola` (or `galar`, `hisui`, `paldea`) makes evolutions take that region's forms when no branch is
+  named: a Thunder Stone makes a Pikachu an Alolan Raichu, a Leaf Stone an Exeggcute an Alolan Exeggutor, Koffing at
+  Lv 35 a Galarian Weezing, Quilava at Lv 36 a Hisuian Typhlosion. `/pokemon evolve quilava` takes the region's
+  branch without asking which. A branch you name still wins, a Pokémon with no form of that region keeps its own,
+  and looks such as Vivillon's patterns are rolled as before. Wild Pokémon are unaffected.
+- `/pokemon region` alone shows the one in use and the choices; `/pokemon region kanto` (or `none`, `off`) goes back
+  to each Pokémon's own form, the default. A near miss (`alolla`) gets "Did you mean alola?". The typeahead offers
+  the region names, and `alolan`, `galarian` and the like work too.
+- The region is kept in the save, which is now version 2: a window still running an older release leaves a save
+  holding it alone instead of dropping the region, and says to update.
+
+### Added: friendship from good work
+
+- Each passing test run and each commit now counts as 10 minutes together for every party member (15 for a Soothe
+  Bell holder), on top of the time spent in the party. A failure takes none away. A Pichu or an Eevee that has been
+  there for your green builds evolves sooner, by itself or as "ready to evolve", exactly as with time.
+- `/pokemon party` says how much of the time came from work: `together 6h 10m (2h from work)`.
+- It counts once however many windows are open: each window writes its credit to its own ledger, as with XP, and the
+  credit of a session that has ended moves under its own `work` store key, marked so it is never added twice. A
+  window still running an older release doesn't see the credit until it is restarted.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and
@@ -15,6 +105,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - A Pokémon that fell asleep halfway through a skip no longer keeps the band drawing at the full rate all night.
 - Asleep, the band wakes the plugin once per frame it draws instead of twenty times a second; anything that stirs
   the party wakes it at once. Frames don't pile up behind a slow terminal either: one tick runs at a time.
+- What stirs the party shows on the next frame, even in a still scene: the thought bubble when Claude starts work
+  came up to a fifth of a second late.
 
 ### Changed: regional forms are yours to ask for
 
@@ -718,7 +810,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.4.0...v1.5.0

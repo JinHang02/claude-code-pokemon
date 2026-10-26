@@ -3040,11 +3040,12 @@ const GROUND = 'mankey machop cubone slugma makuhita nosepass numel trapinch pan
 )
 
 test(
-  'the place on screen shapes who comes: at the lake Water types win about 4 times in 5 over equally likely Fire, Ground, Rock and Fighting types',
-  { timeoutMs: 120_000 },
+  'the place on screen shapes who comes: at the lake Water types win about 3 times in 4 over equally likely Fire, Ground, Rock and Fighting types',
+  { timeoutMs: 300_000 },
   async ($, on) => {
-    // Odds: 4 * 2630 / (4 * 2630 + 2500) = 81% per visitor. At least 18 of 30 fails by chance about 1 run in 1000
-    // and, with the lake not counted, about 1 in 10.
+    // Odds: 4 * 2630 / (4 * 2630 + 2500) = 81% per visitor at first, about 73% overall once the boost for species not
+    // yet seen favours the Ground types left. At least 60 of 100 fails by chance about 1 run in 800 and, with the lake
+    // not counted (about 50%), passes about 1 in 30.
     const w = await begin(
       $,
       on,
@@ -3056,14 +3057,14 @@ test(
     await cmd($, 'pokemon', 'party')
     await mountBand($ as never)
     const came = () => w.toasts.filter(t => /appeared!$/.test(t))
-    for (let i = 0; i < 400 && came().length < 30; i++) {
+    for (let i = 0; i < 1500 && came().length < 100; i++) {
       await cmd($, 'pokemon-play', 'dusk lake')
       await cmd($, 'pokemon-play', 'wild')
       await w.clock.advance(5_000)
     }
-    expect(came().length).toBe(30)
+    expect(came().length).toBe(100)
     const water = came().filter(t => WATER.some(n => t.endsWith(`wild ${displayName(n)} appeared!`))).length
-    expect(water).toBeGreaterThanOrEqual(18)
+    expect(water).toBeGreaterThanOrEqual(60)
     expect(came().every(t => FILLER.every(f => !t.includes(f.name)))).toBe(true)
   },
 )

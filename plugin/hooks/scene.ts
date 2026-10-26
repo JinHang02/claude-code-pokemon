@@ -1,8 +1,11 @@
 import { backdrop } from './backdrop'
 import { SCREEN_MS } from './evolution-screen'
 import type { Landscape, Phase } from './backdrop'
+import { BIG_BOULDER, BOULDER, BOX, CONFUSED, LETTER, PIDGEY } from './moments'
 import { CLEAR, mirror, shrink } from './sprite'
 import type { Pixels } from './sprite'
+import { drawWeather } from './weather'
+import type { Weather } from './weather'
 
 export const TICK_MS = 50
 // Calm scenes (nothing moving) draw one tick in this many.
@@ -103,6 +106,15 @@ export const EVOLVE = ticks(4500)
 // Evolution on its own screen over the whole band: everyone holds still under it.
 export const EVOLVE_SCREEN = ticks(SCREEN_MS)
 const EVOLVE_FLASH = ticks(500)
+// A Pidgey flies a push across the band; boxes are carried after an install; a merge conflict confuses the party, a
+// spin first; a boulder pushed through a long run is dusted off at its end.
+const FLIGHT = ticks(3000)
+const BOXES = ticks(4000)
+const CONFUSE = ticks(2000)
+const CONFUSE_SPIN = ticks(150)
+const SPINS = 4
+const DUST_OFF = ticks(600)
+const HEAVE = ticks(400)
 
 // `pace` scales a stroll's walking speed.
 export type Roam = { kind: 'walk' | 'idle' | 'turn' | 'look' | 'skip'; left: number; age: number; pace?: number }
@@ -111,7 +123,7 @@ export type Scene = { x: number; v: number; facing: 1 | -1; roam: Roam; t: numbe
 
 // `isScreen`: an evolution playing on its own screen, not in place.
 export type Mood = {
-  kind: 'hop' | 'cheer' | 'faint' | 'spring' | 'evolve'
+  kind: 'hop' | 'cheer' | 'faint' | 'spring' | 'evolve' | 'confused'
   t: number
   actor?: number
   isScreen?: true
@@ -166,10 +178,27 @@ export type Status = {
   // Ticks left of the party's "!" at a wild Pokémon stepping out.
   alert: number
   t: number
+  // Ticks left of a push's Pidgey crossing, and of the boxes carried after an install.
+  flight?: number
+  boxes?: number
+  // The lead's Strength against a long test or build: ticks pushing, then ticks left of dusting off once it ended.
+  strength?: { t: number; dust?: number }
 }
 
 export type Happening =
-  'activity' | 'turn-start' | 'turn-answer' | 'turn-end' | 'tool-error' | 'cheer' | 'compact-start' | 'compact-end'
+  | 'activity'
+  | 'turn-start'
+  | 'turn-answer'
+  | 'turn-end'
+  | 'tool-error'
+  | 'cheer'
+  | 'compact-start'
+  | 'compact-end'
+  | 'push'
+  | 'boxes'
+  | 'confused'
+  | 'boulder-start'
+  | 'boulder-end'
 
 export const newScene = (x = 0): Scene => ({
   x,
@@ -205,7 +234,9 @@ const moodLength = (mood: NonNullable<Mood>) =>
         ? mood.isScreen
           ? EVOLVE_SCREEN
           : EVOLVE
-        : SPRING
+        : mood.kind === 'confused'
+          ? CONFUSE
+          : SPRING
 
 // Nobody dozes off with a wild Pokémon around.
 export const isAsleep = (s: Status) =>
@@ -232,6 +263,18 @@ export function react(s: Status, what: Happening): Status {
       return { ...awake, isCompacting: true, compactT: 0 }
     case 'compact-end':
       return { ...awake, isCompacting: false, mood: mood({ kind: 'spring', t: 0 }) }
+    case 'push':
+      return { ...awake, flight: FLIGHT }
+    case 'boxes':
+      return { ...awake, boxes: BOXES }
+    case 'confused':
+      return { ...awake, mood: mood({ kind: 'confused', t: 0 }) }
+    case 'boulder-start':
+      return s.strength && s.strength.dust === undefined ? awake : { ...awake, strength: { t: 0 } }
+    case 'boulder-end':
+      return s.strength && s.strength.dust === undefined
+        ? { ...awake, strength: { ...s.strength, dust: DUST_OFF } }
+        : awake
   }
 }
 
@@ -389,8 +432,11 @@ export function step(
   // The "!" goes with the visitor: gone early (the band shrank under it), so is the "!".
   const alert = stepsOut ? ALERT : wild ? Math.max(0, s.alert - 1) : 0
   const isStill = Boolean(mood) || s.isCompacting || asleep || alert > 0
+  // The lead stays at its boulder, the rest roam on.
   let actors = s.actors.map((scene, i) =>
-    isStill ? { ...scene, v: 0, t: scene.t + 1 } : advance(scene, width, widths[i] ?? 1, rand, s.isWorking),
+    isStill || (i === 0 && s.strength)
+      ? { ...scene, v: 0, t: scene.t + 1 }
+      : advance(scene, width, widths[i] ?? 1, rand, s.isWorking),
   )
   // Everyone turns to look at the newcomer.
   if (alert > 0 && wild)
@@ -398,8 +444,17 @@ export function step(
       ...a,
       facing: wild.x + wildWidth / 2 < a.x + (widths[i] ?? 0) / 2 ? -1 : 1,
     }))
+  // A hop of one alone (`actor`, as for joy in the rain) spins that one alone.
   if ((mood?.kind === 'hop' || mood?.kind === 'cheer') && mood.t === SPIN_AT)
+    actors = actors.map((a, i) => (mood.actor === undefined || mood.actor === i ? { ...a, facing: flip(a.facing) } : a))
+  if (mood?.kind === 'confused' && mood.t % CONFUSE_SPIN === 0 && mood.t <= CONFUSE_SPIN * SPINS)
     actors = actors.map(a => ({ ...a, facing: flip(a.facing) }))
+  // A boulder needs room ahead of the lead: against a wall, it pushes the other way.
+  const first = actors[0]
+  if (first && s.strength?.t === 0 && s.strength.dust === undefined) {
+    const ahead = first.facing === 1 ? width - first.x - (widths[0] ?? 1) : first.x
+    if (ahead < BIG_BOULDER.width + 1) actors = [{ ...first, facing: flip(first.facing) }, ...actors.slice(1)]
+  }
 
   const lead = actors[0] ?? newScene()
   const leadWidth = widths[0] ?? 1
@@ -463,8 +518,26 @@ export function step(
       ...[0, 1, 2].map(i => ({ kind: 'dust' as const, x: edge + i - 1, y: -1 - (i % 2), age: 0, life: ticks(450) })),
     ]
   }
+  // Dusting off: puffs all along the lead's feet.
+  if (s.strength?.dust === DUST_OFF) {
+    const left = Math.round(lead.x)
+    const xs = [-1, Math.round(leadWidth / 3), Math.round((2 * leadWidth) / 3), leadWidth - 1]
+    fx = [
+      ...fx,
+      ...xs.map((i, k) => ({ kind: 'dust' as const, x: left + i, y: -1 - (k % 2), age: 0, life: ticks(600) })),
+    ]
+  }
   const compactT = s.isCompacting ? s.compactT + 1 : 0
-  return { ...s, actors, mood, idleTicks, clones, trail, fx, compactT, wild, alert, t }
+  const out: Status = { ...s, actors, mood, idleTicks, clones, trail, fx, compactT, wild, alert, t }
+  // A moment over leaves no key behind: the status is as calm as before it.
+  if (out.flight !== undefined && --out.flight <= 0) delete out.flight
+  if (out.boxes !== undefined && --out.boxes <= 0) delete out.boxes
+  const { strength } = s
+  if (strength?.dust === undefined) {
+    if (strength) out.strength = { t: strength.t + 1 }
+  } else if (strength.dust > 1) out.strength = { t: strength.t, dust: strength.dust - 1 }
+  else delete out.strength
+  return out
 }
 
 // Nothing moves but slow Zs: the band may draw at a lower rate.
@@ -473,6 +546,9 @@ export const isCalm = (s: Status) =>
   !s.isCompacting &&
   !s.wild &&
   !s.alert &&
+  s.flight === undefined &&
+  s.boxes === undefined &&
+  !s.strength &&
   // A skip that sleep cut short stays frozen mid-air, as still as the rest.
   s.actors.every(a => a.v === 0 && (a.roam.kind !== 'skip' || isAsleep(s))) &&
   s.fx.every(p => p.kind === 'z') &&
@@ -552,8 +628,15 @@ export function pose(s: Status, height: number, actor = 0): Pose {
     return { ...REST, scale: 1 - 0.55 * Math.exp(-t / ticks(150)) * Math.cos((2 * Math.PI * t) / ticks(350)) }
   }
   if (mood?.kind === 'faint') return faintPose(mood.t, height)
-  if (mood?.kind === 'hop' || mood?.kind === 'cheer') return hopPose(mood.t % HOP)
-  if (mood?.kind === 'evolve') return REST
+  if ((mood?.kind === 'hop' || mood?.kind === 'cheer') && (mood.actor === undefined || mood.actor === actor))
+    return hopPose(mood.t % HOP)
+  if (mood?.kind === 'evolve' || mood?.kind === 'confused') return REST
+  if (actor === 0 && s.strength) {
+    const { t, dust } = s.strength
+    // Dusting off: a quick shake. Pushing: crouched, heaving into the boulder every so often.
+    if (dust !== undefined) return { ...REST, shake: dust % 4 < 2 ? 1 : -1 }
+    return { ...REST, scale: 0.92, shake: Math.floor(t / HEAVE) % 2 ? scene.facing : 0 }
+  }
   if (s.alert > ALERT - STARTLE) return { ...REST, lift: arc((ALERT - s.alert + 1) / (STARTLE + 1), 2) }
   if (isAsleep(s)) {
     const breath = 0.5 + 0.5 * Math.sin((2 * Math.PI * (scene.t + actor * 13)) / ticks(3000))
@@ -616,6 +699,16 @@ function paint(
       into.pixels[py * into.width + px] = c
       body[py * into.width + px] = who
     }
+}
+
+// The first and last columns the lower half of a picture fills: a Pokémon's body near the ground, which a boulder
+// in front of it touches (its picture's own width runs on past an ear or a tail).
+function reach(img: Pixels): [number, number] {
+  let [first, last] = [img.width, -1]
+  for (let y = Math.floor(img.height / 2); y < img.height; y++)
+    for (let x = 0; x < img.width; x++)
+      if (img.pixels[y * img.width + x] !== CLEAR) [first, last] = [Math.min(first, x), Math.max(last, x)]
+  return last < 0 ? [0, img.width - 1] : [first, last]
 }
 
 const dot = (c: number): Pixels => ({ pixels: [c], width: 1, height: 1 })
@@ -691,10 +784,13 @@ export { phaseAt } from './backdrop'
 export type { Landscape, Phase } from './backdrop'
 
 // `overlays`: painted last, over everything (a Poké Ball and its sparkles).
-// `ready`: per party member, whether it's waiting to evolve (gold motes rise around it).
+// `ready`: per party member, whether it's waiting to evolve (gold motes rise around it). `moon`: the moon's shape
+// tonight, 0 (new) to 7 (moon.ts), full when left out.
 export type Look = {
   phase: Phase
   landscape?: Landscape
+  weather?: Weather
+  moon?: number
   wild?: Pixels
   evolveFrom?: Pixels
   overlays?: Placed[]
@@ -705,7 +801,8 @@ export type Look = {
 // the scene's left `scene` columns, so they never hide under the wallet nor go when the button does.
 export function scenery(total: number, rows: number, look: Look, t: number, scene = total): Pixels {
   const out: Pixels = { pixels: Array<number>(total * rows * 2).fill(CLEAR), width: total, height: rows * 2 }
-  backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene)
+  const kind = backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene, look.moon)
+  if (look.weather) drawWeather(out, kind, look.weather, look.phase, t, 1000 / TICK_MS)
   return out
 }
 
@@ -769,6 +866,16 @@ export function frame(
     paint(out, dim(p.img, night), p.left, p.floor, ground, false, WILD_BODY)
   }
 
+  // The boulder the lead pushes, on the ground a column ahead of its body (gone while it dusts off); a tall
+  // Pokémon pushes a bigger one.
+  if (s.strength && s.strength.dust === undefined && leadLeft) {
+    const rock = leadLeft.height >= 20 ? BIG_BOULDER : BOULDER
+    const [first, last] = reach(lead.facing === 1 ? mirror(leadLeft) : leadLeft)
+    const left = Math.round(lead.x)
+    const stone = lead.facing === 1 ? left + last + 2 : left + first - 1 - rock.width
+    paint(out, dim(rock, night), stone, ground, ground)
+  }
+
   const tops: number[] = []
   const ready: (Placed & { seed: number })[] = []
   // Last over the lead, so a Pokémon standing behind it never evolves out of sight.
@@ -807,6 +914,15 @@ export function frame(
       // onto the head instead (its bottom row is never above the glyph's height).
       if (top !== undefined) paint(out, mark, Math.round(a.x + w / 2) - 2, Math.max(mark.height - 1, top))
     })
+  // A box held over each head after an install, bobbing as they walk; a "?!" over the lead at a merge conflict.
+  if (s.boxes !== undefined)
+    s.actors.forEach((a, i) => {
+      const top = tops[i]
+      const w = lefts[i]?.width ?? 0
+      if (top !== undefined) paint(out, dim(BOX, night), Math.round(a.x + w / 2) - 2, Math.max(BOX.height - 1, top - 1))
+    })
+  if (s.mood?.kind === 'confused' && tops[0] !== undefined && leadLeft)
+    paint(out, CONFUSED, Math.round(lead.x + leadLeft.width / 2) - 3, Math.max(CONFUSED.height - 1, tops[0] - 1))
 
   for (const fx of s.fx) {
     const age = fx.age / fx.life
@@ -837,6 +953,15 @@ export function frame(
   }
   // Not while one evolves: everyone watches it, and nothing is painted over it.
   if (s.mood?.kind !== 'evolve') for (const r of ready) motes(out, r, ground, s.t - (s.t % MOTE_STEP), r.seed, width)
+  // A push's Pidgey crosses the whole band, high up, flapping, its letter hanging below it.
+  if (s.flight !== undefined) {
+    const p = 1 - s.flight / FLIGHT
+    const bird = Math.floor(s.flight / 3) % 2 ? PIDGEY[1] : PIDGEY[0]
+    const left = Math.round(-bird.width + p * (total + bird.width))
+    const floor = bird.height + Math.round(Math.sin(p * Math.PI * 4))
+    paint(out, dim(bird, night), left, floor)
+    paint(out, dim(LETTER, night), left + 3, floor + LETTER.height)
+  }
   for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
   return out
 }

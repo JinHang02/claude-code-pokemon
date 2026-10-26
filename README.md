@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![1011 tests](https://img.shields.io/badge/tests-1011_passing-27c93f?style=flat-square)](plugin/tests)
+[![1097 tests](https://img.shields.io/badge/tests-1097_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
@@ -65,6 +65,15 @@ Nothing to configure. Your party watches what Claude is doing and reacts on its 
 </tr>
 </table>
 
+A few smaller moments, none of them worth XP:
+
+- **A `git push` goes through:** a Pidgey flies across the band carrying a letter.
+- **A test or build runs past 30 seconds:** your lead puts its Strength into a boulder until it ends, then dusts itself off.
+- **A package install finishes** (`npm install`, `pip install`, `cargo add` and friends): everyone carries a box for a few seconds.
+- **A merge hits a conflict:** the party spins around, confused, a "?!" over your lead.
+
+Each one plays on demand too: `/pokemon-play push`, `boulder`, `boxes` or `confused`.
+
 Between all that they just live their lives: short strolls in any direction, stopping for a moment, looking around, changing their minds halfway, skipping in place.
 
 Only real failures make them faint. A `grep` that finds nothing isn't a failure, so a plain command has to fail three times in a row before anyone keels over.
@@ -95,7 +104,7 @@ _What? Charmander is evolving!_ They evolve **the way they do in the games**:
 - **Level up:** Charmander at Lv 16, Charmeleon at Lv 36.
 - **Evolution stones:** Pikachu with a Thunder Stone, Eevee with a Water, Thunder or Fire Stone, and the rest.
 - **Trades:** a trade with a held item needs that item (Onix a Metal Coat, Seadra a Dragon Scale), and a plain trade needs a Linking Cord (Haunter, Kadabra, Machoke).
-- **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open. A Soothe Bell makes the time count one and a half times.
+- **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open, and every passing test run or commit counts as 10 more minutes. A Soothe Bell makes the time count one and a half times.
 - **Time of day:** Riolu only by day, Rockruff into Midnight Lycanroc at night, Eevee into Espeon by day or Umbreon by night.
 
 Regional forms evolve the way their region does.
@@ -209,7 +218,7 @@ Build a **party of up to three** and they'll travel together. Twins are welcome:
 
 ## Day, night and 20 landscapes
 
-The meadow follows your local clock: a rising sun at dawn, drifting clouds by day, a setting sun at dusk, then stars, a crescent moon and fireflies after dark. And every hour your party wanders somewhere new: an open **meadow**, rolling **hills**, snowy **mountains**, a shimmering **lake** or the edge of a **forest**. Every session you have open shows the same place.
+The meadow follows your local clock: a rising sun at dawn, drifting clouds by day, a setting sun at dusk, then stars, the moon and fireflies after dark. The moon is the real one: worked out from the date, it waxes from a faint new moon through crescent, half and gibbous to full and wanes again over 29½ days. Dusk brings its own visitors (Rockruff, Murkrow, Misdreavus, Hoothoot, Zubat, Gastly, Houndour, Sableye come about one visit in four), a Clefairy may come to dance on a full-moon night, and Ursaring becomes Ursaluna with a Peat Block only under a full moon. And every hour your party wanders somewhere new: an open **meadow**, rolling **hills**, snowy **mountains**, a shimmering **lake** or the edge of a **forest**. Every session you have open shows the same place.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/dusk.gif" width="400" alt="A shiny Pikachu and Charmander on the hills at dusk">
@@ -224,7 +233,9 @@ The meadow follows your local clock: a rising sun at dawn, drifting clouds by da
 <tr><th>Night</th><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-meadow.png" width="170" alt="Night meadow"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-hills.png" width="170" alt="Night hills"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-mountains.png" width="170" alt="Night mountains"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-lake.png" width="170" alt="Night lake"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-forest.png" width="170" alt="Night forest"></td></tr>
 </table>
 
-Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it for 15 seconds.
+Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it for 15 seconds, and `/pokemon-play full moon` (or `moon`, `new moon`, `crescent moon`...) the night sky under that moon.
+
+Some hours it rains, snows (on the mountains, hills and forest) or a fog rolls in, the same in every window; a Water-type Pokémon now and then hops for joy in the rain. It's only for the eye. Try `/pokemon-play rain`, `snow`, `fog` or `clear`, alone or with a time and place: `/pokemon-play night rain lake`.
 
 ---
 
@@ -327,21 +338,23 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `<name> <n>`                            | When a name fits more than one of yours, any command lists them numbered (the first ten, and how to narrow the rest): add the number to pick, as in `/pokemon give rare-candy eevee 2`. `shiny` or `lv <n>` narrows any name: `/pokemon release eevee lv 30`                                |
 | `/pokemon party`                        | Levels, XP to go, how each one evolves (♥ for friendship), held items and time together                                                                                                                                                                                                     |
 | `/pokemon box [name] [page]`            | Your PC box, up to 960, 30 to a page (`box 2`). A name, `shiny` or `lv <n>` shows only those, with their places in the box: `box eevee`, `box shiny`. `/pokemon <name>` or `add <name>` brings one out                                                                                      |
+| `/pokemon find <name>`                  | One search over the party and the PC box: a name or its start, `shiny`, `lv <n>`, or together (`find shiny eevee lv 5`). Shows where each one is (party, or PC box place and page), its level and held item                                                                                 |
 | `/pokemon deposit <name>`               | Move a party member into your PC box, level and all (your lead too; the party can't be emptied)                                                                                                                                                                                             |
 | `/pokemon evolve <name> [into]`         | Evolve a Pokémon that's ready (gold motes); name the branch when it could go more than one way: `evolve eevee espeon`                                                                                                                                                                       |
 | `/pokemon evolve manual \| auto`        | `manual` (the default): Pokémon wait for `/pokemon evolve`. `auto`: they evolve by themselves as soon as they can. A stone or trade item you give works at once either way                                                                                                                  |
 | `/pokemon everstone <name>`             | Give (or take back) a free Everstone: that Pokémon stops evolving by itself (a stone or trade item you give it still works)                                                                                                                                                                 |
 | `/pokemon evolution [style]`            | The evolution screen: `rays` (the default), `white` or `gradient`. No style: which one you have, and the three to choose from                                                                                                                                                               |
+| `/pokemon region [region]`              | Whose regional forms evolutions take when you name no branch: `alola`, `galar`, `hisui` or `paldea` (a Thunder Stone then makes an Alolan Raichu). `kanto` (the default): each Pokémon's own form. No region: which one you have, and the choices                                           |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                                                                                                                                 |
 | `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices                                                                                                                                     |
 | `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                                                                                                                               |
-| `/pokemon give <item> <name> [into]`    | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level. A regional form is taken only when named: `give thunder-stone pikachu alolan raichu`                                                          |
+| `/pokemon give <item> <name> [into]`    | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level. A regional form is taken only when named (`give thunder-stone pikachu alolan raichu`) or chosen with `/pokemon region`                        |
 | `/pokemon take <name>`                  | Put its held item back in your Bag. Looks in the party, then the PC box; of several, the only holder, else it asks which                                                                                                                                                                    |
 | `/pokemon size small \| normal \| auto` | Sprite size. `auto` goes small on short terminals                                                                                                                                                                                                                                           |
 | `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                                                                                                                                      |
 | `/pokemon help`                         | Every sub-command, one a line                                                                                                                                                                                                                                                               |
 | `/pokemon-help`                         | Every command of the plugin and every word it takes. While you type `/pokemon` or `/pokemon-play`, the typeahead previews each word: `give <item> <name>`, then your Bag's items, then your party                                                                                           |
-| `/pokedex`                              | Everything you've seen and caught, per generation, plus your shinies                                                                                                                                                                                                                        |
+| `/pokedex [name]`                       | Everything you've seen and caught, per generation, plus your shinies. `/pokedex <name>`: one species' number, types, Pokédex counts, evolutions, forms and which of yours are that species                                                                                                  |
 | `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve [style]` (your lead's evolution on that screen, nothing saved), `wild [shiny] [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                   |
 
 ---

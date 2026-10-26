@@ -8,6 +8,9 @@ import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Gender, Stage } from './evolution'
 import { ALL_HELP, COMMANDS, POKEMON_HELP, suggest } from './commands'
+import { formatDexEntry, readDexQuery } from './dex-entry'
+import type { DexEvolutions } from './dex-entry'
+import { formatFind } from './find'
 import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -17,7 +20,11 @@ import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from
 import type { Found, Place, Spot } from './members'
 import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
-import { classify } from './reactions'
+import { classify, isTestOrBuild } from './reactions'
+import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } from './region'
+import type { Region } from './region'
+import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
+import type { Work } from './friendship'
 import {
   addTogether,
   bagFull,
@@ -74,7 +81,7 @@ import {
   XP,
   xpForLevel,
 } from './save'
-import type { Evolution, Ledger, Member, Save, Size } from './save'
+import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
@@ -107,11 +114,14 @@ import type { Happening, Look, Phase, Status } from './scene'
 import { SPECIES } from './species-data'
 import { landscapeAt, LANDSCAPES, localHourOf } from './backdrop'
 import type { Landscape } from './backdrop'
+import { FULL_MOON, isFullMoonAt, MOON_PHASES, MOON_WORDS, moonAge, moonPhaseAt, SYNODIC_DAYS } from './moon'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
 import { shopSize } from './shop'
 import type { ShopProps } from './shop'
+import { stir, weatherAt, WEATHERS } from './weather'
+import type { Weather } from './weather'
 
 const BASE = 'https://gitlab.com/phoneybadger/pokemon-colorscripts/-/raw/main'
 const POKEAPI = 'https://pokeapi.co/api/v2'
@@ -126,7 +136,25 @@ const TOGETHER_EVERY_MS = 60_000
 // A download taking longer than this has failed.
 const FETCH_TIMEOUT_MS = 20_000
 const WILD_EVERY = [ticks(10 * 60_000), ticks(20 * 60_000)] as const
-const ANIMATIONS = ['hop', 'cheer', 'faint', 'sleep', 'squash', 'work', 'clones', 'evolve', 'wild'] as const
+const ANIMATIONS = [
+  'hop',
+  'cheer',
+  'faint',
+  'sleep',
+  'squash',
+  'work',
+  'clones',
+  'push',
+  'boulder',
+  'boxes',
+  'confused',
+  'evolve',
+  'wild',
+] as const
+// A test or build still running after this long: the lead puts its Strength into a boulder until it ends.
+const LONG_RUN_MS = 30_000
+// Long runs going on now (several can run side by side): the boulder goes once the last one ends.
+let longRuns = 0
 const PHASES: Phase[] = ['day', 'dusk', 'night', 'dawn']
 
 const party = atom({ plugin: 'pokemon', key: 'party' } as const, [])
@@ -143,11 +171,22 @@ let cash = 0
 // ₽ just earned, shown under the button for a moment; each earning's number, so only the latest clears it.
 let plus = 0
 let earnings = 0
-// Time together by member id, from its own store key.
-let times = loadTogether(undefined).ms
+// Time together by member id: its own store key's, with friendship from good work added (see friendship.ts); and how
+// much of it came from work. Counted again from the three whenever one of them is read.
+let times: Record<string, number> = {}
+let works: Record<string, number> = {}
+let seen: { together: Together; work: Work; ledgers: Record<string, Ledger> } = {
+  together: loadTogether(undefined),
+  work: loadWork(undefined),
+  ledgers: {},
+}
+function countTimes(read: Partial<typeof seen>) {
+  seen = { ...seen, ...read }
+  ;({ ms: times, works } = timesOf(seen.together, seen.work, seen.ledgers))
+}
 // A save as the party stands: XP from every session's ledger and time together included. For showing and deciding
 // only.
-const viewOf = (s: Save) => withTogether(withExtra(s, extra), times)
+const viewOf = (s: Save) => withTogether(withExtra(s, extra), times, works)
 const view = () => viewOf(save)
 // How wide the terminal is for the command running now, so a party or a box fits it; unknown in a test.
 let replyColumns = Infinity
@@ -158,6 +197,7 @@ const columnsOf = (columns: number | undefined) =>
 function countLedgers(ledgers: Record<string, Ledger>) {
   extra = extraXp(ledgers, save.folded, save.foldedXp)
   cash = extraMoney(ledgers, save.folded, save.foldedMoney)
+  countTimes({ ledgers })
 }
 // Why an item can't be given: the Bag has none.
 const noItem = (name: string) => `You don't have ${withArticle(name)}. Buy one at the PokéMart: /pokemon mart`
@@ -261,7 +301,7 @@ function recheck($: EngineInterface) {
   checkedInputs = inputs
   background($, learnEvolutions($))
 }
-let shown: { phase?: Phase; landscape?: Landscape; until: number } | null = null
+let shown: { phase?: Phase; landscape?: Landscape; weather?: Weather; moon?: number; until: number } | null = null
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
 let ready: Promise<void> = Promise.resolve()
@@ -335,11 +375,26 @@ function phaseNow(): Phase {
   return phaseAt(((localHour() % 24) + 24) % 24)
 }
 
+// The moon's shape tonight (moon.ts), from the same clock as the hour, or the one /pokemon-play shows.
+function moonNow(): number {
+  if (isShowing() && shown?.moon !== undefined) return shown.moon
+  return moonPhaseAt(clockMs ?? Date.now())
+}
+
 // A different landscape every hour, the same in every session.
 function landscapeNow(): Landscape {
   if (isShowing() && shown?.landscape) return shown.landscape
   return landscapeAt(localHour())
 }
+
+// Rain, snow or fog some hours, the same in every session.
+function weatherNow(): Weather {
+  if (isShowing() && shown?.weather) return shown.weather
+  return weatherAt(localHour(), landscapeNow())
+}
+
+// Who each actor of the band is, for the weather's fans.
+const actorsNow = () => (fitted?.keys ?? []).map(id => save.party.find(m => m.id === id))
 
 // A download, failing after FETCH_TIMEOUT_MS.
 async function fetchText($: EngineInterface, url: string) {
@@ -507,7 +562,7 @@ async function sync($: EngineInterface) {
       latest.size !== wasSize ||
       latest.isOff !== wasOff ||
       (mart.isOpen && JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== was)
-    times = loadTogether(await $.store.get(TOGETHER)).ms
+    countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
   })
   if (isNewParty) await refreshParty($)
   if (isNewLook) $.ui.invalidate('ui.render')
@@ -550,11 +605,24 @@ async function foldLedgers($: EngineInterface) {
         ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
       }
     })
-  // Folded on an earlier round and unchanged since: removed.
+  // Their friendship from good work goes under its own key, marked there (see friendship.ts); marks of ledgers gone
+  // are dropped, and the credit of members released.
+  const toBefriend = stale.filter(([key, l]) => foldWork(seen.work, key, l) !== seen.work)
+  if (toBefriend.length || pruneWork(seen.work, Object.keys(ledgers), keptIds(save)) !== seen.work)
+    await queued(async () => {
+      const latest = loadWork(await $.store.get(WORK))
+      const folded = toBefriend.reduce((w, [key, l]) => foldWork(w, key, l), latest)
+      // Released by the save as it is now: a member caught in another window since this one synced is kept.
+      const next = pruneWork(folded, Object.keys(ledgers), keptIds(loadSave(await $.store.get('save'))))
+      if (next !== latest) await $.store.set(WORK, next)
+      countTimes({ work: next })
+    })
+  // Folded on an earlier round (into the save and the work key) and unchanged since: removed.
   for (const [key, l] of stale) {
-    if (toFold.some(([k]) => k === key)) continue
+    if (toFold.some(([k]) => k === key) || toBefriend.some(([k]) => k === key)) continue
     const latest = loadLedger(await $.store.get(key))
-    if (latest.at === l.at) await $.store.delete(key)
+    const work = loadWork(await $.store.get(WORK))
+    if (latest.at === l.at && foldWork(work, key, latest) === work) await $.store.delete(key)
   }
 }
 
@@ -570,6 +638,9 @@ async function retry($: EngineInterface) {
   else if (isPartyStale) retrying = refreshParty($)
   if (retrying) await retrying.finally(() => (retrying = null))
 }
+
+// The ids of every member in the party and the PC box.
+const keptIds = (s: Save) => new Set([...s.party, ...(s.box ?? [])].map(m => m.id))
 
 // A save from before the `together` key kept time together in itself (`raw`, read just before): it seeds the key
 // once, before this session writes the save (which drops it) or adds time. A key already there was seeded (or
@@ -595,7 +666,7 @@ async function together($: EngineInterface) {
     if (latest.isOff || !latest.party.length) return
     const added = addTogether(loadTogether(await $.store.get(TOGETHER)), latest, now)
     await $.store.set(TOGETHER, added)
-    times = added.ms
+    countTimes({ together: added })
     isBeat = true
   })
   if (isBeat) await learnEvolutions($)
@@ -1156,8 +1227,41 @@ async function setEvolutionStyle($: EngineInterface, word: string): Promise<stri
   return `Evolution screen: ${word}, ${STYLE_TEXT[word]}.`
 }
 
-// What `member` can evolve into and how, as in the games (empty at a final stage), and its species' gender ratio.
-async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stages: Stage[]; genderRate: unknown }> {
+// Each region word, one a line, with the one in use marked.
+function regionChoices(current: Region | undefined): string {
+  return REGION_WORDS.map(r => `  ${r}: ${REGION_TEXT[r]}${r === (current ?? 'kanto') ? ' (current)' : ''}`).join('\n')
+}
+
+// `/pokemon region`: shows the region whose forms evolutions take, or sets it (`kanto`, `none` or `off` for each
+// Pokémon's own). Only evolutions with no form named follow it; wild Pokémon come in every form.
+async function setRegion($: EngineInterface, word: string): Promise<string> {
+  const footer = 'Or name one: /pokemon evolve koffing galarian weezing'
+  if (!word) {
+    await sync($)
+    return `Region: ${save.region ?? 'kanto'}.\n${regionChoices(save.region)}\n${footer}`
+  }
+  const region = readRegion(word)
+  if (region === undefined) {
+    const [guess] = REGION_WORDS.filter(r => distance(word, r, 2) <= 2).sort(
+      (a, b) => distance(word, a, 2) - distance(word, b, 2),
+    )
+    return `${guess ? `Did you mean ${guess}? ` : ''}Regions:\n${regionChoices(save.region)}`
+  }
+  await mutate($, s => {
+    const { region: _, ...rest } = s
+    return region ? { ...rest, region } : rest
+  })
+  return region
+    ? `Region: ${region}. Evolutions take ${REGIONAL[region]} forms unless you name one.`
+    : 'Region: kanto. Evolving, each Pokémon keeps its own form.'
+}
+
+// What `member` can evolve into and how, as in the games (empty at a final stage), its species' gender ratio, and the
+// chain they were read from (for /pokedex <name>).
+async function evolutionsOf(
+  $: EngineInterface,
+  member: Member,
+): Promise<{ stages: Stage[]; genderRate: unknown; chain?: ChainLink }> {
   const list = await loadSpecies($)
   const res = await cachedFetch(
     $,
@@ -1178,7 +1282,7 @@ async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stage
   const chain = (JSON.parse(chainRes.text) as { chain: ChainLink }).chain
   const forms = (list.find(s => s.name === member.species)?.forms ?? []).filter(f => f !== 'regular')
   const stages = nextStages(chain, member.species, pokeapiForm(member.species, member.form), member.gender, forms)
-  return { stages: stages.filter(n => list.some(s => s.name === n.species)), genderRate }
+  return { stages: stages.filter(n => list.some(s => s.name === n.species)), genderRate, chain }
 }
 
 // The types of a PokeAPI form (`rattata-alola` is Dark), cached. A form PokeAPI doesn't know has none, and isn't
@@ -1263,24 +1367,35 @@ async function evolveByName($: EngineInterface, query: string): Promise<string> 
   return answer
 }
 
-type Surroundings = { phase: Phase; party: string[]; partyTypes: string[] }
+// `moonDays`: days until the next full moon, 0 within a day of one.
+type Surroundings = { phase: Phase; isFullMoon: boolean; moonDays: number; party: string[]; partyTypes: string[] }
 
-// The time of day and the party, as evolutions see them; types are fetched only when a member needs one.
+// The time of day, the moon and the party, as evolutions see them; types are fetched only when a member needs one.
 async function evolutionContext($: EngineInterface): Promise<Surroundings> {
-  const hour = localHour(await $.clock.now())
+  const ms = await $.clock.now()
+  const hour = localHour(ms)
+  const isFullMoon = isFullMoonAt(ms)
+  const moonDays = isFullMoon ? 0 : Math.max(1, Math.round((SYNODIC_DAYS * 1.5 - moonAge(ms)) % SYNODIC_DAYS))
   const party = save.party.map(m => m.species)
   const needsTypes = save.party.some(m => m.next?.some(s => s.way.kind === 'level' && s.way.partyType))
   const partyTypes = needsTypes
     ? (await Promise.all(save.party.map(m => typesOf($, pokeapiForm(m.species, m.form))))).flat()
     : []
-  return { phase: phaseAt(((hour % 24) + 24) % 24), party, partyTypes }
+  return { phase: phaseAt(((hour % 24) + 24) % 24), isFullMoon, moonDays, party, partyTypes }
 }
+
+// When the full moon a full-moon evolution waits for comes: this one, once it's dark, or in so many days.
+const untilFullMoon = (c: Surroundings) =>
+  c.isFullMoon
+    ? ': the moon is full, so after dark'
+    : `: the next is in about ${c.moonDays} day${c.moonDays === 1 ? '' : 's'}`
 
 // The stages `m` reaches by itself now.
 const dueFor = (m: Member, c: Surroundings): Stage[] =>
   dueStages(m.next ?? [], {
     level: level(m.xp),
     phase: c.phase,
+    isFullMoon: c.isFullMoon,
     ...(m.heldItem ? { heldItem: m.heldItem } : {}),
     togetherMs: m.togetherMs ?? 0,
     party: c.party,
@@ -1425,8 +1540,6 @@ type Evolved = { text: string; isShown?: boolean }
 // `ask`: set when the person asked (/pokemon evolve): the species they named ('' for none), and the words that named
 // the Pokémon (`eevee 2`), to suggest again.
 type Ask = { into: string; as: string }
-// The forms the games give a species in another region.
-const isRegional = (form: string) => /^(alola|galar|hisui|paldea)\b/.test(form)
 function evolveMember(
   $: EngineInterface,
   id: string,
@@ -1532,7 +1645,9 @@ async function evolveNow(
     const allowed = isPreview
       ? options
       : given
-        ? byItem.filter(s => timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase))
+        ? byItem.filter(s =>
+            timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase, context.isFullMoon),
+          )
         : dueFor(withTime({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, times), context)
     const list = await loadSpecies($)
     const formOf = (s: Stage) => evolvedForm(s, member.form, list.find(p => p.name === s.species)?.forms ?? [])
@@ -1592,13 +1707,18 @@ async function evolveNow(
       }
       if (duePicks.length > 1) return pickOne(duePicks)
       choices = due
-    } else if (isAsked && picks.length > 1) return pickOne(picks)
+    } else if (isAsked && picks.length > 1) {
+      // With a region chosen, its form is the pick when it is the one regional branch due (Galarian Weezing); else
+      // the person names one.
+      const local = allowed.filter(s => isFrom(formOf(s), save.region))
+      if (new Set(local.map(pickOf)).size !== 1) return pickOne(picks)
+      choices = local
+    }
     // Not asked for by name, a regional form other than the Pokémon's own is left to those who ask for it: a Thunder
     // Stone makes a Kanto Pikachu a Kanto Raichu, as outside Alola in the games (`give thunder-stone pikachu alolan
-    // raichu` asks). One is taken only when there is no other (Cubone at night). Looks (Vivillon's patterns) and
-    // other forms (Toxtricity's) are rolled by the Pokémon's id, as before.
-    const own = choices.filter(s => !isRegional(formOf(s)) || formOf(s) === member.form)
-    const pool = into === undefined && own.length ? own : choices
+    // raichu` asks), unless /pokemon region chose Alola. One is taken only when there is no other (Cubone at night).
+    // Looks (Vivillon's patterns) and other forms (Toxtricity's) are rolled by the Pokémon's id, as before.
+    const pool = into === undefined ? regionPool(choices, formOf, member.form, save.region) : choices
     // A preview shows any branch; a real evolution takes this Pokémon's own.
     const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, pool)
     if (!next) {
@@ -1612,7 +1732,7 @@ async function evolveNow(
         const time = way?.kind === 'item' ? way.time : undefined
         return {
           text: time
-            ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}.`
+            ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}${time === 'full-moon' ? untilFullMoon(context) : ''}.`
             : `${name} can't use ${withArticle(itemName(given))}.`,
         }
       }
@@ -1782,10 +1902,12 @@ async function evolveNow(
   }
 }
 
-// XP for the whole party, written to this session's own ledger; anyone due evolves, one after another.
-async function earn($: EngineInterface, amount: number) {
+// XP for the whole party, written to this session's own ledger; anyone due evolves, one after another. `isWork`: a
+// passing test run or a commit, which also counts as WORK_MS of time together (in the same ledger, so once).
+async function earn($: EngineInterface, amount: number, isWork = false) {
   await ready
   let leveledUp = false
+  let isBefriended = false
   let isPaid = false
   let isRedrawn = false
   await queued(async () => {
@@ -1800,8 +1922,11 @@ async function earn($: EngineInterface, amount: number) {
       ledgerKey = fresh
     }
     const own = loadLedger(await $.store.get(ledgerKey))
-    await $.store.set(ledgerKey, earnInto(own, latest.party, amount, Date.now()))
+    const paid = earnInto(own, latest.party, amount, Date.now())
+    await $.store.set(ledgerKey, befriend(paid, own.friendship, latest.party, isWork ? WORK_MS : 0))
     isPaid = true
+    // Only a friendship evolver needs an evolution check for it.
+    isBefriended = isWork && latest.party.some(m => m.next?.some(s => s.way.kind === 'friendship'))
     isRedrawn = isOtherParty(latest, save)
     save = latest
     countLedgers(await readLedgers($))
@@ -1818,7 +1943,7 @@ async function earn($: EngineInterface, amount: number) {
     })
   }
   if (isRedrawn) await refreshParty($)
-  if (leveledUp) await learnEvolutions($)
+  if (leveledUp || isBefriended) await learnEvolutions($)
 }
 
 // A wild visitor at most as tall as the party's tallest, so the band (sized to the party) never cuts it off.
@@ -1849,7 +1974,9 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     const held = isAsked ? null : wildHeld
     wildHeld = null
     const pick =
-      named.pick ?? held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex })
+      named.pick ??
+      held?.pick ??
+      drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex, moon: moonNow() })
     const wantsShiny = named.wantsShiny || (held?.isShiny ?? Math.random() < SHINY_ODDS)
     const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
@@ -2116,6 +2243,8 @@ function openMartCommand($: EngineInterface): string {
 const lookNow = (): Look => ({
   phase: phaseNow(),
   landscape: landscapeNow(),
+  weather: weatherNow(),
+  moon: moonNow(),
   wild: (wild && (pitch ? wildLook(pitch, wild.left) : wild.left)) ?? undefined,
   evolveFrom: evolveFrom ?? undefined,
   ...(pitch ? { overlays: ballOverlays(pitch) } : {}),
@@ -2252,6 +2381,8 @@ function screenCells(s: Screen, columns: number, rows: number): string {
 // that stirs the party (`wake`) brings it back to every tick at once.
 // The pending wait for the next tick: `rearm` cuts it short and starts again from now, at the pace the party needs.
 let pending: { cancel: () => void; rearm: () => void; isLong: boolean } | null = null
+// Something stirred the party since the last tick: the next one draws, calm or not, so it shows at once.
+let isStirred = false
 const isBatched = () =>
   Boolean(band && fitted) && !save.isOff && isAsleep(status) && isCalm(status) && !pitch && !screen && !mart.isOpen
 
@@ -2280,6 +2411,7 @@ function loopTicks($: EngineInterface) {
 }
 
 function wake() {
+  isStirred = true
   // Only a batched wait is worth cutting short: an awake loop ticks next anyway.
   if (pending?.isLong) pending.rearm()
 }
@@ -2301,6 +2433,7 @@ async function tick($: EngineInterface) {
     Math.random,
     band.total,
   )
+  status = stir(status, weatherNow(), actorsNow(), isAsleep(status))
   if (pitch) {
     const { pitch: next, event } = stepThrow(pitch)
     pitch = next
@@ -2321,7 +2454,9 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   // The scene keeps moving underneath; nothing is drawn over the Mart.
   if (mart.isOpen) return
-  if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
+  const isDue = isStirred || tickNo % CALM_EVERY === 0
+  isStirred = false
+  if (!pitch && isCalm(status) && !isDue) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return
@@ -2353,15 +2488,29 @@ async function play($: EngineInterface, args: string): Promise<string> {
   const words = name.split(/\s+/)
   const phase = PHASES.find(p => words.includes(p))
   const landscape = LANDSCAPES.find(l => words.includes(l))
+  const weather = WEATHERS.find(w => words.includes(w))
+  // `full moon`, `new moon lake`, or `moon` for tonight's: the night sky under that moon.
+  if (words.includes('moon') && words[0] !== 'wild') {
+    const said = words.find(w => Object.hasOwn(MOON_WORDS, w))
+    const moon = said ? (MOON_WORDS[said] ?? FULL_MOON) : moonPhaseAt(await $.clock.now())
+    shown = { phase: 'night', landscape, weather, moon, until: tickNo + ticks(15_000) }
+    return `Showing ${said ? 'a' : "tonight's"} ${MOON_PHASES[moon]}${landscape ? ` over the ${landscape}` : ''} for 15 seconds.`
+  }
   // After `wild` every word belongs to the name: `wild lycanroc dusk` is a Pokémon, not a scene.
-  if ((phase || landscape) && words[0] !== 'wild') {
-    shown = { phase, landscape, until: tickNo + ticks(15_000) }
-    return `Showing ${[phase, landscape].filter(Boolean).join(' ')} for 15 seconds.`
+  if ((phase || landscape || weather) && words[0] !== 'wild') {
+    shown = { phase, landscape, weather, until: tickNo + ticks(15_000) }
+    // A Water type previewing the rain (an Ice type the snow) hops for it at once.
+    if (weather) status = stir(status, weather, actorsNow(), isAsleep(status), () => 0)
+    return `Showing ${[phase, weather, landscape].filter(Boolean).join(' ')} for 15 seconds.`
   }
   if (name === 'hop') feel('turn-answer')
   else if (name === 'cheer') feel('cheer')
   else if (name === 'faint') feel('tool-error')
-  else if (name === 'sleep') status = { ...status, idleTicks: Number.MAX_SAFE_INTEGER }
+  else if (name === 'push' || name === 'boxes' || name === 'confused') feel(name)
+  else if (name === 'boulder') {
+    feel('boulder-start')
+    later(5000, () => feel('boulder-end'))
+  } else if (name === 'sleep') status = { ...status, idleTicks: Number.MAX_SAFE_INTEGER }
   else if (name === 'squash') {
     feel('compact-start')
     later(2500, () => feel('compact-end'))
@@ -2394,7 +2543,7 @@ async function play($: EngineInterface, args: string): Promise<string> {
     const said = await spawnWild($, words.slice(1).join(' '))
     if (said) return said
     return wild ? `A wild ${wild.mon.name} wanders by.` : 'No wild Pokémon showed up.'
-  } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES].join(', ')}.`
+  } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES, ...WEATHERS, 'moon', 'full moon'].join(', ')}.`
   return `Playing ${name}.`
 }
 
@@ -2423,6 +2572,27 @@ async function showBox($: EngineInterface, args: string): Promise<string> {
 
 // How long a naming command waits for a species list still downloading.
 const SPECIES_WAIT_MS = 2000
+
+// How long /pokedex <name> waits for evolutions not downloaded yet; past it the entry says to run it again.
+const DEX_EVOLUTION_MS = 4000
+
+// `/pokedex <name>`: one species' entry, its evolutions looked up as a party member's of that species and form would
+// be (any gender). Null when the words name no species (`shiny` alone): the whole Pokédex then.
+async function dexEntryOf($: EngineInterface, args: string): Promise<string | null> {
+  const list = species ?? []
+  const pick = readDexQuery(list, args.normalize('NFKC'))
+  if (typeof pick === 'string' || !pick) return pick
+  const as: Member = { id: '', species: pick.species, form: pick.form, isShiny: false, xp: 0, evolutions: 0 }
+  const evolutions = await Promise.race([
+    evolutionsOf($, as).then(
+      (found): DexEvolutions => found,
+      (): DexEvolutions => 'offline',
+    ),
+    $.clock.sleep(DEX_EVOLUTION_MS).then((): DexEvolutions => 'slow'),
+  ])
+  return formatDexEntry({ pick, list, save: view(), evolutions, levelOf: levelNow }, replyColumns)
+}
+
 // The `/pokemon` words that take no Pokémon's name.
 const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
@@ -2445,6 +2615,10 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return formatParty(view(), replyColumns, readyNow())
     case 'box':
       return showBox($, tail)
+    case 'find':
+      // Read-only: the party and the box as they stand, nothing written.
+      await sync($)
+      return formatFind(view(), tail, levelNow, replyColumns)
     case 'add':
       return addMember($, tail)
     case 'deposit':
@@ -2456,6 +2630,8 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return setSize($, tail.toLowerCase())
     case 'evolution':
       return setEvolutionStyle($, tail.toLowerCase())
+    case 'region':
+      return setRegion($, tail.toLowerCase())
     case 'everstone':
       return toggleEverstone($, tail)
     case 'evolve':
@@ -2542,7 +2718,7 @@ async function load($: EngineInterface) {
       await seedTogether($, raw)
       save = loadSave(raw)
       countLedgers(await readLedgers($))
-      times = loadTogether(await $.store.get(TOGETHER)).ms
+      countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
     })
   } catch (err) {
     await report($, err)
@@ -2643,13 +2819,15 @@ export const register: Register = on => {
   }))
 
   on('command.run', { command: 'pokedex' }, async ($, e) => ({
-    text: await promptly($, '/pokedex', async () => {
+    text: await promptly($, `/pokedex ${e.args}`.trim(), async () => {
       replyColumns = columnsOf(e.presentation?.columns)
       try {
         await ready
         await settled($)
         await sync($)
         await loadSpecies($)
+        const entry = await dexEntryOf($, e.args)
+        if (entry) return entry
         return `${formatDex(
           save,
           (species ?? []).map(s => s.name),
@@ -2708,6 +2886,14 @@ export const register: Register = on => {
     if (e.agentId) return next(e)
     const token = e.tool === 'Agent' ? (e.tool_use_id ?? `agent-${Math.random()}`) : null
     if (token) (agents.add(token), countAgents())
+    let isLong = false
+    const long =
+      e.tool === 'Bash' && isTestOrBuild(e.command)
+        ? $.clock.after(LONG_RUN_MS, () => {
+            isLong = true
+            if (longRuns++ === 0) feel('boulder-start')
+          })
+        : null
     try {
       const ran = await next(e)
       // Refused by a hook beneath: nothing ran.
@@ -2734,10 +2920,13 @@ export const register: Register = on => {
       const outcome = classify(e.tool, command, Boolean(ran.isError), streak, output)
       streak = outcome.streak
       outcome.happenings.forEach(feel)
-      if (outcome.xp) background($, earn($, outcome.xp))
+      // XP from a tool comes only from a passing test run or a commit: good work, which builds friendship too.
+      if (outcome.xp) background($, earn($, outcome.xp, true))
       return ran
     } finally {
       if (token) (agents.delete(token), countAgents())
+      long?.cancel()
+      if (isLong && --longRuns === 0) feel('boulder-end')
     }
   })
 

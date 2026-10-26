@@ -1,9 +1,12 @@
 import { FRIENDSHIP_MS } from './evolution'
 import { DEFAULT_EVOLUTION_STYLE, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
+import { isRegion } from './region'
+import type { Region } from './region'
 import type { Stage, Time, Way } from './evolution'
 import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
 import type { Item } from './items'
+import { loadFriendship } from './friendship'
 
 export type Size = 'auto' | 'normal' | 'small'
 // `manual`: a Pokémon that can evolve waits for /pokemon evolve; `auto`: it evolves by itself straight away.
@@ -24,6 +27,8 @@ export type Member = {
   // Time in the party while Claude Code was open: friendship evolutions come from it. Kept under its own store key
   // (`Together`) and filled in by withTogether for showing and deciding; never stored in the save.
   togetherMs?: number
+  // How much of that time came from good work (passing test runs and commits); filled in the same way.
+  workMs?: number
   // From its species' ratio, as in the games; null for a genderless one, absent until looked up.
   gender?: 'female' | 'male' | null
   // Caught with a Poké Ball from the wild, not summoned by name.
@@ -50,6 +55,8 @@ export type Save = {
   box?: Member[]
   // How the evolution screen looks (/pokemon evolution); absent means the default.
   evolutionStyle?: EvolutionStyle
+  // Whose regional forms evolutions take when none is named (/pokemon region); absent means each Pokémon's own.
+  region?: Region
   isOff?: boolean
   folded?: string[]
   foldedXp?: Record<string, Record<string, number>>
@@ -62,8 +69,9 @@ export type Save = {
 }
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
-// side can't lose each other's XP. `at`: when it last wrote.
-export type Ledger = { at: number; xp: Record<string, number>; money: number }
+// side can't lose each other's XP. `at`: when it last wrote. `friendship`: its work credit by member id, in ms of time
+// together (see friendship.ts).
+export type Ledger = { at: number; xp: Record<string, number>; money: number; friendship?: Record<string, number> }
 
 // Store keys of session ledgers start with this.
 export const LEDGER = 'xp:'
@@ -87,7 +95,7 @@ export const STARTING_MONEY = 3000
 export const MAX_LEVEL = 100
 // The most one heartbeat adds to time together: a closed laptop isn't time together.
 export const TOGETHER_CAP_MS = 120_000
-const TIMES: Time[] = ['day', 'night', 'dusk']
+const TIMES: Time[] = ['day', 'night', 'dusk', 'full-moon']
 export const GENERATIONS = [151, 251, 386, 493, 649, 721, 809, 905]
 const SIZES: Size[] = ['auto', 'normal', 'small']
 
@@ -195,7 +203,8 @@ function loadMembers(s: Record<string, unknown>): { party: Member[]; box: Member
 
 // The stored save's format, raised with each field a release adds. A window still running an older release keeps only
 // the fields it knows and would erase the rest when it writes: it refuses to write a save stamped newer than itself.
-export const SAVE_VERSION = 1
+// 2: `region`.
+export const SAVE_VERSION = 2
 export const versionOf = (raw: unknown): number =>
   isObject(raw) && typeof raw.version === 'number' && Number.isInteger(raw.version) ? raw.version : 0
 export const TOO_NEW =
@@ -237,6 +246,7 @@ export function loadSave(raw: unknown): Save {
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
     ...(box.length ? { box } : {}),
     ...(isEvolutionStyle(s.evolutionStyle) ? { evolutionStyle: s.evolutionStyle } : {}),
+    ...(isRegion(s.region) ? { region: s.region } : {}),
     ...(s.isOff === true ? { isOff: true } : {}),
     ...(folded.length ? { folded } : {}),
     ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
@@ -272,7 +282,8 @@ export function loadLedger(raw: unknown): Ledger {
   const l = isObject(raw) ? raw : {}
   const xp = tally()
   for (const [id, n] of Object.entries(isObject(l.xp) ? l.xp : {})) if (count(n)) xp[id] = count(n)
-  return { at: count(l.at), xp, money: count(l.money) }
+  const friendship = loadFriendship(l.friendship)
+  return { at: count(l.at), xp, money: count(l.money), ...(Object.keys(friendship).length ? { friendship } : {}) }
 }
 
 // The XP in `xp` above `counted`, by member id.
@@ -468,18 +479,20 @@ export function addTogether(t: Together, save: Save, now: number): Together {
   return { at: now, ms }
 }
 
-// A member with its time together from `ms` (by member id), for showing and deciding.
-export function withTime(m: Member, ms: Record<string, number>): Member {
-  const { togetherMs: _, ...rest } = m
+// A member with its time together from `ms` (by member id), and how much of it came from work (`work`), for showing
+// and deciding.
+export function withTime(m: Member, ms: Record<string, number>, work: Record<string, number> = {}): Member {
+  const { togetherMs: _, workMs: __, ...rest } = m
   const n = Object.hasOwn(ms, m.id) ? (ms[m.id] ?? 0) : 0
-  return n ? { ...rest, togetherMs: n } : rest
+  const w = Object.hasOwn(work, m.id) ? (work[m.id] ?? 0) : 0
+  return { ...rest, ...(n ? { togetherMs: n } : {}), ...(w ? { workMs: w } : {}) }
 }
 
 // The save with every member's time together: for showing and deciding, never storing.
-export const withTogether = (save: Save, ms: Record<string, number>): Save => ({
+export const withTogether = (save: Save, ms: Record<string, number>, work: Record<string, number> = {}): Save => ({
   ...save,
-  party: save.party.map(m => withTime(m, ms)),
-  ...(save.box ? { box: save.box.map(m => withTime(m, ms)) } : {}),
+  party: save.party.map(m => withTime(m, ms, work)),
+  ...(save.box ? { box: save.box.map(m => withTime(m, ms, work)) } : {}),
 })
 
 // "1y 3d 2h 7m": from the largest unit that isn't zero, down to minutes.
@@ -554,10 +567,16 @@ const bar = (caught: number, seen: number, total: number, width = 10) => {
   )
 }
 
-export const TIME_TEXT: Record<Time, string> = { day: 'by day', night: 'at night', dusk: 'at dusk' }
+export const TIME_TEXT: Record<Time, string> = {
+  day: 'by day',
+  night: 'at night',
+  dusk: 'at dusk',
+  'full-moon': 'under a full moon',
+}
 
 function wayText(w: Way, m: Member): string {
-  const when = 'time' in w && w.time ? ` ${TIME_TEXT[w.time]}` : ''
+  // A full moon comes once a month: "only" says it isn't any night.
+  const when = 'time' in w && w.time ? ` ${w.time === 'full-moon' ? 'only ' : ''}${TIME_TEXT[w.time]}` : ''
   if (w.kind === 'level')
     return `at Lv ${w.level}${when}${w.partyType ? ` with a ${titleCase(w.partyType)}-type in the party` : ''}`
   if (w.kind === 'item') return `with ${withArticle(itemName(w.item))}${when}`
@@ -591,14 +610,16 @@ function memberColumns(m: Member, isReady = false): string[] {
     `${nameOf(m)}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
     lv < MAX_LEVEL ? `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})` : '(max level)',
-    m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
+    m.togetherMs
+      ? `· together ${formatSpan(m.togetherMs)}${m.workMs ? ` (${formatSpan(m.workMs)} from work)` : ''}`
+      : '',
     m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
     evolves ? `· ${evolves}` : '',
   ]
 }
 
 // Terminal columns a text takes: ✨ is drawn two wide.
-const widthOf = (text: string) => [...text].length + (text.match(/✨/g)?.length ?? 0)
+export const widthOf = (text: string) => [...text].length + (text.match(/✨/g)?.length ?? 0)
 
 // Rows of columns, each column padded to its widest entry.
 function lineUp(rows: string[][]): string[] {
@@ -615,11 +636,11 @@ function lineUp(rows: string[][]): string[] {
 }
 
 // Claude Code indents a command's reply this many columns (under its "⎿").
-const REPLY_INDENT = 5
+export const REPLY_INDENT = 5
 
 // `segments` joined with " · ", broken between them (a segment longer than `width` between its words) so each line
 // fits `width`.
-function wrapSegments(segments: string[], width: number): string[] {
+export function wrapSegments(segments: string[], width: number): string[] {
   const lines: string[] = []
   let line = ''
   for (const segment of segments)
