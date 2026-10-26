@@ -45,7 +45,7 @@ export type Pick = { dex: number; species: string; form: string }
 const pickOf = (list: Species[], dex: number, form = 'regular'): Pick => ({ dex, species: list[dex]?.name ?? '', form })
 
 // Edit distance, capped: anything past `max` counts as `max + 1`.
-function distance(a: string, b: string, max: number): number {
+export function distance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1
   let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
   for (let i = 1; i <= a.length; i++) {
@@ -111,10 +111,17 @@ function typedOutside(typed: string, words: string[], from: number, to: number):
 
 const sameWords = (a: string[], b: string[]) => a.length === b.length && a.every(w => b.includes(w))
 
+// The most words a run of a query's words can take to name a species: its longest name's (`tapu-koko`: 2), and one
+// more for a name typed spaced apart (`porygon 2`).
+const longest = (list: Species[]) => list.reduce((n, p) => Math.max(n, p.name.split('-').length), 1) + 1
+// More words than any name and form take together is a sentence pasted by mistake, not a name: each run of them
+// would be tried against every species, which a long one makes slow enough to hold the plugin up for seconds.
+const MAX_QUERY_WORDS = 12
+
 // The species and form a query names, spelled right: a run of its words is exactly a species and the
 // words left over (in any order, "alolan" read as "alola") exactly one of its forms.
 function exact(list: Species[], words: string[]): Pick | null {
-  for (let len = words.length; len > 0; len--)
+  for (let len = Math.min(words.length, longest(list)); len > 0; len--)
     for (let at = 0; at + len <= words.length; at++) {
       const dex = findSpecies(list, words.slice(at, at + len).join('-'), 'exact')
       const found = list[dex]
@@ -133,8 +140,9 @@ function exact(list: Species[], words: string[]): Pick | null {
 function closestPick(list: Species[], words: string[], typed = words.join(' ')): Pick | string {
   let failure: string | undefined
   const formWords = new Set([...Object.keys(ADJECTIVES), ...list.flatMap(p => p.forms.flatMap(f => f.split('-')))])
+  const most = Math.min(words.length, longest(list))
   for (const match of ['exact', 'prefix', 'typo'] as const)
-    for (let len = words.length; len > 0; len--)
+    for (let len = most; len > 0; len--)
       for (let at = 0; at + len <= words.length; at++) {
         // With other words to be the species, a form word (`mega`) is the form, not the start of a name.
         if (match === 'prefix' && len === 1 && words.length > 1 && formWords.has(words[at] ?? '')) continue
@@ -158,6 +166,7 @@ function closestPick(list: Species[], words: string[], typed = words.join(' ')):
 // Only an exact spelling picks a Pokémon; a near miss or a partial name comes back as a guess to confirm. `typed`: the
 // query as typed, for the answer that names it.
 export function lookup(list: Species[], words: string[], typed?: string): Lookup {
+  if (words.length > MAX_QUERY_WORDS) return { error: `No Pokémon called "${typed ?? words.join(' ')}".` }
   const pick = exact(list, words)
   if (pick) return { pick }
   const guess = closestPick(list, words, typed)
@@ -219,6 +228,16 @@ export const spell = (p: Omit<Pick, 'dex'> & { dex?: number }) =>
 
 // Whether `words` spell `p` right, only spaced apart: `porygon 2` is Porygon2.
 export const isSpacedOut = (p: Pick, words: string[]) => spell(p).replace(/ /g, '') === words.join('')
+
+// What `words` name for sure: an exact pick, or a guess only spaced apart from them (`porygon 2`); null otherwise.
+export const namedPick = (found: Lookup | null, words: string[]): Pick | null =>
+  !found
+    ? null
+    : 'pick' in found
+      ? found.pick
+      : 'guess' in found && isSpacedOut(found.guess, words)
+        ? found.guess
+        : null
 
 // Any species; now and then one of its alternate forms.
 export function randomPick(list: Species[], rand = Math.random): Pick {

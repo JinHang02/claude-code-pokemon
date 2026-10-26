@@ -15,7 +15,7 @@ import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
+import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -60,6 +60,7 @@ import {
   speciesName,
   spriteBudget,
   storeCaught,
+  tabLines,
   takeFromBag,
   TIME_TEXT,
   TOGETHER,
@@ -1039,14 +1040,20 @@ export async function buyItem(
 }
 
 // The Mart by tab with prices, for a bare `/pokemon buy`.
-function formatMart(balance: number): string {
+function formatMart(balance: number, columns = Infinity): string {
   const lines = [`PokéMart · ${formatMoney(balance)}`]
   for (const tab of TABS) {
     const items = forSale().filter(i => i.tab === tab)
     if (items.length)
-      lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ${formatMoney(i.price)}`).join(' · ')}`)
+      lines.push(
+        ...tabLines(
+          tab,
+          items.map(i => `${i.name} ${formatMoney(i.price)}`),
+          columns,
+        ),
+      )
   }
-  lines.push('  /pokemon buy <item> [count] buys, e.g. /pokemon buy fire stone 3')
+  lines.push('  /pokemon buy <item> [count], e.g. buy fire stone 3')
   return lines.join('\n')
 }
 
@@ -1054,7 +1061,7 @@ function formatMart(balance: number): string {
 // come first or last, as `give` takes an item.
 async function buyCommand($: EngineInterface, args: string): Promise<string> {
   await sync($)
-  if (!args.trim()) return formatMart(balanceOf(save, cash))
+  if (!args.trim()) return formatMart(balanceOf(save, cash), replyColumns)
   const tokens = args.trim().split(/\s+/)
   const isCount = (t: string | undefined) => t !== undefined && /^[-+]?\d+(\.\d+)?$/.test(t)
   const countAt = isCount(tokens[0]) ? 0 : isCount(tokens[tokens.length - 1]) ? tokens.length - 1 : -1
@@ -1116,21 +1123,10 @@ function styleChoices(current: EvolutionStyle): string {
 }
 
 // Letters to change, add or drop to turn `a` into `b`.
-function editDistance(a: string, b: string): number {
-  let row = Array.from({ length: b.length + 1 }, (_, i) => i)
-  for (let i = 1; i <= a.length; i++) {
-    const next = [i]
-    for (let j = 1; j <= b.length; j++)
-      next[j] = Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, (row[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1))
-    row = next
-  }
-  return row[b.length] ?? 0
-}
-
 // What to answer a word that isn't a style: the choices, led by a guess when it is a near typo.
 function unknownStyle(word: string, current: EvolutionStyle): string {
-  const [guess] = EVOLUTION_STYLES.filter(s => editDistance(word, s) <= 2).sort(
-    (a, b) => editDistance(word, a) - editDistance(word, b),
+  const [guess] = EVOLUTION_STYLES.filter(s => distance(word, s, 2) <= 2).sort(
+    (a, b) => distance(word, a, 2) - distance(word, b, 2),
   )
   return `${guess ? `Did you mean ${guess}? ` : ''}Evolution screen styles:\n${styleChoices(current)}`
 }
@@ -1216,16 +1212,18 @@ async function setEvolution($: EngineInterface, mode: string): Promise<string> {
 // name. `manual` or `auto` alone sets the mode, and nothing shows it.
 async function evolveByName($: EngineInterface, query: string): Promise<string> {
   const word = query.trim().toLowerCase()
-  if (!slug(query) || isEvolutionMode(word)) return setEvolution($, word)
+  if (!query.trim() || isEvolutionMode(word)) return setEvolution($, word)
   await sync($)
   if (save.isOff) return RESTING
   const { level: lv, rest: named } = readLevel(query)
   const words = named.trim().split(/\s+/).filter(Boolean)
   const firstWords = (n: number) => [...words.slice(0, n), ...(lv === undefined ? [] : [`lv ${lv}`])].join(' ')
   let answer = ''
-  // A level alone (`lv 30`) names whoever is at it.
+  // A level alone (`lv 30`) names whoever is at it: the one, or which one when several are.
   for (let n = words.length; n >= (words.length ? 1 : 0); n--) {
-    const spot = pickIn(save, firstWords(n), ['party'], 'evolve ')
+    const found = find(save, firstWords(n), ['party'], 'evolve ')
+    const only = !n && 'choices' in found && found.choices.length === 1 ? found.choices[0] : undefined
+    const spot = only ?? spotOf(found, firstWords(n), 'evolve ')
     const rest = words.slice(n)
     // A number left over is a twin's that isn't there (`charmander 2` with one): the longer name's answer says so.
     if (typeof spot !== 'string' && answer && rest.length === 1 && /^\d+$/.test(rest[0] ?? '')) return answer
@@ -2330,7 +2328,7 @@ async function tick($: EngineInterface) {
 
 // Plays one animation on demand, for trying them out.
 async function play($: EngineInterface, args: string): Promise<string> {
-  const name = args.trim().toLowerCase()
+  const name = args.normalize('NFKC').trim().toLowerCase()
   const later = (ms: number, fn: () => void) => $.clock.after(ms, fn)
   feel('activity')
   const words = name.split(/\s+/)
@@ -2410,7 +2408,10 @@ const SPECIES_WAIT_MS = 2000
 const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
 
-async function pokemon($: EngineInterface, args: string): Promise<string> {
+async function pokemon($: EngineInterface, typed: string): Promise<string> {
+  // Full-width letters and digits (a Japanese or Chinese keyboard: `ｅｅｖｅｅ ２`) read as the plain ones, numbers
+  // included, wherever a word is read.
+  const args = typed.normalize('NFKC')
   const [head = '', ...rest] = args.trim().split(/\s+/)
   const tail = rest.join(' ')
   // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde). A list not
@@ -2442,7 +2443,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return evolveByName($, tail)
     case 'bag':
       await sync($)
-      return formatBag(save, cash)
+      return formatBag(save, cash, replyColumns)
     case 'give':
       return giveItem($, tail)
     case 'take':

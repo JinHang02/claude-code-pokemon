@@ -2,8 +2,10 @@
 import { expect, test } from 'claude-code/testing'
 
 import { localHourOf } from '../hooks/backdrop'
+import { suggest } from '../hooks/commands'
+import type { Owned } from '../hooks/commands'
 import { chooseStage } from '../hooks/evolution'
-import { emptySave, SAVE_VERSION } from '../hooks/save'
+import { emptySave, level, SAVE_VERSION, xpForLevel } from '../hooks/save'
 import { CHAIN_OF, CHAINS } from './fixtures/evolutions'
 import { begin, cmd, KIT, LIST, member, until } from './world'
 
@@ -134,3 +136,73 @@ test(
     expect(w.fetched.some(u => u.endsWith('/regular/pikachu'))).toBe(true)
   },
 )
+
+const OWNED: Owned = {
+  party: [member('pikachu', { id: 'p' }), member('mr-mime', { id: 'm', form: 'galar' })],
+  box: [],
+  bag: { 'fire-stone': 1 },
+  levelOf: m => level(m.xp),
+}
+const typeahead = (text: string) => {
+  const start = /\S*$/.exec(text)?.index ?? text.length
+  return suggest(text, text.length, text.slice(start), start, OWNED).map(r => r.text)
+}
+
+test('the typeahead goes on past a space inside a name, for each kind of name', () => {
+  expect(typeahead('/pokemon tapu k')).toEqual(['koko'])
+  expect(typeahead('/pokemon add tapu l')).toEqual(['lele'])
+  expect(typeahead('/pokemon release mr m')).toEqual(['mime galar'])
+  expect(typeahead('/pokemon buy fire s')).toEqual(['stone '])
+  expect(typeahead('/pokemon-play wild tapu b')).toEqual(['bulu'])
+  // The Pokémon first and the item after, as give reads it.
+  expect(typeahead('/pokemon give pikachu fi')).toEqual(['fire-stone '])
+})
+
+test('a level on its own names whoever is at it: evolve takes the one, release asks which', KIT, async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('charmander', { id: 'c', xp: xpForLevel(16) }), member('pikachu', { id: 'p', isShiny: true })],
+  })
+  await until($, () => w.saveNow().party.every(m => m.next !== undefined))
+  expect(await cmd($, 'pokemon', 'evolve lv 16')).toContain('Charmeleon')
+  const asked = await cmd($, 'pokemon', 'release shiny')
+  expect(asked).toContain('Pikachu')
+  expect(w.saveNow().party.some(m => m.id === 'p')).toBe(true)
+  expect(await cmd($, 'pokemon', 'evolve lv 99')).toContain('No lv 99 in your party')
+})
+
+test('a pasted sentence after a command answers at once instead of holding the plugin up', KIT, async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('eevee', { id: 'e', next: [] })] })
+  const words = Array.from({ length: 80 }, (_, i) => `word${i % 7}`).join(' ')
+  const t0 = performance.now()
+  expect(await cmd($, 'pokemon', `evolve ${words}`)).toContain('No ')
+  expect(performance.now() - t0).toBeLessThan(1500)
+})
+
+test('full-width digits pick and count like plain ones', KIT, async ($, on) => {
+  const w = await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' }), member('eevee', { id: 'e1' }), member('eevee', { id: 'e2' })],
+  })
+  await cmd($, 'pokemon', 'release eevee ２')
+  expect(w.saveNow().party.map(m => m.id)).toEqual(['p', 'e1'])
+  // Three Fire Stones at ₽3,000 each, against the ₽3,000 a new player has.
+  expect(await cmd($, 'pokemon', 'buy fire stone ３')).toContain('₽6,000 more to go')
+})
+
+test('/pokemon buy and /pokemon bag wrap their lists to the terminal', KIT, async ($, on) => {
+  await begin($, on, {
+    ...emptySave(),
+    party: [member('pikachu', { id: 'p' })],
+    bag: { 'fire-stone': 1, 'water-stone': 2, 'thunder-stone': 3, 'leaf-stone': 4, 'moon-stone': 5, 'sun-stone': 6 },
+  })
+  for (const args of ['buy', 'bag']) {
+    const text = (await $.command.run({ command: 'pokemon', args, presentation: { columns: 60 } } as never)).text ?? ''
+    expect(text.split('\n').filter(l => [...l].length > 60 - 5)).toEqual([])
+  }
+})
+
+test('/pokemon evolve with only symbols says there is no such Pokémon, not the evolution mode', KIT, async ($, on) => {
+  await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [] })] })
+  expect(await cmd($, 'pokemon', 'evolve 🎉')).not.toContain('Evolution is')
+})

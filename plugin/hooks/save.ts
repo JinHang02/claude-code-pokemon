@@ -676,14 +676,30 @@ export function formatParty(save: Save, columns = Infinity, ready: string[] = []
 // The most PC box holders the Bag lists by name.
 const BAG_BOX_HOLDERS = 10
 
+// One tab's line of a list (`  Stones      Fire Stone ×2 · Water Stone ×1`), wrapped under its items for a terminal
+// `columns` wide; an unknown width keeps it on one line.
+export function tabLines(label: string, items: string[], columns = Infinity): string[] {
+  const head = `  ${label.padEnd(10)}  `
+  const room = columns - REPLY_INDENT - head.length
+  if (!(room > 0) || widthOf(items.join(' · ')) <= room) return [`${head}${items.join(' · ')}`]
+  return wrapSegments(items, Math.max(room, 20)).map((line, i) => (i ? ' '.repeat(head.length) : head) + line)
+}
+
 // The Bag by tab, the wallet, and who holds what, in the party and the PC box. `cash`: the ledgers' unfolded ₽.
-export function formatBag(save: Save, cash: number): string {
+export function formatBag(save: Save, cash: number, columns = Infinity): string {
   const lines = [`Bag · ${formatMoney(balanceOf(save, cash))}`]
   for (const tab of TABS) {
     const items = ITEMS.filter(i => i.tab === tab && (save.bag?.[i.id] ?? 0) > 0).sort((a, b) =>
       a.name.localeCompare(b.name),
     )
-    if (items.length) lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ×${save.bag?.[i.id]}`).join(' · ')}`)
+    if (items.length)
+      lines.push(
+        ...tabLines(
+          tab,
+          items.map(i => `${i.name} ×${save.bag?.[i.id]}`),
+          columns,
+        ),
+      )
   }
   const holding = (where: string) => (m: Member) =>
     m.heldItem ? [`${displayName(m.species, m.form)}${where} holds ${withArticle(itemName(m.heldItem))}`] : []
