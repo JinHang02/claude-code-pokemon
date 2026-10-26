@@ -10,10 +10,22 @@ import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
 
-// What a word of a command can be: a Pokémon of yours (in the party, the PC box, or either), any species, an item
-// (one in the Bag first, or one the Mart sells), or one of a fixed few.
+// What a word of a command can be: a Pokémon of yours (in the party, the PC box, or either; `search`, either, for a
+// command that picks no one), any species, an item (one in the Bag first, or one the Mart sells), or one of a fixed few.
 type Arg =
-  'party' | 'box' | 'owned' | 'species' | 'visitor' | 'bag' | 'sale' | 'size' | 'style' | 'mode' | 'landscape' | 'phase'
+  | 'party'
+  | 'box'
+  | 'owned'
+  | 'search'
+  | 'species'
+  | 'visitor'
+  | 'bag'
+  | 'sale'
+  | 'size'
+  | 'style'
+  | 'mode'
+  | 'landscape'
+  | 'phase'
 
 type Sub = {
   // The word typed after the command; `''` for one that is the whole command (`/pokemon` alone, `/pokemon <name>`).
@@ -36,6 +48,7 @@ export const POKEMON: Sub[] = [
   { word: 'deposit', usage: 'deposit <name>', about: 'into the PC box', args: ['party'] },
   { word: 'party', usage: 'party', about: 'your party' },
   { word: 'box', usage: 'box [name] [page]', about: 'the PC box, 30 a page', args: ['box'] },
+  { word: 'find', usage: 'find <name>', about: 'search party and PC box', args: ['search'] },
   { word: 'bag', usage: 'bag', about: 'your items and ₽' },
   { word: 'give', usage: 'give <item> <name>', about: 'evolve, level up or hold', args: ['bag', 'party'] },
   { word: 'take', usage: 'take <name>', about: 'take back what it holds', args: ['owned'] },
@@ -209,7 +222,7 @@ const subRow = (s: Sub, command: string): Suggestion => ({
 })
 
 // The words that are names, maybe several words long: a token after the first goes on the name.
-const NAMED: Arg[] = ['party', 'box', 'owned', 'species', 'visitor', 'sale']
+const NAMED: Arg[] = ['party', 'box', 'owned', 'search', 'species', 'visitor', 'sale']
 
 // `wordsBefore`: a name's first words already typed (`mr`), so a row writes only the rest of it (`mime`).
 function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] = []): Suggestion[] {
@@ -218,9 +231,12 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
     case 'party':
       return members(typed, owned.party, owned, '', wordsBefore)
     case 'box':
-      return members(typed, owned.box ?? [], owned, '', wordsBefore)
+      // `box eevee 2` reads the 2 as a page, and the box lists every Eevee anyway: one row for them all.
+      return members(typed, owned.box ?? [], owned, '', wordsBefore, false)
     case 'owned':
       return members(typed, [...owned.party, ...(owned.box ?? [])], owned, '', wordsBefore)
+    case 'search':
+      return members(typed, [...owned.party, ...(owned.box ?? [])], owned, '', wordsBefore, false)
     case 'species':
       return species(typed, owned, name => `catch ${name}`, wordsBefore)
     case 'visitor':
@@ -272,8 +288,18 @@ const fixed = (typed: string, words: [string, string][]): Suggestion[] =>
 // A name as a command reads it back: the species, then its form (`typhlosion hisui`).
 const typedName = (m: Member) => (m.form === 'regular' ? m.species : `${m.species} ${m.form}`)
 
-// Your Pokémon whose name starts with what's typed, each once, with its level and where it is.
-function members(typed: string, list: Member[], owned: Owned, then = '', wordsBefore: string[] = []): Suggestion[] {
+// Your Pokémon whose name starts with what's typed, with its level and where it is. `list` is the places the command
+// looks in, party first then the PC box, as findMembers (members.ts) numbers them: several of one name get a row each,
+// numbered among that name there (`eevee 2`), so the row typed back picks that one and no "Which Eevee?" follows.
+// `isNumbered` false: one row for them all, for a command that reads no number as a pick.
+function members(
+  typed: string,
+  list: Member[],
+  owned: Owned,
+  then = '',
+  wordsBefore: string[] = [],
+  isNumbered = true,
+): Suggestion[] {
   const want = slug([...wordsBefore, typed].join(' '))
   const isLong = (name: string) => name.split(/[\s-]+/).length > wordsBefore.length
   return list
@@ -282,9 +308,11 @@ function members(typed: string, list: Member[], owned: Owned, then = '', wordsBe
       const where = owned.party.includes(m) ? (owned.party[0] === m ? 'lead' : 'party') : 'PC box'
       const holds = m.heldItem ? ` · holds ${ITEMS.find(i => i.id === m.heldItem)?.name ?? m.heldItem}` : ''
       const lead = then && where !== 'lead' ? ` · make it ${then}` : ''
+      const twins = list.filter(o => typedName(o) === typedName(m))
+      const n = isNumbered && twins.length > 1 ? ` ${twins.indexOf(m) + 1}` : ''
       return {
-        text: rest(typedName(m), wordsBefore),
-        label: typedName(m),
+        text: `${rest(typedName(m), wordsBefore)}${n}`,
+        label: `${typedName(m)}${n}`,
         description: `${nameOf(m)} · Lv ${owned.levelOf(m)} · ${where}${holds}${lead}`,
       }
     })

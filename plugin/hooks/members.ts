@@ -15,7 +15,7 @@ export const didYouMean = (guess: Pick, command: string) =>
   `Did you mean ${displayName(guess.species, guess.form)}? Run /pokemon ${command}${spell(guess)}`
 
 // The species and forms among `members`, for looking a name up among them.
-function namesOf(members: Member[]): Species[] {
+export function namesOf(members: Member[]): Species[] {
   const names: Species[] = []
   for (const m of members) {
     const known = names.find(n => n.name === m.species)

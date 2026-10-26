@@ -8,6 +8,7 @@ import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Gender, Stage } from './evolution'
 import { ALL_HELP, COMMANDS, POKEMON_HELP, suggest } from './commands'
+import { formatFind } from './find'
 import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -2445,6 +2446,10 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return formatParty(view(), replyColumns, readyNow())
     case 'box':
       return showBox($, tail)
+    case 'find':
+      // Read-only: the party and the box as they stand, nothing written.
+      await sync($)
+      return formatFind(view(), tail, levelNow, replyColumns)
     case 'add':
       return addMember($, tail)
     case 'deposit':
