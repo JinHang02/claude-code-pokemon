@@ -153,9 +153,10 @@ test(
     expect(state.get('ledger')).toBe(key)
     expect(w.partyNow().map(m => m.xp)).toEqual([xp[0]! + 15, xp[1]! + 10])
     expect(xp).toEqual([7, 5])
+    // Time together: two minutes, and two pieces of work (one each side of the clear), each counted once.
     const party = await cmd($, 'pokemon', 'party')
-    expect(party).toMatch(new RegExp(`Lead  Pikachu ♂ +Lv ${level(8 + 15)} .*together 2m`))
-    expect(party).toMatch(new RegExp(`Vaporeon ♂ +Lv ${level(5 + 10)} .*together 2m`))
+    expect(party).toMatch(new RegExp(`Lead  Pikachu ♂ +Lv ${level(8 + 15)} .*together 22m \\(20m from work\\)`))
+    expect(party).toMatch(new RegExp(`Vaporeon ♂ +Lv ${level(5 + 10)} .*together 22m \\(20m from work\\)`))
     // ₽: 3,000 + 50 + 100 earned − 3,000 spent; the Bag and held items as they were.
     expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽150\n/)
     expect(w.saveNow().bag).toEqual({ 'rare-candy': 1, 'fire-stone': 1 })

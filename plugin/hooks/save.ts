@@ -6,6 +6,7 @@ import type { Region } from './region'
 import type { Stage, Time, Way } from './evolution'
 import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
 import type { Item } from './items'
+import { loadFriendship } from './friendship'
 
 export type Size = 'auto' | 'normal' | 'small'
 // `manual`: a Pokémon that can evolve waits for /pokemon evolve; `auto`: it evolves by itself straight away.
@@ -26,6 +27,8 @@ export type Member = {
   // Time in the party while Claude Code was open: friendship evolutions come from it. Kept under its own store key
   // (`Together`) and filled in by withTogether for showing and deciding; never stored in the save.
   togetherMs?: number
+  // How much of that time came from good work (passing test runs and commits); filled in the same way.
+  workMs?: number
   // From its species' ratio, as in the games; null for a genderless one, absent until looked up.
   gender?: 'female' | 'male' | null
   // Caught with a Poké Ball from the wild, not summoned by name.
@@ -66,8 +69,9 @@ export type Save = {
 }
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
-// side can't lose each other's XP. `at`: when it last wrote.
-export type Ledger = { at: number; xp: Record<string, number>; money: number }
+// side can't lose each other's XP. `at`: when it last wrote. `friendship`: its work credit by member id, in ms of time
+// together (see friendship.ts).
+export type Ledger = { at: number; xp: Record<string, number>; money: number; friendship?: Record<string, number> }
 
 // Store keys of session ledgers start with this.
 export const LEDGER = 'xp:'
@@ -278,7 +282,8 @@ export function loadLedger(raw: unknown): Ledger {
   const l = isObject(raw) ? raw : {}
   const xp = tally()
   for (const [id, n] of Object.entries(isObject(l.xp) ? l.xp : {})) if (count(n)) xp[id] = count(n)
-  return { at: count(l.at), xp, money: count(l.money) }
+  const friendship = loadFriendship(l.friendship)
+  return { at: count(l.at), xp, money: count(l.money), ...(Object.keys(friendship).length ? { friendship } : {}) }
 }
 
 // The XP in `xp` above `counted`, by member id.
@@ -474,18 +479,20 @@ export function addTogether(t: Together, save: Save, now: number): Together {
   return { at: now, ms }
 }
 
-// A member with its time together from `ms` (by member id), for showing and deciding.
-export function withTime(m: Member, ms: Record<string, number>): Member {
-  const { togetherMs: _, ...rest } = m
+// A member with its time together from `ms` (by member id), and how much of it came from work (`work`), for showing
+// and deciding.
+export function withTime(m: Member, ms: Record<string, number>, work: Record<string, number> = {}): Member {
+  const { togetherMs: _, workMs: __, ...rest } = m
   const n = Object.hasOwn(ms, m.id) ? (ms[m.id] ?? 0) : 0
-  return n ? { ...rest, togetherMs: n } : rest
+  const w = Object.hasOwn(work, m.id) ? (work[m.id] ?? 0) : 0
+  return { ...rest, ...(n ? { togetherMs: n } : {}), ...(w ? { workMs: w } : {}) }
 }
 
 // The save with every member's time together: for showing and deciding, never storing.
-export const withTogether = (save: Save, ms: Record<string, number>): Save => ({
+export const withTogether = (save: Save, ms: Record<string, number>, work: Record<string, number> = {}): Save => ({
   ...save,
-  party: save.party.map(m => withTime(m, ms)),
-  ...(save.box ? { box: save.box.map(m => withTime(m, ms)) } : {}),
+  party: save.party.map(m => withTime(m, ms, work)),
+  ...(save.box ? { box: save.box.map(m => withTime(m, ms, work)) } : {}),
 })
 
 // "1y 3d 2h 7m": from the largest unit that isn't zero, down to minutes.
@@ -603,7 +610,9 @@ function memberColumns(m: Member, isReady = false): string[] {
     `${nameOf(m)}${m.isCaught ? ' ◓' : ''}`,
     `Lv ${lv}`,
     lv < MAX_LEVEL ? `(${xpForLevel(lv + 1) - m.xp} xp to Lv ${lv + 1})` : '(max level)',
-    m.togetherMs ? `· together ${formatSpan(m.togetherMs)}` : '',
+    m.togetherMs
+      ? `· together ${formatSpan(m.togetherMs)}${m.workMs ? ` (${formatSpan(m.workMs)} from work)` : ''}`
+      : '',
     m.heldItem && m.heldItem !== 'everstone' ? `· holds ${withArticle(itemName(m.heldItem))}` : '',
     evolves ? `· ${evolves}` : '',
   ]

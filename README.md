@@ -104,7 +104,7 @@ _What? Charmander is evolving!_ They evolve **the way they do in the games**:
 - **Level up:** Charmander at Lv 16, Charmeleon at Lv 36.
 - **Evolution stones:** Pikachu with a Thunder Stone, Eevee with a Water, Thunder or Fire Stone, and the rest.
 - **Trades:** a trade with a held item needs that item (Onix a Metal Coat, Seadra a Dragon Scale), and a plain trade needs a Linking Cord (Haunter, Kadabra, Machoke).
-- **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open. A Soothe Bell makes the time count one and a half times.
+- **Friendship:** Pichu, Togepi, Riolu and friends evolve after 10 hours together in your party while Claude Code is open, and every passing test run or commit counts as 10 more minutes. A Soothe Bell makes the time count one and a half times.
 - **Time of day:** Riolu only by day, Rockruff into Midnight Lycanroc at night, Eevee into Espeon by day or Umbreon by night.
 
 Regional forms evolve the way their region does.
