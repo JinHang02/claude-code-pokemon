@@ -15,8 +15,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      # Pinned: the test runner ships inside the CLI, so a new release can't turn every PR red on its own. Bump it on
+      # purpose, in its own PR.
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.310
       - name: Validate the marketplace
         run: claude plugin validate .
       - name: Validate the plugin and its hooks

@@ -9,7 +9,8 @@ R="${E}[0m"; B="${E}[1m"; D="${E}[2m"
 fg() { printf '%s[38;2;%s;%s;%sm' "$E" "$1" "$2" "$3"; }
 bg() { printf '%s[48;2;%s;%s;%sm' "$E" "$1" "$2" "$3"; }
 
-# --- Parse every field in one jq pass (unit-separator delimited so empty fields survive) ---
+# --- Parse every field in one jq pass (unit-separator delimited so empty fields survive). Control characters are
+# dropped from every field: a newline would cut the fields short, an escape would reach the terminal. ---
 US=$'\x1f'
 IFS="$US" read -r model project_dir total_input total_output used_pct ctx_size current_input duration_ms effort <<EOF
 $(printf '%s' "$input" | jq -r --arg s "$US" '[
@@ -22,7 +23,7 @@ $(printf '%s' "$input" | jq -r --arg s "$US" '[
   (.context_window.current_usage // {} | (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0)),
   (.cost.total_duration_ms // ""),
   (.effort.level // "")
-] | map(tostring) | join($s)' 2>/dev/null)
+] | map(tostring | gsub("[\u0000-\u001f\u007f]"; "")) | join($s)' 2>/dev/null)
 EOF
 
 num() { if [[ "$1" =~ ^[0-9]+$ ]]; then printf '%s' "$1"; else printf 0; fi; }

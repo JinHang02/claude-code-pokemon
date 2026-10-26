@@ -6,6 +6,7 @@ import { suggest } from '../hooks/commands'
 import type { Owned } from '../hooks/commands'
 import { chooseStage } from '../hooks/evolution'
 import { classify } from '../hooks/reactions'
+import { parseAnsi } from '../hooks/sprite'
 import { emptySave, level, SAVE_VERSION, xpForLevel } from '../hooks/save'
 import { CHAIN_OF, CHAINS } from './fixtures/evolutions'
 import { bash, begin, cmd, KIT, LIST, member, until } from './world'
@@ -240,4 +241,32 @@ test('an interrupted test run says nothing about the tests: no XP for what ran b
   await $.tool.call(bash('npm test') as never)
   await cmd($, 'pokemon', 'party')
   expect(w.partyNow()[0]?.xp).toBe(xp)
+})
+
+test('sprite art with 256-colour codes or other escapes keeps its pixels', () => {
+  // A 256-colour background ending in 0 is no reset; a non-colour escape doesn't swallow the colour after it.
+  expect(parseAnsi('\x1b[38;2;255;0;0m\x1b[48;5;0m▀\x1b[0m').pixels).toEqual([0xff0000, 0x000000])
+  expect(parseAnsi('\x1b[K\x1b[38;2;0;255;0m\x1b[48;2;0;0;255m▀\x1b[0m').pixels).toEqual([0x00ff00, 0x0000ff])
+  expect(parseAnsi('\x1b[38;5;196m\x1b[48;5;21m▀\x1b[0m').pixels).toEqual([0xff0000, 0x0000ff])
+  // Cut off mid-escape: the line ends there.
+  expect(parseAnsi('\x1b[38;2;1;2;3m\x1b[48;2;4;5;6m▀\x1b[38;2').width).toBe(1)
+})
+
+test('a Thunder Stone with the branch named makes Alolan Raichu, as the player asks', KIT, async ($, on) => {
+  const pika = CHAINS[CHAIN_OF.pikachu ?? -1]
+  const list = [
+    { name: 'pikachu', forms: ['regular'] },
+    { name: 'raichu', forms: ['regular', 'alola'] },
+  ]
+  const w = await begin(
+    $,
+    on,
+    { ...emptySave(), bag: { 'thunder-stone': 1 }, party: [member('pikachu', { id: ROLLS[0] })] },
+    undefined,
+    undefined,
+    { isOnline: true, list: JSON.stringify(list), chains: { pikachu: pika, raichu: pika } },
+  )
+  await cmd($, 'pokemon', 'give thunder-stone pikachu alolan raichu')
+  await until($, () => w.saveNow().party[0]?.species === 'raichu')
+  expect(w.saveNow().party[0]?.form).toBe('alola')
 })

@@ -16,6 +16,45 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - Asleep, the band wakes the plugin once per frame it draws instead of twenty times a second; anything that stirs
   the party wakes it at once. Frames don't pile up behind a slow terminal either: one tick runs at a time.
 
+### Changed: regional forms are yours to ask for
+
+- A Pokémon evolving by itself, or by a stone or trade item you give it, keeps to its own region's form when it has
+  another branch: a Thunder Stone makes a Pikachu a Raichu, Koffing at Lv 35 a Weezing, Quilava at Lv 36 a
+  Typhlosion. Before, about half of them became Alolan, Galarian or Hisuian with no say, and that can't be undone.
+  Name the branch to take it: `/pokemon give thunder-stone pikachu alolan raichu`,
+  `/pokemon evolve koffing galarian weezing`. One whose only branch is regional still takes it (Cubone at night), and
+  looks such as Vivillon's patterns are rolled as before.
+
+### Fixed: what an audit of the whole plugin found
+
+- A window whose first read of the save was refused (another window holding the store) caught a random first
+  Pokémon and pushed your lead into the PC box. It now leaves your party alone.
+- After the clocks went back, a session left open across the change ran an hour fast all winter (dusk read as
+  night, for evolutions and the sky). The hour follows daylight saving as it changes.
+- `/pokemon evolve lv 16` evolves the one at that level, as promised; `release shiny` and other commands given only
+  a level or `shiny` list who fits instead of saying there is no one.
+- A sentence pasted after a command answered after seconds (up to 20 s for 80 words) and held the band still
+  meanwhile. Lookups stop at the longest name, and over 12 words is no name.
+- Full-width letters and digits (`ｅｅｖｅｅ ２`, `buy fire stone ３`) read as the plain ones.
+- `/pokemon buy` and `/pokemon bag` wrap their lists to the terminal instead of running hundreds of columns wide.
+- The typeahead goes on past a space inside a name: `tapu k`, `buy fire s`, `wild tapu b`, `give pikachu fi`.
+- No false faints: a test run that finds nothing to run (pytest's exit 5), a passing run whose log mentions errors
+  before its summary, or a command you interrupted. The last summary line of a test run decides.
+- No XP for `git commit --amend` or `--allow-empty`, nor for `npm run testdb:seed` (`npm run test:unit` still counts);
+  a commit piped into `tail` counts when git printed its summary.
+- Ending sessions are folded into the save in one write per round, not one per session, so many short sessions no
+  longer set off bursts of writes in every window.
+- The save carries a version: a window still running an older release refuses to write over a save a newer one
+  wrote (it says so and changes nothing), instead of dropping what it doesn't know.
+- A purchase checks the wallet against session earnings read in the same write, so a fold landing first can't be
+  counted twice.
+- A species PokeAPI doesn't have is looked up once, not every minute; a sprite cut short by a crash is fetched again.
+- Sprite art with 256-colour codes or other escapes keeps its pixels.
+- The status line drops control characters from Claude Code's fields: a newline no longer empties the line, and an
+  escape in a folder name no longer reaches the terminal.
+- `scripts/evolution-coverage.mjs` works from a folder with spaces in its path, and on Windows.
+- CI pins the Claude Code version its tests run on.
+
 ## [1.7.0] - 2026-10-25
 
 ### Added: `/pokemon-help` and a typeahead that previews every command

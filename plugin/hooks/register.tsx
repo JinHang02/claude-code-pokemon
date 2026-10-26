@@ -869,15 +869,30 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   await sync($)
   if (item.kind === 'candy') return feedCandy($, who, item)
   if (item.kind === 'hold') return holdItem($, who, item, `give ${item.id} `)
-  const spot = pickIn(save, who, ['party'], `give ${item.id} `)
-  if (typeof spot === 'string') return spot
-  // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
-  const name = displayName(spot.member.species, spot.member.form)
-  return answerSoon(
-    $,
-    evolveMember($, spot.member.id, false, item.id),
-    `Giving the ${item.name} to ${name}: what it does shows ${whenShown()}.`,
-  )
+  // The longest start of the words that names one of the party is who; the rest, if any, the branch it takes
+  // (`give thunder-stone pikachu alolan raichu`), as `/pokemon evolve` reads them.
+  const typed = who.trim().split(/\s+/)
+  let answer = ''
+  for (let n = typed.length; n >= 1; n--) {
+    const as = typed.slice(0, n).join(' ')
+    const spot = pickIn(save, as, ['party'], `give ${item.id} `)
+    if (typeof spot === 'string') {
+      answer ||= spot
+      continue
+    }
+    const rest = typed.slice(n)
+    // A number left over is a twin's that isn't there (`eevee 2` with one): the longer name's answer says so.
+    if (answer && rest.length === 1 && /^\d+$/.test(rest[0] ?? '')) return answer
+    const into = slug(rest.filter(w => !/^(into|to)$/i.test(w)).join(' '))
+    // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
+    const name = displayName(spot.member.species, spot.member.form)
+    return answerSoon(
+      $,
+      evolveMember($, spot.member.id, false, item.id, undefined, into ? { into, as } : undefined),
+      `Giving the ${item.name} to ${name}: what it does shows ${whenShown()}.`,
+    )
+  }
+  return answer
 }
 
 // The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
@@ -1410,6 +1425,8 @@ type Evolved = { text: string; isShown?: boolean }
 // `ask`: set when the person asked (/pokemon evolve): the species they named ('' for none), and the words that named
 // the Pokémon (`eevee 2`), to suggest again.
 type Ask = { into: string; as: string }
+// The forms the games give a species in another region.
+const isRegional = (form: string) => /^(alola|galar|hisui|paldea)\b/.test(form)
 function evolveMember(
   $: EngineInterface,
   id: string,
@@ -1576,9 +1593,11 @@ async function evolveNow(
       if (duePicks.length > 1) return pickOne(duePicks)
       choices = due
     } else if (isAsked && picks.length > 1) return pickOne(picks)
-    // Not asked for by name, a branch in the Pokémon's own form comes first: a Thunder Stone makes a Kanto Pikachu a
-    // Kanto Raichu, as outside Alola in the games. One in another form only when there is no other (Cubone at night).
-    const own = choices.filter(s => formOf(s) === member.form)
+    // Not asked for by name, a regional form other than the Pokémon's own is left to those who ask for it: a Thunder
+    // Stone makes a Kanto Pikachu a Kanto Raichu, as outside Alola in the games (`give thunder-stone pikachu alolan
+    // raichu` asks). One is taken only when there is no other (Cubone at night). Looks (Vivillon's patterns) and
+    // other forms (Toxtricity's) are rolled by the Pokémon's id, as before.
+    const own = choices.filter(s => !isRegional(formOf(s)) || formOf(s) === member.form)
     const pool = into === undefined && own.length ? own : choices
     // A preview shows any branch; a real evolution takes this Pokémon's own.
     const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, pool)

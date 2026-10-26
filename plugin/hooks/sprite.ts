@@ -7,6 +7,24 @@ const FULL = 0x2588
 export type Pixels = { pixels: number[]; width: number; height: number }
 
 // Truecolor ANSI half-block art (38;2 / 48;2 / 0) into a pixel grid, two pixels per cell.
+const CSI = /\x1b\[([0-9;:?]*)([@-~])/y
+
+// A 256-colour code as RGB: the 16 system colours, the 6×6×6 cube, then the greys.
+const SYSTEM = [
+  0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xc0c0c0, 0x808080, 0xff0000, 0x00ff00,
+  0xffff00, 0x0000ff, 0xff00ff, 0x00ffff, 0xffffff,
+]
+function xterm(n: number): number {
+  if (n < 16) return SYSTEM[n] ?? 0
+  if (n < 232) {
+    const level = (v: number) => (v ? 55 + v * 40 : 0)
+    const c = n - 16
+    return (level(Math.floor(c / 36)) << 16) | (level(Math.floor(c / 6) % 6) << 8) | level(c % 6)
+  }
+  const g = 8 + (n - 232) * 10
+  return (g << 16) | (g << 8) | g
+}
+
 export function parseAnsi(art: string): Pixels {
   const lines = art.replace(/\s+$/, '').split(/\r?\n/)
   const rows: number[][] = []
@@ -17,26 +35,30 @@ export function parseAnsi(art: string): Pixels {
     let bg = CLEAR
     for (let i = 0; i < line.length;) {
       if (line[i] === '\x1b') {
-        const end = line.indexOf('m', i)
-        // An escape cut off before its `m` (a truncated file) ends the line.
-        if (end < 0) break
-        const codes = line
-          .slice(i + 2, end)
-          .split(';')
-          .map(Number)
+        // A CSI sequence runs to its final byte (`@` to `~`); only an `m` one sets colours. Cut off before its end (a
+        // truncated file), it ends the line.
+        CSI.lastIndex = i
+        const csi = CSI.exec(line)
+        if (!csi) {
+          if (line[i + 1] === '[') break
+          i += 2
+          continue
+        }
+        i = CSI.lastIndex
+        if (csi[2] !== 'm') continue
+        const codes = (csi[1] ?? '').split(/[;:]/).map(Number)
         const at = (k: number) => codes[k] ?? 0
         for (let k = 0; k < codes.length; k++) {
           if (at(k) === 0) fg = bg = CLEAR
           else if (at(k) === 39) fg = CLEAR
           else if (at(k) === 49) bg = CLEAR
-          else if ((at(k) === 38 || at(k) === 48) && at(k + 1) === 2) {
-            const rgb = (at(k + 2) << 16) | (at(k + 3) << 8) | at(k + 4)
+          else if ((at(k) === 38 || at(k) === 48) && (at(k + 1) === 2 || at(k + 1) === 5)) {
+            const rgb = at(k + 1) === 2 ? (at(k + 2) << 16) | (at(k + 3) << 8) | at(k + 4) : xterm(at(k + 2))
             if (at(k) === 38) fg = rgb
             else bg = rgb
-            k += 4
+            k += at(k + 1) === 2 ? 4 : 2
           }
         }
-        i = end + 1
         continue
       }
       const cp = line.codePointAt(i) ?? 0x20

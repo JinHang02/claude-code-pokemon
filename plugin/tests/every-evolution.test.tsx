@@ -43,6 +43,12 @@ function how(p: Path): string {
   return `room in the party when Nincada evolves at Lv ${p.siblingLevel}`
 }
 
+// A regional form the Pokémon doesn't have, where another branch is due too: never taken by itself (a Kanto Pikachu
+// becomes a Kanto Raichu), only when the branch is named, as a player asks for it.
+const isRegional = (form: string) => /^(alola|galar|hisui|paldea)\b/.test(form)
+const isAskedFor = (p: Path) =>
+  isRegional(p.toForm) && p.toForm !== p.fromForm && p.ties.some(t => !isRegional(t.split(':')[1] ?? ''))
+
 // A member id whose own pick, among the evolutions its trigger makes due together, is this path's target: Wurmple's
 // Silcoon row is played by a Wurmple that becomes Silcoon, its Cascoon row by one that becomes Cascoon.
 function idFor(n: number, p: Path): string {
@@ -83,7 +89,9 @@ PATHS.forEach((p, n) =>
           ...(p.gender ? { gender: p.gender } : {}),
         })
         const party: Member[] = [start]
-        const save: Save = { ...emptySave(), evolution: 'auto', party }
+        const asks = isAskedFor(p)
+        const into = asks ? ` ${spell({ dex: 0, species: p.to, form: p.toForm })}` : ''
+        const save: Save = { ...emptySave(), evolution: asks ? 'manual' : 'auto', party }
         if (w.kind === 'level') start.xp = xpForLevel(w.level) - 5
         if (w.kind === 'level' && w.partyType) party.push(member('umbreon'))
         if (w.kind === 'shed') start.xp = xpForLevel(p.siblingLevel ?? 20) - 5
@@ -110,9 +118,10 @@ PATHS.forEach((p, n) =>
           // One level short: nothing yet.
           if (evolved()) throw new Error(`evolved a level early, into ${mine()?.species}:${mine()?.form}`)
           await $.tool.call(bash('git commit -m x') as never)
+          if (asks) await cmd($, 'pokemon', `evolve ${spell({ dex: 0, species: p.from, form: p.fromForm })}${into}`)
         }
         if (w.kind === 'item' || w.kind === 'hold')
-          await cmd($, 'pokemon', `give ${w.item} ${spell({ dex: 0, species: p.from, form: p.fromForm })}`)
+          await cmd($, 'pokemon', `give ${w.item} ${spell({ dex: 0, species: p.from, form: p.fromForm })}${into}`)
         if (w.kind === 'friendship') await env.clock.advance(120_000)
         for (let i = 0; i < 20 && !evolved(); i++) await env.clock.advance(1_000)
         await settle(evolved, () => `never evolved: still ${p.from}`)
