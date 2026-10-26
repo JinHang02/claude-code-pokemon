@@ -6,6 +6,16 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Added: friendship from good work
+
+- Each passing test run and each commit now counts as 10 minutes together for every party member (15 for a Soothe
+  Bell holder), on top of the time spent in the party. A failure takes none away. A Pichu or an Eevee that has been
+  there for your green builds evolves sooner, by itself or as "ready to evolve", exactly as with time.
+- `/pokemon party` says how much of the time came from work: `together 6h 10m (2h from work)`.
+- It counts once however many windows are open: each window writes its credit to its own ledger, as with XP, and the
+  credit of a session that has ended moves under its own `work` store key, marked so it is never added twice. A
+  window still running an older release doesn't see the credit until it is restarted.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and

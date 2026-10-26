@@ -18,6 +18,8 @@ import type { Found, Place, Spot } from './members'
 import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
+import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
+import type { Work } from './friendship'
 import {
   addTogether,
   bagFull,
@@ -74,7 +76,7 @@ import {
   XP,
   xpForLevel,
 } from './save'
-import type { Evolution, Ledger, Member, Save, Size } from './save'
+import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
@@ -143,11 +145,22 @@ let cash = 0
 // ₽ just earned, shown under the button for a moment; each earning's number, so only the latest clears it.
 let plus = 0
 let earnings = 0
-// Time together by member id, from its own store key.
-let times = loadTogether(undefined).ms
+// Time together by member id: its own store key's, with friendship from good work added (see friendship.ts); and how
+// much of it came from work. Counted again from the three whenever one of them is read.
+let times: Record<string, number> = {}
+let works: Record<string, number> = {}
+let seen: { together: Together; work: Work; ledgers: Record<string, Ledger> } = {
+  together: loadTogether(undefined),
+  work: loadWork(undefined),
+  ledgers: {},
+}
+function countTimes(read: Partial<typeof seen>) {
+  seen = { ...seen, ...read }
+  ;({ ms: times, works } = timesOf(seen.together, seen.work, seen.ledgers))
+}
 // A save as the party stands: XP from every session's ledger and time together included. For showing and deciding
 // only.
-const viewOf = (s: Save) => withTogether(withExtra(s, extra), times)
+const viewOf = (s: Save) => withTogether(withExtra(s, extra), times, works)
 const view = () => viewOf(save)
 // How wide the terminal is for the command running now, so a party or a box fits it; unknown in a test.
 let replyColumns = Infinity
@@ -158,6 +171,7 @@ const columnsOf = (columns: number | undefined) =>
 function countLedgers(ledgers: Record<string, Ledger>) {
   extra = extraXp(ledgers, save.folded, save.foldedXp)
   cash = extraMoney(ledgers, save.folded, save.foldedMoney)
+  countTimes({ ledgers })
 }
 // Why an item can't be given: the Bag has none.
 const noItem = (name: string) => `You don't have ${withArticle(name)}. Buy one at the PokéMart: /pokemon mart`
@@ -507,7 +521,7 @@ async function sync($: EngineInterface) {
       latest.size !== wasSize ||
       latest.isOff !== wasOff ||
       (mart.isOpen && JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== was)
-    times = loadTogether(await $.store.get(TOGETHER)).ms
+    countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
   })
   if (isNewParty) await refreshParty($)
   if (isNewLook) $.ui.invalidate('ui.render')
@@ -550,11 +564,24 @@ async function foldLedgers($: EngineInterface) {
         ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
       }
     })
-  // Folded on an earlier round and unchanged since: removed.
+  // Their friendship from good work goes under its own key, marked there (see friendship.ts); marks of ledgers gone
+  // are dropped, and the credit of members released.
+  const toBefriend = stale.filter(([key, l]) => foldWork(seen.work, key, l) !== seen.work)
+  if (toBefriend.length || pruneWork(seen.work, Object.keys(ledgers), keptIds(save)) !== seen.work)
+    await queued(async () => {
+      const latest = loadWork(await $.store.get(WORK))
+      const folded = toBefriend.reduce((w, [key, l]) => foldWork(w, key, l), latest)
+      // Released by the save as it is now: a member caught in another window since this one synced is kept.
+      const next = pruneWork(folded, Object.keys(ledgers), keptIds(loadSave(await $.store.get('save'))))
+      if (next !== latest) await $.store.set(WORK, next)
+      countTimes({ work: next })
+    })
+  // Folded on an earlier round (into the save and the work key) and unchanged since: removed.
   for (const [key, l] of stale) {
-    if (toFold.some(([k]) => k === key)) continue
+    if (toFold.some(([k]) => k === key) || toBefriend.some(([k]) => k === key)) continue
     const latest = loadLedger(await $.store.get(key))
-    if (latest.at === l.at) await $.store.delete(key)
+    const work = loadWork(await $.store.get(WORK))
+    if (latest.at === l.at && foldWork(work, key, latest) === work) await $.store.delete(key)
   }
 }
 
@@ -570,6 +597,9 @@ async function retry($: EngineInterface) {
   else if (isPartyStale) retrying = refreshParty($)
   if (retrying) await retrying.finally(() => (retrying = null))
 }
+
+// The ids of every member in the party and the PC box.
+const keptIds = (s: Save) => new Set([...s.party, ...(s.box ?? [])].map(m => m.id))
 
 // A save from before the `together` key kept time together in itself (`raw`, read just before): it seeds the key
 // once, before this session writes the save (which drops it) or adds time. A key already there was seeded (or
@@ -595,7 +625,7 @@ async function together($: EngineInterface) {
     if (latest.isOff || !latest.party.length) return
     const added = addTogether(loadTogether(await $.store.get(TOGETHER)), latest, now)
     await $.store.set(TOGETHER, added)
-    times = added.ms
+    countTimes({ together: added })
     isBeat = true
   })
   if (isBeat) await learnEvolutions($)
@@ -1782,10 +1812,12 @@ async function evolveNow(
   }
 }
 
-// XP for the whole party, written to this session's own ledger; anyone due evolves, one after another.
-async function earn($: EngineInterface, amount: number) {
+// XP for the whole party, written to this session's own ledger; anyone due evolves, one after another. `isWork`: a
+// passing test run or a commit, which also counts as WORK_MS of time together (in the same ledger, so once).
+async function earn($: EngineInterface, amount: number, isWork = false) {
   await ready
   let leveledUp = false
+  let isBefriended = false
   let isPaid = false
   let isRedrawn = false
   await queued(async () => {
@@ -1800,8 +1832,11 @@ async function earn($: EngineInterface, amount: number) {
       ledgerKey = fresh
     }
     const own = loadLedger(await $.store.get(ledgerKey))
-    await $.store.set(ledgerKey, earnInto(own, latest.party, amount, Date.now()))
+    const paid = earnInto(own, latest.party, amount, Date.now())
+    await $.store.set(ledgerKey, befriend(paid, own.friendship, latest.party, isWork ? WORK_MS : 0))
     isPaid = true
+    // Only a friendship evolver needs an evolution check for it.
+    isBefriended = isWork && latest.party.some(m => m.next?.some(s => s.way.kind === 'friendship'))
     isRedrawn = isOtherParty(latest, save)
     save = latest
     countLedgers(await readLedgers($))
@@ -1818,7 +1853,7 @@ async function earn($: EngineInterface, amount: number) {
     })
   }
   if (isRedrawn) await refreshParty($)
-  if (leveledUp) await learnEvolutions($)
+  if (leveledUp || isBefriended) await learnEvolutions($)
 }
 
 // A wild visitor at most as tall as the party's tallest, so the band (sized to the party) never cuts it off.
@@ -2542,7 +2577,7 @@ async function load($: EngineInterface) {
       await seedTogether($, raw)
       save = loadSave(raw)
       countLedgers(await readLedgers($))
-      times = loadTogether(await $.store.get(TOGETHER)).ms
+      countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
     })
   } catch (err) {
     await report($, err)
@@ -2734,7 +2769,8 @@ export const register: Register = on => {
       const outcome = classify(e.tool, command, Boolean(ran.isError), streak, output)
       streak = outcome.streak
       outcome.happenings.forEach(feel)
-      if (outcome.xp) background($, earn($, outcome.xp))
+      // XP from a tool comes only from a passing test run or a commit: good work, which builds friendship too.
+      if (outcome.xp) background($, earn($, outcome.xp, true))
       return ran
     } finally {
       if (token) (agents.delete(token), countAgents())
