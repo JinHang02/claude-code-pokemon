@@ -71,6 +71,19 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - None of them pays XP: pushes and installs would be too easy to farm.
 - `/pokemon-play push`, `boulder`, `boxes` and `confused` preview them; `/pokemon-help` and the typeahead list them.
 
+### Added: /pokemon region
+
+- `/pokemon region alola` (or `galar`, `hisui`, `paldea`) makes evolutions take that region's forms when no branch is
+  named: a Thunder Stone makes a Pikachu an Alolan Raichu, a Leaf Stone an Exeggcute an Alolan Exeggutor, Koffing at
+  Lv 35 a Galarian Weezing, Quilava at Lv 36 a Hisuian Typhlosion. `/pokemon evolve quilava` takes the region's
+  branch without asking which. A branch you name still wins, a Pokémon with no form of that region keeps its own,
+  and looks such as Vivillon's patterns are rolled as before. Wild Pokémon are unaffected.
+- `/pokemon region` alone shows the one in use and the choices; `/pokemon region kanto` (or `none`, `off`) goes back
+  to each Pokémon's own form, the default. A near miss (`alolla`) gets "Did you mean alola?". The typeahead offers
+  the region names, and `alolan`, `galarian` and the like work too.
+- The region is kept in the save, which is now version 2: a window still running an older release leaves a save
+  holding it alone instead of dropping the region, and says to update.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and

@@ -7,6 +7,7 @@ import { dexRows } from './dex-entry'
 import { EVOLUTION_STYLES } from './evolution-style'
 import { forSale, ITEMS } from './items'
 import { slug } from './lookup'
+import { REGION_TEXT, REGION_WORDS } from './region'
 import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
@@ -28,6 +29,7 @@ type Arg =
   | 'mode'
   | 'landscape'
   | 'phase'
+  | 'region'
 
 type Sub = {
   // The word typed after the command; `''` for one that is the whole command (`/pokemon` alone, `/pokemon <name>`).
@@ -61,6 +63,7 @@ export const POKEMON: Sub[] = [
   { word: 'buy', usage: 'buy <item> [count]', about: 'the PokéMart, by typing', args: ['sale'] },
   { word: 'size', usage: 'size <size>', about: 'small, normal or auto', args: ['size'] },
   { word: 'evolution', usage: 'evolution <style>', about: 'rays, white or gradient', args: ['style'] },
+  { word: 'region', usage: 'region <region>', about: 'regional forms when evolving', args: ['region'] },
   { word: 'on', usage: 'on, off', about: 'out, or back in their balls', only: 'help' },
   { word: 'on', usage: 'on', about: 'out of their Poké Balls', only: 'typeahead' },
   { word: 'off', usage: 'off', about: 'back in their Poké Balls', only: 'typeahead' },
@@ -312,6 +315,11 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
       return fixed(
         lower,
         EVOLUTION_STYLES.map(s => [s, 'evolution screen style']),
+      )
+    case 'region':
+      return fixed(
+        lower,
+        REGION_WORDS.map(r => [r, REGION_TEXT[r]]),
       )
     case 'mode':
       return fixed(lower, [

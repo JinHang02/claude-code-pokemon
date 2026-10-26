@@ -21,6 +21,8 @@ import type { Found, Place, Spot } from './members'
 import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify, isTestOrBuild } from './reactions'
+import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } from './region'
+import type { Region } from './region'
 import {
   addTogether,
   bagFull,
@@ -1195,6 +1197,35 @@ async function setEvolutionStyle($: EngineInterface, word: string): Promise<stri
   return `Evolution screen: ${word}, ${STYLE_TEXT[word]}.`
 }
 
+// Each region word, one a line, with the one in use marked.
+function regionChoices(current: Region | undefined): string {
+  return REGION_WORDS.map(r => `  ${r}: ${REGION_TEXT[r]}${r === (current ?? 'kanto') ? ' (current)' : ''}`).join('\n')
+}
+
+// `/pokemon region`: shows the region whose forms evolutions take, or sets it (`kanto`, `none` or `off` for each
+// Pokémon's own). Only evolutions with no form named follow it; wild Pokémon come in every form.
+async function setRegion($: EngineInterface, word: string): Promise<string> {
+  const footer = 'Or name one: /pokemon evolve koffing galarian weezing'
+  if (!word) {
+    await sync($)
+    return `Region: ${save.region ?? 'kanto'}.\n${regionChoices(save.region)}\n${footer}`
+  }
+  const region = readRegion(word)
+  if (region === undefined) {
+    const [guess] = REGION_WORDS.filter(r => distance(word, r, 2) <= 2).sort(
+      (a, b) => distance(word, a, 2) - distance(word, b, 2),
+    )
+    return `${guess ? `Did you mean ${guess}? ` : ''}Regions:\n${regionChoices(save.region)}`
+  }
+  await mutate($, s => {
+    const { region: _, ...rest } = s
+    return region ? { ...rest, region } : rest
+  })
+  return region
+    ? `Region: ${region}. Evolutions take ${REGIONAL[region]} forms unless you name one.`
+    : 'Region: kanto. Evolving, each Pokémon keeps its own form.'
+}
+
 // What `member` can evolve into and how, as in the games (empty at a final stage), its species' gender ratio, and the
 // chain they were read from (for /pokedex <name>).
 async function evolutionsOf(
@@ -1479,8 +1510,6 @@ type Evolved = { text: string; isShown?: boolean }
 // `ask`: set when the person asked (/pokemon evolve): the species they named ('' for none), and the words that named
 // the Pokémon (`eevee 2`), to suggest again.
 type Ask = { into: string; as: string }
-// The forms the games give a species in another region.
-const isRegional = (form: string) => /^(alola|galar|hisui|paldea)\b/.test(form)
 function evolveMember(
   $: EngineInterface,
   id: string,
@@ -1648,13 +1677,18 @@ async function evolveNow(
       }
       if (duePicks.length > 1) return pickOne(duePicks)
       choices = due
-    } else if (isAsked && picks.length > 1) return pickOne(picks)
+    } else if (isAsked && picks.length > 1) {
+      // With a region chosen, its form is the pick when it is the one regional branch due (Galarian Weezing); else
+      // the person names one.
+      const local = allowed.filter(s => isFrom(formOf(s), save.region))
+      if (new Set(local.map(pickOf)).size !== 1) return pickOne(picks)
+      choices = local
+    }
     // Not asked for by name, a regional form other than the Pokémon's own is left to those who ask for it: a Thunder
     // Stone makes a Kanto Pikachu a Kanto Raichu, as outside Alola in the games (`give thunder-stone pikachu alolan
-    // raichu` asks). One is taken only when there is no other (Cubone at night). Looks (Vivillon's patterns) and
-    // other forms (Toxtricity's) are rolled by the Pokémon's id, as before.
-    const own = choices.filter(s => !isRegional(formOf(s)) || formOf(s) === member.form)
-    const pool = into === undefined && own.length ? own : choices
+    // raichu` asks), unless /pokemon region chose Alola. One is taken only when there is no other (Cubone at night).
+    // Looks (Vivillon's patterns) and other forms (Toxtricity's) are rolled by the Pokémon's id, as before.
+    const pool = into === undefined ? regionPool(choices, formOf, member.form, save.region) : choices
     // A preview shows any branch; a real evolution takes this Pokémon's own.
     const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, pool)
     if (!next) {
@@ -2556,6 +2590,8 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return setSize($, tail.toLowerCase())
     case 'evolution':
       return setEvolutionStyle($, tail.toLowerCase())
+    case 'region':
+      return setRegion($, tail.toLowerCase())
     case 'everstone':
       return toggleEverstone($, tail)
     case 'evolve':

@@ -1,6 +1,8 @@
 import { FRIENDSHIP_MS } from './evolution'
 import { DEFAULT_EVOLUTION_STYLE, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
+import { isRegion } from './region'
+import type { Region } from './region'
 import type { Stage, Time, Way } from './evolution'
 import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -50,6 +52,8 @@ export type Save = {
   box?: Member[]
   // How the evolution screen looks (/pokemon evolution); absent means the default.
   evolutionStyle?: EvolutionStyle
+  // Whose regional forms evolutions take when none is named (/pokemon region); absent means each Pokémon's own.
+  region?: Region
   isOff?: boolean
   folded?: string[]
   foldedXp?: Record<string, Record<string, number>>
@@ -195,7 +199,8 @@ function loadMembers(s: Record<string, unknown>): { party: Member[]; box: Member
 
 // The stored save's format, raised with each field a release adds. A window still running an older release keeps only
 // the fields it knows and would erase the rest when it writes: it refuses to write a save stamped newer than itself.
-export const SAVE_VERSION = 1
+// 2: `region`.
+export const SAVE_VERSION = 2
 export const versionOf = (raw: unknown): number =>
   isObject(raw) && typeof raw.version === 'number' && Number.isInteger(raw.version) ? raw.version : 0
 export const TOO_NEW =
@@ -237,6 +242,7 @@ export function loadSave(raw: unknown): Save {
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
     ...(box.length ? { box } : {}),
     ...(isEvolutionStyle(s.evolutionStyle) ? { evolutionStyle: s.evolutionStyle } : {}),
+    ...(isRegion(s.region) ? { region: s.region } : {}),
     ...(s.isOff === true ? { isOff: true } : {}),
     ...(folded.length ? { folded } : {}),
     ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
