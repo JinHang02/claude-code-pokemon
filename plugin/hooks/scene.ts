@@ -473,7 +473,8 @@ export const isCalm = (s: Status) =>
   !s.isCompacting &&
   !s.wild &&
   !s.alert &&
-  s.actors.every(a => a.v === 0 && a.roam.kind !== 'skip') &&
+  // A skip that sleep cut short stays frozen mid-air, as still as the rest.
+  s.actors.every(a => a.v === 0 && (a.roam.kind !== 'skip' || isAsleep(s))) &&
   s.fx.every(p => p.kind === 'z') &&
   s.clones.every(born => s.t - born > EMERGE)
 

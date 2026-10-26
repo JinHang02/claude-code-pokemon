@@ -298,9 +298,11 @@ function background($: EngineInterface, work: Promise<unknown>) {
 
 const feel = (what: Happening) => {
   status = react(status, what)
+  wake()
 }
 const countAgents = () => {
   status = { ...status, agents: agents.size + demoAgents }
+  wake()
 }
 const between = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1))
 const fileOf = (m: { species: string; form: string }) => (m.form === 'regular' ? m.species : `${m.species}-${m.form}`)
@@ -1837,6 +1839,7 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
       )
     } else wildRate = known
     status = startWild(status, band.total, wild.left.width)
+    wake()
     closeMart($)
     $.ui.toast(`${isShiny ? '✨ ' : ''}A wild ${mon.name} appeared!`, { timeoutMs: 6000 })
     await mutate($, s => recordSeen(s, pick.species, isShiny, Date.now()))
@@ -2202,6 +2205,44 @@ function screenCells(s: Screen, columns: number, rows: number): string {
   return toCells(img, [{ x: TEXT_COLUMN, y: rows - 2, text, fg: BOX.text, bg: BOX.fill }]).cells
 }
 
+// The frame loop, one tick at a time, so a slow blit holds back the ticks behind it instead of piling frames up.
+// Asleep, the band draws one tick in CALM_EVERY: the loop then wakes once per drawn tick and runs the ticks before it
+// together, the same frames at the same moments, without waking the plugin 20 times a second for hours. Anything
+// that stirs the party (`wake`) brings it back to every tick at once.
+// The pending wait for the next tick: `rearm` cuts it short and starts again from now, at the pace the party needs.
+let pending: { cancel: () => void; rearm: () => void; isLong: boolean } | null = null
+const isBatched = () =>
+  Boolean(band && fitted) && !save.isOff && isAsleep(status) && isCalm(status) && !pitch && !screen && !mart.isOpen
+
+function loopTicks($: EngineInterface) {
+  const due = isBatched() ? CALM_EVERY - (tickNo % CALM_EVERY) : 1
+  const timer = $.clock.after(due * TICK_MS, () => {
+    if (pending?.cancel !== cancel) return
+    pending = null
+    background(
+      $,
+      (async () => {
+        // Stops early if the batch wakes the party: the rest go at the usual pace.
+        for (let i = 0; i < due && (i === 0 || isBatched()); i++) await tick($)
+      })().finally(() => loopTicks($)),
+    )
+  })
+  const cancel = () => timer.cancel()
+  pending = {
+    cancel,
+    isLong: due > 1,
+    rearm: () => {
+      cancel()
+      loopTicks($)
+    },
+  }
+}
+
+function wake() {
+  // Only a batched wait is worth cutting short: an awake loop ticks next anyway.
+  if (pending?.isLong) pending.rearm()
+}
+
 async function tick($: EngineInterface) {
   if (!band || !fitted || save.isOff) return
   tickNo++
@@ -2516,7 +2557,7 @@ export const register: Register = on => {
         // Nowhere left to report it: the session is closing.
       })
     background($, $.ui.close({ id: 'pokemon' }))
-    $.clock.every(TICK_MS, () => background($, tick($)))
+    loopTicks($)
     $.clock.every(SYNC_MS, () =>
       background(
         $,
@@ -2604,7 +2645,8 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
-    feel('turn-start')
+    // A subagent's turn ends with no main turn.complete of its own: it counts as activity, not as Claude working.
+    feel(e.agentId ? 'activity' : 'turn-start')
     return next(e)
   })
 
