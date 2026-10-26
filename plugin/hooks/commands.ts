@@ -160,7 +160,7 @@ export const POKEMON_HELP = [
   'Pokémon Journey · /pokemon …',
   ...listed(POKEMON).map(line),
   'Several of one? Add a number, shiny or lv <n>.',
-  'Also: /pokedex [name], and /pokemon-play to try things out.',
+  'Also: /pokedex [name]; /pokemon-play tries things out.',
 ].join('\n')
 
 // `/pokemon-help`: every command of the plugin with every word it takes, under 60 columns too.
