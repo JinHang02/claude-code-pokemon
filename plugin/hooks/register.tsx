@@ -17,7 +17,7 @@ import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from
 import type { Found, Place, Spot } from './members'
 import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
-import { classify } from './reactions'
+import { classify, isTestOrBuild } from './reactions'
 import {
   addTogether,
   bagFull,
@@ -126,7 +126,25 @@ const TOGETHER_EVERY_MS = 60_000
 // A download taking longer than this has failed.
 const FETCH_TIMEOUT_MS = 20_000
 const WILD_EVERY = [ticks(10 * 60_000), ticks(20 * 60_000)] as const
-const ANIMATIONS = ['hop', 'cheer', 'faint', 'sleep', 'squash', 'work', 'clones', 'evolve', 'wild'] as const
+const ANIMATIONS = [
+  'hop',
+  'cheer',
+  'faint',
+  'sleep',
+  'squash',
+  'work',
+  'clones',
+  'push',
+  'boulder',
+  'boxes',
+  'confused',
+  'evolve',
+  'wild',
+] as const
+// A test or build still running after this long: the lead puts its Strength into a boulder until it ends.
+const LONG_RUN_MS = 30_000
+// Long runs going on now (several can run side by side): the boulder goes once the last one ends.
+let longRuns = 0
 const PHASES: Phase[] = ['day', 'dusk', 'night', 'dawn']
 
 const party = atom({ plugin: 'pokemon', key: 'party' } as const, [])
@@ -2361,7 +2379,11 @@ async function play($: EngineInterface, args: string): Promise<string> {
   if (name === 'hop') feel('turn-answer')
   else if (name === 'cheer') feel('cheer')
   else if (name === 'faint') feel('tool-error')
-  else if (name === 'sleep') status = { ...status, idleTicks: Number.MAX_SAFE_INTEGER }
+  else if (name === 'push' || name === 'boxes' || name === 'confused') feel(name)
+  else if (name === 'boulder') {
+    feel('boulder-start')
+    later(5000, () => feel('boulder-end'))
+  } else if (name === 'sleep') status = { ...status, idleTicks: Number.MAX_SAFE_INTEGER }
   else if (name === 'squash') {
     feel('compact-start')
     later(2500, () => feel('compact-end'))
@@ -2708,6 +2730,14 @@ export const register: Register = on => {
     if (e.agentId) return next(e)
     const token = e.tool === 'Agent' ? (e.tool_use_id ?? `agent-${Math.random()}`) : null
     if (token) (agents.add(token), countAgents())
+    let isLong = false
+    const long =
+      e.tool === 'Bash' && isTestOrBuild(e.command)
+        ? $.clock.after(LONG_RUN_MS, () => {
+            isLong = true
+            if (longRuns++ === 0) feel('boulder-start')
+          })
+        : null
     try {
       const ran = await next(e)
       // Refused by a hook beneath: nothing ran.
@@ -2738,6 +2768,8 @@ export const register: Register = on => {
       return ran
     } finally {
       if (token) (agents.delete(token), countAgents())
+      long?.cancel()
+      if (isLong && --longRuns === 0) feel('boulder-end')
     }
   })
 

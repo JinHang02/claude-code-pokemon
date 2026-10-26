@@ -60,6 +60,10 @@ const ANIMATION_ABOUT: [string, string][] = [
   ['squash', 'squashed, as while compacting'],
   ['work', 'busy, as while Claude works'],
   ['clones', 'clones, as for subagents'],
+  ['push', 'a Pidgey flies off, as on git push'],
+  ['boulder', 'Strength, as on a long test or build'],
+  ['boxes', 'boxes carried, as after an install'],
+  ['confused', 'confused, as at a merge conflict'],
 ]
 const PHASE_ABOUT: Record<Phase, string> = {
   day: 'daytime',

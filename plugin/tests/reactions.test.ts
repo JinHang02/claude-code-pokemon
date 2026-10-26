@@ -68,8 +68,6 @@ test('only a command that runs a test counts, wherever it sits in a chain or beh
     expect(xpFor(cmd)).toEqual({ happenings: ['cheer'], xp: 5, streak: 0 })
   for (const cmd of [
     'cat jest.config.js',
-    'pip install pytest',
-    'npm install -D vitest',
     'grep -rn "pytest" docs/',
     'which tsc',
     'echo "remember to git commit"',
@@ -78,6 +76,9 @@ test('only a command that runs a test counts, wherever it sits in a chain or beh
     'git commit-tree abc',
   ])
     expect(xpFor(cmd)).toEqual({ happenings: [], xp: 0, streak: 0 })
+  // Installing a test runner runs no tests: only an install's boxes.
+  for (const cmd of ['pip install pytest', 'npm install -D vitest'])
+    expect(xpFor(cmd)).toEqual({ happenings: ['boxes'], xp: 0, streak: 0 })
 })
 
 test('a pipe, a `;` or a `||` hides how a test went: the summary in its output decides, or nothing does', () => {

@@ -6,6 +6,20 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Added: more reactions
+
+- A `git push` that went through sends a Pidgey across the band with a letter. One git turned down (rejected,
+  non-fast-forward, an error), a dry run or one with nothing to send (`Everything up-to-date`) sends nothing; a push
+  piped into `tail` counts when git printed a branch it sent.
+- A test or build still running after 30 seconds: the lead stops by a grey boulder and heaves at it (Strength), a
+  bigger one for a tall Pokémon, until the call ends; then it dusts itself off. A pass still cheers as before.
+- A package install that finished (`npm install`, `pnpm add`, `yarn add`, `pip install`, `uv add`, `cargo add`,
+  `bundle install`, `go get` and the like): every party member carries a box over its head for four seconds.
+- A merge conflict in a command's output (`CONFLICT (content)`, `Automatic merge failed`): the party spins on the spot,
+  confused, with a "?!" over the lead.
+- None of them pays XP: pushes and installs would be too easy to farm.
+- `/pokemon-play push`, `boulder`, `boxes` and `confused` preview them; `/pokemon-help` and the typeahead list them.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and
