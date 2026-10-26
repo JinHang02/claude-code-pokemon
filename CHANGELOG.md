@@ -6,6 +6,19 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Added: /pokedex <name>
+
+- `/pokedex <name>` shows one species' entry: its national Pokédex number, types, rarity, and what your Pokédex has
+  of it (seen, caught, shiny; "not seen yet" for one you haven't met), what it evolves from and into and how, its
+  forms, and which of yours are that species, with their levels and where they are (six at most, then how many more).
+- It reads a name as `/pokemon` does: forms in any order (`/pokedex alolan vulpix` shows the form's own types),
+  regional adjectives, full-width letters; a misspelt one answers "Did you mean Pikachu? Run /pokedex pikachu".
+- Evolutions come from the same lookup as the party's. Offline with nothing cached, the entry says "Evolution info
+  needs a connection." and shows the rest; a download still under way after four seconds says to run it again.
+- Every line fits the terminal's width, as the other lists do. While you type `/pokedex` and two letters, the
+  typeahead previews the species they start, with each one's number, types and whether you've seen or caught it.
+- `/pokedex` alone shows the whole Pokédex and your party, as before.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and

@@ -598,7 +598,7 @@ function memberColumns(m: Member, isReady = false): string[] {
 }
 
 // Terminal columns a text takes: ✨ is drawn two wide.
-const widthOf = (text: string) => [...text].length + (text.match(/✨/g)?.length ?? 0)
+export const widthOf = (text: string) => [...text].length + (text.match(/✨/g)?.length ?? 0)
 
 // Rows of columns, each column padded to its widest entry.
 function lineUp(rows: string[][]): string[] {
@@ -615,11 +615,11 @@ function lineUp(rows: string[][]): string[] {
 }
 
 // Claude Code indents a command's reply this many columns (under its "⎿").
-const REPLY_INDENT = 5
+export const REPLY_INDENT = 5
 
 // `segments` joined with " · ", broken between them (a segment longer than `width` between its words) so each line
 // fits `width`.
-function wrapSegments(segments: string[], width: number): string[] {
+export function wrapSegments(segments: string[], width: number): string[] {
   const lines: string[] = []
   let line = ''
   for (const segment of segments)

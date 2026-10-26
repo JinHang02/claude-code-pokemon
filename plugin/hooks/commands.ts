@@ -3,6 +3,7 @@
 // the party's names).
 import { LANDSCAPES } from './backdrop'
 import type { Phase } from './backdrop'
+import { dexRows } from './dex-entry'
 import { EVOLUTION_STYLES } from './evolution-style'
 import { forSale, ITEMS } from './items'
 import { slug } from './lookup'
@@ -94,7 +95,11 @@ export const COMMANDS = {
     description: 'Try an animation, a time of day or a landscape · /pokemon-help lists all',
     argumentHint: '[animation | time | landscape]',
   },
-  dex: { name: 'pokedex', description: 'Every Pokémon you have seen, and your party' },
+  dex: {
+    name: 'pokedex',
+    description: 'Every Pokémon you have seen, and your party; or one species: /pokedex <name>',
+    argumentHint: '[name]',
+  },
   help: { name: 'pokemon-help', description: 'Every Pokémon command and what it takes' },
 } as const
 
@@ -107,7 +112,7 @@ export const POKEMON_HELP = [
   'Pokémon Journey · /pokemon …',
   ...listed(POKEMON).map(line),
   'Several of one? Add a number, shiny or lv <n>.',
-  'Also: /pokedex, and /pokemon-play to try things out.',
+  'Also: /pokedex [name], and /pokemon-play to try things out.',
 ].join('\n')
 
 // `/pokemon-help`: every command of the plugin with every word it takes, under 60 columns too.
@@ -127,14 +132,16 @@ export const ALL_HELP = [
   `    places: ${LANDSCAPES.join(', ')}`,
   '',
   '/pokedex             all you have seen and caught',
+  '/pokedex <name>      one species: types, evolutions',
   '/pokemon-help        this list',
   '',
   'Type /pokemon and a letter: the typeahead previews',
   'each command, then your items and Pokémon.',
 ].join('\n')
 
-// What the typeahead knows of the save: the party, the PC box and the Bag, and a member's level now.
-export type Owned = Pick<Save, 'party' | 'box' | 'bag'> & { levelOf: (m: Member) => number }
+// What the typeahead knows of the save: the party, the PC box and the Bag, and a member's level now; the Pokédex,
+// for /pokedex.
+export type Owned = Pick<Save, 'party' | 'box' | 'bag'> & { levelOf: (m: Member) => number; dex?: Save['dex'] }
 
 export type Suggestion = { text: string; label?: string; description?: string }
 
@@ -146,6 +153,12 @@ const SPECIES_NAMES = Object.keys(SPECIES)
 // anything else. On the command itself every word it takes, then on each word what can go there.
 export function suggest(text: string, cursor: number, token: string, start: number, owned: Owned): Suggestion[] {
   const typed = text.slice(0, cursor)
+  // `/pokedex <name>`: any species, its words typed so far before the token.
+  const dex = /^\s*\/pokedex(?=\s|$)/.exec(typed)
+  if (dex && start >= dex[0].length) {
+    const words = typed.slice(dex[0].length, start).trim().split(/\s+/).filter(Boolean)
+    return dexRows(words, token, owned.dex).slice(0, MAX_ROWS)
+  }
   const m = /^\s*\/(pokemon|pokemon-play)(?=\s|$)/.exec(typed)
   if (!m) return []
   const isPlay = m[1] === 'pokemon-play'

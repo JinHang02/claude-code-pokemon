@@ -8,6 +8,8 @@ import { drawWild } from './encounter'
 import { chooseStage, dueStages, evolvedForm, genderOf, nextStages, pokeapiForm, timeMatches } from './evolution'
 import type { ChainLink, Gender, Stage } from './evolution'
 import { ALL_HELP, COMMANDS, POKEMON_HELP, suggest } from './commands'
+import { formatDexEntry, readDexQuery } from './dex-entry'
+import type { DexEvolutions } from './dex-entry'
 import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
@@ -1156,8 +1158,12 @@ async function setEvolutionStyle($: EngineInterface, word: string): Promise<stri
   return `Evolution screen: ${word}, ${STYLE_TEXT[word]}.`
 }
 
-// What `member` can evolve into and how, as in the games (empty at a final stage), and its species' gender ratio.
-async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stages: Stage[]; genderRate: unknown }> {
+// What `member` can evolve into and how, as in the games (empty at a final stage), its species' gender ratio, and the
+// chain they were read from (for /pokedex <name>).
+async function evolutionsOf(
+  $: EngineInterface,
+  member: Member,
+): Promise<{ stages: Stage[]; genderRate: unknown; chain?: ChainLink }> {
   const list = await loadSpecies($)
   const res = await cachedFetch(
     $,
@@ -1178,7 +1184,7 @@ async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stage
   const chain = (JSON.parse(chainRes.text) as { chain: ChainLink }).chain
   const forms = (list.find(s => s.name === member.species)?.forms ?? []).filter(f => f !== 'regular')
   const stages = nextStages(chain, member.species, pokeapiForm(member.species, member.form), member.gender, forms)
-  return { stages: stages.filter(n => list.some(s => s.name === n.species)), genderRate }
+  return { stages: stages.filter(n => list.some(s => s.name === n.species)), genderRate, chain }
 }
 
 // The types of a PokeAPI form (`rattata-alola` is Dark), cached. A form PokeAPI doesn't know has none, and isn't
@@ -2423,6 +2429,27 @@ async function showBox($: EngineInterface, args: string): Promise<string> {
 
 // How long a naming command waits for a species list still downloading.
 const SPECIES_WAIT_MS = 2000
+
+// How long /pokedex <name> waits for evolutions not downloaded yet; past it the entry says to run it again.
+const DEX_EVOLUTION_MS = 4000
+
+// `/pokedex <name>`: one species' entry, its evolutions looked up as a party member's of that species and form would
+// be (any gender). Null when the words name no species (`shiny` alone): the whole Pokédex then.
+async function dexEntryOf($: EngineInterface, args: string): Promise<string | null> {
+  const list = species ?? []
+  const pick = readDexQuery(list, args.normalize('NFKC'))
+  if (typeof pick === 'string' || !pick) return pick
+  const as: Member = { id: '', species: pick.species, form: pick.form, isShiny: false, xp: 0, evolutions: 0 }
+  const evolutions = await Promise.race([
+    evolutionsOf($, as).then(
+      (found): DexEvolutions => found,
+      (): DexEvolutions => 'offline',
+    ),
+    $.clock.sleep(DEX_EVOLUTION_MS).then((): DexEvolutions => 'slow'),
+  ])
+  return formatDexEntry({ pick, list, save: view(), evolutions, levelOf: levelNow }, replyColumns)
+}
+
 // The `/pokemon` words that take no Pokémon's name.
 const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
@@ -2643,13 +2670,15 @@ export const register: Register = on => {
   }))
 
   on('command.run', { command: 'pokedex' }, async ($, e) => ({
-    text: await promptly($, '/pokedex', async () => {
+    text: await promptly($, `/pokedex ${e.args}`.trim(), async () => {
       replyColumns = columnsOf(e.presentation?.columns)
       try {
         await ready
         await settled($)
         await sync($)
         await loadSpecies($)
+        const entry = await dexEntryOf($, e.args)
+        if (entry) return entry
         return `${formatDex(
           save,
           (species ?? []).map(s => s.name),
