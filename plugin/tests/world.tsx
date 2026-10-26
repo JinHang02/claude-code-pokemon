@@ -219,6 +219,8 @@ export type Net = {
   beforeSet?: (key: string) => void
   // Runs as a store key is read: another window's write landing just before this one reads.
   beforeGet?: (key: string) => void
+  // Species PokeAPI answers 404 for: the sprite list ahead of it.
+  missing?: string[]
 }
 
 // The engine around the plugin: a fake network, store, clock zone and UI calls; resolves the store and toasts.
@@ -266,6 +268,8 @@ export function world(
     const captures = net.captureRates ?? CAPTURE_RATES
     const species = /pokemon-species\/([a-z0-9-]+)/.exec(e.url)?.[1]
     if (species && net.speciesStall) await net.speciesStall
+    if (species && net.missing?.includes(species))
+      return { value: { status: 404, ok: false, headers: {}, text: '{"detail":"Not found."}' } }
     if (species)
       return ok(
         JSON.stringify({

@@ -56,6 +56,7 @@ import {
   recordCaught,
   recordSeen,
   releaseMember,
+  SAVE_VERSION,
   speciesName,
   spriteBudget,
   storeCaught,
@@ -63,6 +64,8 @@ import {
   TIME_TEXT,
   TOGETHER,
   togetherOf,
+  TOO_NEW,
+  versionOf,
   withExtra,
   withTime,
   withTogether,
@@ -101,7 +104,7 @@ import {
 } from './scene'
 import type { Happening, Look, Phase, Status } from './scene'
 import { SPECIES } from './species-data'
-import { landscapeAt, LANDSCAPES } from './backdrop'
+import { landscapeAt, LANDSCAPES, localHourOf } from './backdrop'
 import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
@@ -321,12 +324,8 @@ const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !=
 let clockMs: number | null = null
 const readClock = async ($: EngineInterface) => (clockMs = await $.clock.now())
 
-// Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
-// when it claims UTC, the host's answer from session start is used.
-const localHour = (ms = clockMs ?? Date.now()) => {
-  const own = -new Date().getTimezoneOffset()
-  return Math.floor((ms / 60_000 + (own !== 0 ? own : (tzOffsetMin ?? 0))) / 60)
-}
+// Hours since the epoch in local time.
+const localHour = (ms = clockMs ?? Date.now()) => localHourOf(ms, -new Date().getTimezoneOffset(), tzOffsetMin)
 
 const isShowing = () => shown !== null && tickNo < shown.until
 
@@ -357,7 +356,8 @@ const isJson = (text: string) => {
     return false
   }
 }
-const isArt = (text: string) => text.includes('\x1b[')
+// Sprite art ends with a colour reset: a file cut short (a crash mid-write) doesn't, and is fetched again.
+const isArt = (text: string) => text.includes('\x1b[') && text.trimEnd().endsWith('\x1b[0m')
 
 // `url` from the download cache under `name`, fetched (and cached) when missing, unreadable, not `isValid` (a
 // truncated file, a Wi-Fi login page) or older than `maxAgeMs`. When a refresh fails, an older copy still serves.
@@ -447,12 +447,13 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 async function writeSave($: EngineInterface, change: (s: Save) => Save) {
   for (let tries = 1; ; tries++) {
     const raw = await $.store.get('save')
+    if (versionOf(raw) > SAVE_VERSION) throw new Error(TOO_NEW)
     await seedTogether($, raw)
     const latest = loadSave(raw)
     const next = change(latest)
     if (next === latest || JSON.stringify(next) === JSON.stringify(latest)) return { latest, next: latest }
     if (tries < 3 && JSON.stringify(await $.store.get('save')) !== JSON.stringify(raw)) continue
-    await $.store.set('save', next)
+    await $.store.set('save', { ...next, version: SAVE_VERSION })
     return { latest, next }
   }
 }
@@ -460,10 +461,13 @@ async function writeSave($: EngineInterface, change: (s: Save) => Save) {
 // Applies `change` to the latest save (another Claude Code session may have written since), then stores
 // and adopts the result, so sessions running side by side don't undo each other. A write the store refuses (another
 // window holding its lock) changes nothing here: the save and the party drawn are read again from the store.
-function mutate($: EngineInterface, change: (s: Save) => Save) {
+// `withLedgers`: `change` also gets the session ledgers, read in the queue just before the write, so a fold landing
+// first can't have its ₽ counted twice (as when a purchase checks the wallet).
+function mutate($: EngineInterface, change: (s: Save, ledgers: Record<string, Ledger>) => Save, withLedgers = false) {
   let isRedrawn = false
   const run = queued(async () => {
-    const { latest, next } = await writeSave($, change)
+    const ledgers = withLedgers ? await readLedgers($) : {}
+    const { latest, next } = await writeSave($, s => change(s, ledgers))
     isRedrawn = isOtherParty(latest, save)
     save = next
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
@@ -522,30 +526,35 @@ async function readLedgers($: EngineInterface): Promise<Record<string, Ledger>> 
 async function foldLedgers($: EngineInterface) {
   const ledgers = await readLedgers($)
   const now = Date.now()
-  for (const [key, l] of Object.entries(ledgers)) {
-    if (key === ledgerKey || now - l.at < LEDGER_STALE_MS) continue
-    // XP it gained after an earlier fold is folded too, before it can go.
-    if (foldLedger(save, key, l) !== save) await mutate($, s => foldLedger(s, key, l))
-    else {
-      const latest = loadLedger(await $.store.get(key))
-      if (latest.at === l.at) await $.store.delete(key)
-    }
-  }
+  const stale = Object.entries(ledgers).filter(([key, l]) => key !== ledgerKey && now - l.at >= LEDGER_STALE_MS)
+  // XP a ledger gained after an earlier fold is folded too, before it can go.
+  const toFold = stale.filter(([key, l]) => foldLedger(save, key, l) !== save)
   // Marks of ledgers gone from the store are dropped.
   const gone = (save.folded ?? []).filter(k => !(k in ledgers))
-  if (gone.length)
+  // One write for the whole round, however many sessions ended: each window runs it on its own timer.
+  if (toFold.length || gone.length)
     await mutate($, s => {
-      const folded = (s.folded ?? []).filter(k => !gone.includes(k))
-      const foldedXp = Object.fromEntries(Object.entries(s.foldedXp ?? {}).filter(([k]) => !gone.includes(k)))
-      const foldedMoney = Object.fromEntries(Object.entries(s.foldedMoney ?? {}).filter(([k]) => !gone.includes(k)))
-      const { folded: _, foldedXp: __, foldedMoney: ___, ...rest } = s
+      const folded = toFold.reduce((acc, [key, l]) => foldLedger(acc, key, l), s)
+      if (!gone.length) return folded
+      const keep = <T,>(o: Record<string, T> | undefined) =>
+        Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !gone.includes(k)))
+      const marks = (folded.folded ?? []).filter(k => !gone.includes(k))
+      const foldedXp = keep(folded.foldedXp)
+      const foldedMoney = keep(folded.foldedMoney)
+      const { folded: _, foldedXp: __, foldedMoney: ___, ...rest } = folded
       return {
         ...rest,
-        ...(folded.length ? { folded } : {}),
+        ...(marks.length ? { folded: marks } : {}),
         ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
         ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
       }
     })
+  // Folded on an earlier round and unchanged since: removed.
+  for (const [key, l] of stale) {
+    if (toFold.some(([k]) => k === key)) continue
+    const latest = loadLedger(await $.store.get(key))
+    if (latest.at === l.at) await $.store.delete(key)
+  }
 }
 
 // The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites. That retry
@@ -556,7 +565,7 @@ async function retry($: EngineInterface) {
   await sync($)
   if (++syncs % FOLD_EVERY === 0) await foldLedgers($)
   if (save.isOff || retrying) return
-  if (!save.party.length) retrying = setLead($, '')
+  if (!save.party.length) retrying = setLead($, '', true)
   else if (isPartyStale) retrying = refreshParty($)
   if (retrying) await retrying.finally(() => (retrying = null))
 }
@@ -660,7 +669,9 @@ const isLevelled = (query: string) => readLevel(query).level !== undefined
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
 // box comes out; a new one leads, and the old lead goes into the PC box with its level and what it holds. `shiny`
 // names a shiny one: with none of it shiny owned, a new shiny one is caught, however many plain ones there are.
-async function setLead($: EngineInterface, query: string): Promise<string> {
+// `isFirst`: a session's first Pokémon, caught because its save looked empty. A save that only looked empty (a read the
+// store refused) has its party when written: then nothing is caught, and the lead stays.
+async function setLead($: EngineInterface, query: string, isFirst = false): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
   // A misspelt name gets its suggestion first, a full box its refusal before the sprite's download; the save write
@@ -675,6 +686,10 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
   await mutate($, latest => {
     isCaught = false
     const gone = latest.party[0]
+    if (isFirst && gone) {
+      text = ''
+      return latest
+    }
     if (gone && isBoxFull(latest)) {
       text = noRoomForLead(gone)
       return latest
@@ -1011,12 +1026,15 @@ export async function buyItem(
   if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_BAG)
     return { text: "That isn't a quantity you can buy.", isError: true }
   let result = { text: '', isError: true }
-  const ledgers = await readLedgers($)
-  await mutate($, s => {
-    const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
-    result = { text: bought.text, isError: bought.isError }
-    return bought.save
-  })
+  await mutate(
+    $,
+    (s, ledgers) => {
+      const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
+      result = { text: bought.text, isError: bought.isError }
+      return bought.save
+    },
+    true,
+  )
   return result
 }
 
@@ -1136,6 +1154,8 @@ async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stage
     `pokeapi/species-${member.species}.json`,
     isJson,
   )
+  // A species PokeAPI doesn't have (the sprite list ahead of it): no evolutions, stored once, never asked every minute.
+  if (res.status === 404) return { stages: [], genderRate: undefined }
   if (!res.ok) throw new Error(`evolution data: HTTP ${res.status}`)
   const data = JSON.parse(res.text) as { evolution_chain?: { url?: string }; gender_rate?: unknown }
   const genderRate = data.gender_rate
@@ -1558,8 +1578,12 @@ async function evolveNow(
       if (duePicks.length > 1) return pickOne(duePicks)
       choices = due
     } else if (isAsked && picks.length > 1) return pickOne(picks)
+    // Not asked for by name, a branch in the Pokémon's own form comes first: a Thunder Stone makes a Kanto Pikachu a
+    // Kanto Raichu, as outside Alola in the games. One in another form only when there is no other (Cubone at night).
+    const own = choices.filter(s => formOf(s) === member.form)
+    const pool = into === undefined && own.length ? own : choices
     // A preview shows any branch; a real evolution takes this Pokémon's own.
-    const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, choices)
+    const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, pool)
     if (!next) {
       if (!isPreview && !options.length)
         await mutate($, s => ({
@@ -2448,11 +2472,13 @@ async function readCache($: EngineInterface, path: string): Promise<{ text: stri
   }
 }
 
-// The local UTC offset in minutes. The plugin's clock normally knows it; when it claims UTC, the host is
-// asked (`date` on macOS and Linux, PowerShell on Windows), since that may just mean it couldn't tell.
-async function readTimeZone($: EngineInterface): Promise<number> {
+// The host's UTC offset in minutes, asked (`date` on macOS and Linux, PowerShell on Windows) only when the plugin's
+// clock claims UTC, since that may just mean it couldn't tell. A clock that knows its offset is read afresh each
+// time instead (null here): kept from start-up, a London session open across the clocks going back would run an hour
+// fast all winter.
+async function readTimeZone($: EngineInterface): Promise<number | null> {
   const own = -new Date().getTimezoneOffset()
-  if (own !== 0) return own
+  if (own !== 0) return null
   try {
     const { stdout } = await $.process.run(['date', '+%z'], { timeoutMs: 5000 })
     const m = /^([+-])(\d\d)(\d\d)/.exec(stdout.trim())
@@ -2535,7 +2561,7 @@ const settled = ($: EngineInterface) => Promise.race([started, $.clock.sleep(STA
 async function start($: EngineInterface) {
   tzOffsetMin = await readTimeZone($)
   if (save.party.length) await refreshParty($)
-  else if (!save.isOff) await setLead($, '')
+  else if (!save.isOff) await setLead($, '', true)
   await learnEvolutions($)
 }
 

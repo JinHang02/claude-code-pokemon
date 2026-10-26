@@ -193,6 +193,14 @@ function loadMembers(s: Record<string, unknown>): { party: Member[]; box: Member
   return { party, box, ms }
 }
 
+// The stored save's format, raised with each field a release adds. A window still running an older release keeps only
+// the fields it knows and would erase the rest when it writes: it refuses to write a save stamped newer than itself.
+export const SAVE_VERSION = 1
+export const versionOf = (raw: unknown): number =>
+  isObject(raw) && typeof raw.version === 'number' && Number.isInteger(raw.version) ? raw.version : 0
+export const TOO_NEW =
+  'A newer Pokémon Journey wrote your save, so this window changed nothing. Update the plugin (claude plugin update pokemon@claude-code-pokemon) and restart this window.'
+
 // A stored save, with anything malformed replaced by its default, field by field. Time together kept in it by an
 // earlier version is left out: it lives under its own key (togetherOf moves it there).
 export function loadSave(raw: unknown): Save {
