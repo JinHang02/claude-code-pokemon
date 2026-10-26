@@ -3,6 +3,8 @@ import { SCREEN_MS } from './evolution-screen'
 import type { Landscape, Phase } from './backdrop'
 import { CLEAR, mirror, shrink } from './sprite'
 import type { Pixels } from './sprite'
+import { drawWeather } from './weather'
+import type { Weather } from './weather'
 
 export const TICK_MS = 50
 // Calm scenes (nothing moving) draw one tick in this many.
@@ -398,8 +400,9 @@ export function step(
       ...a,
       facing: wild.x + wildWidth / 2 < a.x + (widths[i] ?? 0) / 2 ? -1 : 1,
     }))
+  // A hop of one alone (`actor`, as for joy in the rain) spins that one alone.
   if ((mood?.kind === 'hop' || mood?.kind === 'cheer') && mood.t === SPIN_AT)
-    actors = actors.map(a => ({ ...a, facing: flip(a.facing) }))
+    actors = actors.map((a, i) => (mood.actor === undefined || mood.actor === i ? { ...a, facing: flip(a.facing) } : a))
 
   const lead = actors[0] ?? newScene()
   const leadWidth = widths[0] ?? 1
@@ -552,7 +555,8 @@ export function pose(s: Status, height: number, actor = 0): Pose {
     return { ...REST, scale: 1 - 0.55 * Math.exp(-t / ticks(150)) * Math.cos((2 * Math.PI * t) / ticks(350)) }
   }
   if (mood?.kind === 'faint') return faintPose(mood.t, height)
-  if (mood?.kind === 'hop' || mood?.kind === 'cheer') return hopPose(mood.t % HOP)
+  if ((mood?.kind === 'hop' || mood?.kind === 'cheer') && (mood.actor === undefined || mood.actor === actor))
+    return hopPose(mood.t % HOP)
   if (mood?.kind === 'evolve') return REST
   if (s.alert > ALERT - STARTLE) return { ...REST, lift: arc((ALERT - s.alert + 1) / (STARTLE + 1), 2) }
   if (isAsleep(s)) {
@@ -695,6 +699,7 @@ export type { Landscape, Phase } from './backdrop'
 export type Look = {
   phase: Phase
   landscape?: Landscape
+  weather?: Weather
   wild?: Pixels
   evolveFrom?: Pixels
   overlays?: Placed[]
@@ -705,7 +710,8 @@ export type Look = {
 // the scene's left `scene` columns, so they never hide under the wallet nor go when the button does.
 export function scenery(total: number, rows: number, look: Look, t: number, scene = total): Pixels {
   const out: Pixels = { pixels: Array<number>(total * rows * 2).fill(CLEAR), width: total, height: rows * 2 }
-  backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene)
+  const kind = backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene)
+  if (look.weather) drawWeather(out, kind, look.weather, look.phase, t, 1000 / TICK_MS)
   return out
 }
 

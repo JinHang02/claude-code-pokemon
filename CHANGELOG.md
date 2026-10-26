@@ -6,6 +6,20 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Added: weather
+
+- Some hours it rains, snows or a fog rolls in over the landscape, picked by the hour like the place, so every
+  window shows the same sky: about 15 hours in a hundred rain, 8 fog and 7 snow (a little more in the night and dawn
+  hours), and snow falls only on the mountains, hills and forest. The rest are clear.
+- Rain greys the sky and falls in slanting streaks, splashing on the grass and ringing the lake; snow drifts down
+  and settles white on the grass; fog lies pale over the far landscape. Nothing ever covers the sun or moon.
+- A Water-type Pokémon hops for joy in the rain now and then (an Ice type in the snow), on its own. A sleeping party
+  stays asleep: the weather moves only on the frames the band already draws, so a sleeping band still draws at most
+  five a second.
+- `/pokemon-play rain`, `snow`, `fog` and `clear` show that weather for 15 seconds, with a time and place too
+  (`/pokemon-play night rain lake`); `/pokemon-help` and the typeahead list them. It's only for the eye: nothing
+  evolves, appears or levels differently for it.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and

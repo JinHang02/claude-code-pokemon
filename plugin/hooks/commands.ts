@@ -9,6 +9,7 @@ import { slug } from './lookup'
 import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
+import type { Weather } from './weather'
 
 // What a word of a command can be: a Pokémon of yours (in the party, the PC box, or either), any species, an item
 // (one in the Bag first, or one the Mart sells), or one of a fixed few.
@@ -68,6 +69,13 @@ const PHASE_ABOUT: Record<Phase, string> = {
   dawn: 'the sun coming up',
 }
 
+const WEATHER_ABOUT: Record<Weather, string> = {
+  rain: 'rain, splashing on the grass',
+  snow: 'snowfall, on high ground and woods',
+  fog: 'fog over the far landscape',
+  clear: 'no weather',
+}
+
 export const PLAY: Sub[] = [
   ...ANIMATION_ABOUT.map(([word, about]) => ({ word, usage: word, about })),
   { word: 'evolve', usage: 'evolve [style]', about: "your lead's evolution screen", args: ['style'] },
@@ -79,6 +87,12 @@ export const PLAY: Sub[] = [
     args: ['landscape' as const],
   })),
   ...LANDSCAPES.map(word => ({ word, usage: `${word} [time]`, about: `the ${word}`, args: ['phase' as const] })),
+  ...(Object.keys(WEATHER_ABOUT) as Weather[]).map(word => ({
+    word,
+    usage: `${word} [place]`,
+    about: WEATHER_ABOUT[word],
+    args: ['landscape' as const],
+  })),
 ]
 
 // The commands' own lines in the typeahead and /help: one short line each, so none is cut off, and the hint the
@@ -91,8 +105,8 @@ export const COMMANDS = {
   },
   play: {
     name: 'pokemon-play',
-    description: 'Try an animation, a time of day or a landscape · /pokemon-help lists all',
-    argumentHint: '[animation | time | landscape]',
+    description: 'Try an animation, a time of day, a landscape or weather · /pokemon-help lists all',
+    argumentHint: '[animation | time | landscape | weather]',
   },
   dex: { name: 'pokedex', description: 'Every Pokémon you have seen, and your party' },
   help: { name: 'pokemon-help', description: 'Every Pokémon command and what it takes' },
@@ -125,6 +139,7 @@ export const ALL_HELP = [
   line({ word: '', usage: '<time> <place>', about: 'e.g. dusk lake, for 15 s' }),
   `    times: ${Object.keys(PHASE_ABOUT).join(', ')}`,
   `    places: ${LANDSCAPES.join(', ')}`,
+  `    weather: ${Object.keys(WEATHER_ABOUT).join(', ')}, e.g. night rain lake`,
   '',
   '/pokedex             all you have seen and caught',
   '/pokemon-help        this list',
