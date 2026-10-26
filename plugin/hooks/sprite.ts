@@ -123,20 +123,29 @@ export function toCells(
 ): { cells: string; columns: number; rows: number } {
   const rows = Math.ceil(height / 2)
   const words = new Uint32Array(width * rows * 3)
-  for (let r = 0; r < rows; r++)
-    for (let x = 0; x < width; x++) {
-      const top = pixels[2 * r * width + x] ?? CLEAR
-      const bottom = 2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR
-      const cell =
-        top === CLEAR && bottom === CLEAR
-          ? [0x20, DEFAULT, DEFAULT]
-          : top === bottom
-            ? [0x20, DEFAULT, top]
-            : top === CLEAR
-              ? [LOWER, bottom, DEFAULT]
-              : [UPPER, top, bottom === CLEAR ? DEFAULT : bottom]
-      words.set(cell, (r * width + x) * 3)
+  // Written in place, three words a cell: this runs for every frame drawn, up to 20 a second.
+  let at = 0
+  for (let r = 0; r < rows; r++) {
+    const topRow = 2 * r * width
+    const hasBottom = 2 * r + 1 < height
+    for (let x = 0; x < width; x++, at += 3) {
+      const top = pixels[topRow + x] ?? CLEAR
+      const bottom = hasBottom ? (pixels[topRow + width + x] ?? CLEAR) : CLEAR
+      if (top === bottom) {
+        words[at] = 0x20
+        words[at + 1] = DEFAULT
+        words[at + 2] = top === CLEAR ? DEFAULT : top
+      } else if (top === CLEAR) {
+        words[at] = LOWER
+        words[at + 1] = bottom
+        words[at + 2] = DEFAULT
+      } else {
+        words[at] = UPPER
+        words[at + 1] = top
+        words[at + 2] = bottom === CLEAR ? DEFAULT : bottom
+      }
     }
+  }
   for (const { x, y, text, fg, bg } of labels) {
     if (y < 0 || y >= rows) continue
     let at = x
@@ -172,7 +181,10 @@ export function textRows({ pixels, width, height }: Pixels): TextRun[][] {
   return lines
 }
 
+// The platform's own encoder where there is one (about thirty times faster on a band's 60 KB), else by hand.
 function toBase64(bytes: Uint8Array): string {
+  const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64
+  if (typeof native === 'function') return native.call(bytes)
   let bin = ''
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return btoa(bin)

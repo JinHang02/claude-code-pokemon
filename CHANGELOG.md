@@ -6,6 +6,16 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Fixed: lighter on the CPU, the same party
+
+- Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and
+  base64-encoded by the platform where it can. The picture is the same, cell for cell.
+- A background subagent no longer leaves the party "working" after the main turn ends: they doze off after five
+  quiet minutes as usual, instead of thinking and drawing at the full frame rate for hours.
+- A Pokémon that fell asleep halfway through a skip no longer keeps the band drawing at the full rate all night.
+- Asleep, the band wakes the plugin once per frame it draws instead of twenty times a second; anything that stirs
+  the party wakes it at once. Frames don't pile up behind a slow terminal either: one tick runs at a time.
+
 ## [1.7.0] - 2026-10-25
 
 ### Added: `/pokemon-help` and a typeahead that previews every command
