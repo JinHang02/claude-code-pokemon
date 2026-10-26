@@ -65,6 +65,15 @@ Nothing to configure. Your party watches what Claude is doing and reacts on its 
 </tr>
 </table>
 
+A few smaller moments, none of them worth XP:
+
+- **A `git push` goes through:** a Pidgey flies across the band carrying a letter.
+- **A test or build runs past 30 seconds:** your lead puts its Strength into a boulder until it ends, then dusts itself off.
+- **A package install finishes** (`npm install`, `pip install`, `cargo add` and friends): everyone carries a box for a few seconds.
+- **A merge hits a conflict:** the party spins around, confused, a "?!" over your lead.
+
+Each one plays on demand too: `/pokemon-play push`, `boulder`, `boxes` or `confused`.
+
 Between all that they just live their lives: short strolls in any direction, stopping for a moment, looking around, changing their minds halfway, skipping in place.
 
 Only real failures make them faint. A `grep` that finds nothing isn't a failure, so a plain command has to fail three times in a row before anyone keels over.

@@ -11,6 +11,16 @@ const BUILD =
   /^(tsc|ruff|eslint|mypy|pyright|make|gradle|\.\/gradlew|mvn|cargo (build|check|clippy)|go (build|vet)|docker( compose)? build|(npm|pnpm|yarn|bun)( run)? (build|lint|typecheck))(\s|$)/
 // Global options may come first, some with a value: git -C repo commit.
 const COMMIT = /^git\s+(-\S+\s+([^-\s]\S*\s+)?)*commit(\s|$)/
+const PUSH = /^git\s+(-\S+\s+([^-\s]\S*\s+)?)*push(\s|$)/
+// A push git turned down, or one that had nothing to send.
+const NOT_PUSHED = /\[(remote )?rejected\]|error: failed to push|^fatal: |Everything up-to-date/m
+// What git prints for each branch it sent: `   1a2b3c4..5d6e7f8  main -> main`, `* [new branch]`, a forced `+`.
+const PUSHED = /^\s*[+*]?\s*(\[new [a-z]+\]|[0-9a-f]{7,40}\.{2,3}[0-9a-f]{7,40})\s+\S+ -> \S+/m
+// Adds a package, or installs what the project lists (`npm install`, `pip install -r requirements.txt`).
+const INSTALL =
+  /^((npm|pnpm|yarn|bun) (install|i|add|ci)|pip3? install|uv (add|sync|pip install)|poetry (add|install)|cargo add|bundle install|go get|gem install|composer (install|require))(\s|$)/
+// A merge, rebase, cherry-pick or pull that stopped at conflicting changes.
+const CONFLICT = /^CONFLICT \([^)]+\): |\bAutomatic merge failed\b/m
 // Words that run the command after them: `FOO=1 sudo npx jest`, `uv run pytest`, `python -m pytest`,
 // `timeout 300 pytest`, a subshell's `(`, and a path to the runner (`.venv/bin/pytest`).
 const PREFIX =
@@ -227,6 +237,10 @@ function expand(command: string): string[] {
 }
 
 const isTestRun = (command: string) => TEST.test(command) && !NO_RUN.test(command)
+// What a command's pieces run, wherever they sit in it.
+const everyRun = (command: string) => split(command).flatMap(p => expand(commandAt(p.text)))
+// A test or build anywhere in the command: worth a boulder once it has run long.
+export const isTestOrBuild = (command: string) => everyRun(command).some(c => isTestRun(c) || BUILD.test(c))
 // A dry run commits nothing; a message only mentioning one is no dry run.
 // An amend or an empty commit adds no work: no XP for running it again and again.
 const isCommit = (command: string) =>
@@ -234,10 +248,25 @@ const isCommit = (command: string) =>
 // What git prints for a commit that went through: `[main 1a2b3c4] message`.
 const COMMITTED = /^\[[^\]\n]+ [0-9a-f]{7,40}\] /m
 
-// What a finished tool call means to the Pokémon. A failing test, build or edit faints it; a plain
-// command failing (grep finding nothing) only counts toward a streak. Passing tests and commits cheer.
-// A test whose result a pipe, `;` or `||` hides (`pytest | tail`) is judged by the summary in `output`,
-// and so is one that passed before a later command failed (`npm test && git commit`).
+// The smaller moments of a finished command, which pay no XP: a push that went through flies off with a Pidgey (one
+// a pipe hides counts when git printed a branch it sent), an install carries boxes, a merge conflict confuses.
+function moments(command: string, isError: boolean, output = ''): Happening[] {
+  const ran = deciders(command)
+  const isDryRun = (c: string) => words(c).some(w => w === '--dry-run' || w === '-n' || w === '--help')
+  const pushes = (c: string) => PUSH.test(c) && !isDryRun(c)
+  const isPushed = ran.some(pushes)
+    ? !isError && !NOT_PUSHED.test(output)
+    : everyRun(command).some(pushes) && PUSHED.test(output) && !NOT_PUSHED.test(output)
+  const isInstalled = !isError && ran.some(c => INSTALL.test(c) && !isDryRun(c))
+  return [
+    ...(isPushed ? (['push'] as const) : []),
+    ...(isInstalled ? (['boxes'] as const) : []),
+    ...(CONFLICT.test(output) ? (['confused'] as const) : []),
+  ]
+}
+
+// What a finished tool call means to the Pokémon, its smaller moments after (a conflict's confusion goes last, over
+// a faint the failed merge may bring).
 export function classify(
   tool: string,
   command: string | undefined,
@@ -245,6 +274,16 @@ export function classify(
   streak: number,
   output?: string,
 ): Outcome {
+  const outcome = judge(tool, command, isError, streak, output)
+  if (tool !== 'Bash' || command === undefined) return outcome
+  return { ...outcome, happenings: [...outcome.happenings, ...moments(command, isError, output)] }
+}
+
+// What a finished tool call means to the Pokémon. A failing test, build or edit faints it; a plain
+// command failing (grep finding nothing) only counts toward a streak. Passing tests and commits cheer.
+// A test whose result a pipe, `;` or `||` hides (`pytest | tail`) is judged by the summary in `output`,
+// and so is one that passed before a later command failed (`npm test && git commit`).
+function judge(tool: string, command: string | undefined, isError: boolean, streak: number, output?: string): Outcome {
   if (EDITS.has(tool)) return { happenings: isError ? ['tool-error'] : [], xp: 0, streak }
   if (tool !== 'Bash' || command === undefined) return { happenings: [], xp: 0, streak }
   const ran = deciders(command)

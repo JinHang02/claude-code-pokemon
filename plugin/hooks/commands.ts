@@ -75,6 +75,10 @@ const ANIMATION_ABOUT: [string, string][] = [
   ['squash', 'squashed, as while compacting'],
   ['work', 'busy, as while Claude works'],
   ['clones', 'clones, as for subagents'],
+  ['push', 'a Pidgey flies off, as on git push'],
+  ['boulder', 'Strength, as on a long test or build'],
+  ['boxes', 'boxes carried, as after an install'],
+  ['confused', 'confused, as at a merge conflict'],
 ]
 // The moons /pokemon-play shows by name (moon.ts reads the same words).
 const MOON_ABOUT: [string, string][] = [
