@@ -19,6 +19,20 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   typeahead previews the species they start, with each one's number, types and whether you've seen or caught it.
 - `/pokedex` alone shows the whole Pokédex and your party, as before.
 
+### Added: /pokemon find, and the typeahead tells twins apart
+
+- `/pokemon find <query>` searches the party and the PC box at once: by name (`find eevee`; a species plainly is
+  every form of it, a form only that one), by the start of one (`find char`: Charmander and Charizard), by `shiny`,
+  by `lv 30`, or all of them together (`find shiny eevee lv 5`). Each one found shows its level, where it is (the
+  lead, `party #2`, or `PC box #34, page 2` once the box takes several pages), its gender, ✨ and what it holds,
+  fitted to narrow terminals. More than ten: the first ten, how many more, and how to narrow them. A misspelt name
+  gets "Did you mean". It only reads: nothing in the save changes.
+- With several Pokémon of one name, the typeahead offers a row each, numbered the way the command reads a pick:
+  `/pokemon release ee` shows `eevee 1`, `eevee 2`, `eevee 3` (the party first, then the PC box), each with its
+  gender, level, place and held item. Taking a row writes the number too, so no "Which Eevee?" follows. Commands
+  that look in the party alone (`deposit`, `give`, `evolve`, `everstone`) number the party's alone; `box` and
+  `find`, which read no number as a pick, keep one row for the name.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and
