@@ -4,8 +4,10 @@ import { spawnSync } from 'node:child_process'
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = new URL('..', import.meta.url).pathname
+// A path, not a URL's: spaces stay spaces, and Windows gets C:\\, not /C:/.
+const root = fileURLToPath(new URL('..', import.meta.url))
 const copy = mkdtempSync(join(tmpdir(), 'pokemon-coverage-'))
 cpSync(join(root, 'plugin'), copy, { recursive: true })
 // The every-evolution test prints its report only when this says so.

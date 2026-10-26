@@ -7,6 +7,11 @@ export type Landscape = 'meadow' | 'hills' | 'mountains' | 'lake' | 'forest'
 export const PHASES: Phase[] = ['dawn', 'day', 'dusk', 'night']
 export const LANDSCAPES: Landscape[] = ['meadow', 'hills', 'mountains', 'lake', 'forest']
 
+// Hours since the epoch in local time at `ms`: by the clock's own UTC offset now (`own`), which follows daylight
+// saving, or, when the clock claims UTC, by the host's offset (`host`), asked only in that case.
+export const localHourOf = (ms: number, own: number, host: number | null) =>
+  Math.floor((ms / 60_000 + (own !== 0 ? own : (host ?? 0))) / 60)
+
 export const phaseAt = (hour: number): Phase =>
   hour >= 7 && hour < 17 ? 'day' : hour >= 17 && hour < 19 ? 'dusk' : hour >= 5 && hour < 7 ? 'dawn' : 'night'
 

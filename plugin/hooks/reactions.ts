@@ -3,7 +3,7 @@ import { XP } from './save'
 
 // Each matches the start of one command, after any prefixes `commandAt` strips.
 const TEST =
-  /^(pytest|jest|vitest|mocha|rspec|phpunit|unittest|tox|nox|go test|cargo test|deno test|dotnet test|mvn test|gradle test|\.\/gradlew test|make test|playwright test|claude plugin test|(npm|pnpm|yarn|bun) t|(npm|pnpm|yarn|bun)( run)? test[\w:.-]*)(\s|$)/
+  /^(pytest|jest|vitest|mocha|rspec|phpunit|unittest|tox|nox|go test|cargo test|deno test|dotnet test|mvn test|gradle test|\.\/gradlew test|make test|playwright test|claude plugin test|(npm|pnpm|yarn|bun) t|(npm|pnpm|yarn|bun)( run)? test(?:[:.-][\w:.-]*)?)(\s|$)/
 // Asks a runner about itself (version, help, the tests it would run) without running any.
 const NO_RUN =
   /\s(-h|--help|-V|--version|--co|--collect-only|--fixtures|--markers|--listTests|--showConfig|--no-run|-list|--list)(\s|=|$)/
@@ -43,10 +43,20 @@ const FAILED = [
 ]
 const PASSED = [/\b[1-9]\d* (passed|passing)\b/, /\b0 failures\b/, /^ok\s/m, /test result: ok\b/, /^OK\b/m, /\bPassed!/]
 
-// How a test run went by its output's summary; null when the output says neither (cut off before it).
+// A runner that found nothing to run (pytest's exit 5): neither a pass nor a failure.
+const NO_TESTS = /\bno tests ran\b|\bno tests? (were )?found\b|\bcollected 0 items\b|\bRan 0 tests\b|\bno test files\b/i
+
+// How a test run went by its output's summary: the last line that gives one decides, and a line that gives both
+// (`1 failed, 2 passed`) is a failure. A log line earlier on (`validate: 2 errors expected`) doesn't outweigh the
+// summary after it. Null when no line says either (cut off before it).
 export function testVerdict(output: string): 'passed' | 'failed' | null {
-  if (FAILED.some(p => p.test(output))) return 'failed'
-  return PASSED.some(p => p.test(output)) ? 'passed' : null
+  const lines = output.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] ?? ''
+    if (FAILED.some(p => p.test(line))) return 'failed'
+    if (PASSED.some(p => p.test(line))) return 'passed'
+  }
+  return null
 }
 
 const EDITS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit'])
@@ -218,7 +228,11 @@ function expand(command: string): string[] {
 
 const isTestRun = (command: string) => TEST.test(command) && !NO_RUN.test(command)
 // A dry run commits nothing; a message only mentioning one is no dry run.
-const isCommit = (command: string) => COMMIT.test(command) && !words(command).includes('--dry-run')
+// An amend or an empty commit adds no work: no XP for running it again and again.
+const isCommit = (command: string) =>
+  COMMIT.test(command) && !words(command).some(w => w === '--dry-run' || w === '--amend' || w === '--allow-empty')
+// What git prints for a commit that went through: `[main 1a2b3c4] message`.
+const COMMITTED = /^\[[^\]\n]+ [0-9a-f]{7,40}\] /m
 
 // What a finished tool call means to the Pokémon. A failing test, build or edit faints it; a plain
 // command failing (grep finding nothing) only counts toward a streak. Passing tests and commits cheer.
@@ -242,6 +256,8 @@ export function classify(
     streak: 0,
   }
   const isTest = ran.some(isTestRun)
+  // Nothing to run (`pytest -k nomatch`): no faint, no XP.
+  if (isTest && isError && output !== undefined && NO_TESTS.test(output)) return { happenings: [], xp: 0, streak }
   const isHiddenTest = !isTest && split(command).some(p => expand(commandAt(p.text)).some(isTestRun))
   const verdict = output !== undefined && (isHiddenTest || (isTest && isError)) ? testVerdict(output) : null
   if (isTest && verdict !== 'passed') return isError ? failed : passed
@@ -251,6 +267,10 @@ export function classify(
     return !isError && ran.some(isCommit) ? { happenings: ['cheer'], xp: XP.commit, streak: 0 } : failed
   if (isError && ran.some(c => BUILD.test(c))) return { happenings: ['tool-error'], xp: 0, streak: 0 }
   if (!isError && ran.some(isCommit)) return { happenings: ['cheer'], xp: XP.commit, streak: 0 }
+  // A commit whose status a pipe hides (`git commit -m x | tail -3`) went through when git printed its summary.
+  const isHiddenCommit = split(command).some(p => expand(commandAt(p.text)).some(isCommit))
+  if (!isError && isHiddenCommit && output !== undefined && COMMITTED.test(output))
+    return { happenings: ['cheer'], xp: XP.commit, streak: 0 }
   if (!isError) return { happenings: [], xp: 0, streak: 0 }
   return streak + 1 >= STREAK
     ? { happenings: ['tool-error'], xp: 0, streak: 0 }

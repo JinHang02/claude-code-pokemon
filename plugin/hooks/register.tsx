@@ -15,7 +15,7 @@ import { act, isAct, START } from './mart'
 import type { Act, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
-import { guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
+import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
 import type { Pick, Species } from './lookup'
 import { classify } from './reactions'
 import {
@@ -56,13 +56,17 @@ import {
   recordCaught,
   recordSeen,
   releaseMember,
+  SAVE_VERSION,
   speciesName,
   spriteBudget,
   storeCaught,
+  tabLines,
   takeFromBag,
   TIME_TEXT,
   TOGETHER,
   togetherOf,
+  TOO_NEW,
+  versionOf,
   withExtra,
   withTime,
   withTogether,
@@ -101,7 +105,7 @@ import {
 } from './scene'
 import type { Happening, Look, Phase, Status } from './scene'
 import { SPECIES } from './species-data'
-import { landscapeAt, LANDSCAPES } from './backdrop'
+import { landscapeAt, LANDSCAPES, localHourOf } from './backdrop'
 import type { Landscape } from './backdrop'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
@@ -321,12 +325,8 @@ const isOtherParty = (next: Save, was: Save) => next.party.map(lookOf).join() !=
 let clockMs: number | null = null
 const readClock = async ($: EngineInterface) => (clockMs = await $.clock.now())
 
-// Hours since the epoch in local time. The plugin's own clock knows the offset (and follows daylight saving);
-// when it claims UTC, the host's answer from session start is used.
-const localHour = (ms = clockMs ?? Date.now()) => {
-  const own = -new Date().getTimezoneOffset()
-  return Math.floor((ms / 60_000 + (own !== 0 ? own : (tzOffsetMin ?? 0))) / 60)
-}
+// Hours since the epoch in local time.
+const localHour = (ms = clockMs ?? Date.now()) => localHourOf(ms, -new Date().getTimezoneOffset(), tzOffsetMin)
 
 const isShowing = () => shown !== null && tickNo < shown.until
 
@@ -357,7 +357,8 @@ const isJson = (text: string) => {
     return false
   }
 }
-const isArt = (text: string) => text.includes('\x1b[')
+// Sprite art ends with a colour reset: a file cut short (a crash mid-write) doesn't, and is fetched again.
+const isArt = (text: string) => text.includes('\x1b[') && text.trimEnd().endsWith('\x1b[0m')
 
 // `url` from the download cache under `name`, fetched (and cached) when missing, unreadable, not `isValid` (a
 // truncated file, a Wi-Fi login page) or older than `maxAgeMs`. When a refresh fails, an older copy still serves.
@@ -447,12 +448,13 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 async function writeSave($: EngineInterface, change: (s: Save) => Save) {
   for (let tries = 1; ; tries++) {
     const raw = await $.store.get('save')
+    if (versionOf(raw) > SAVE_VERSION) throw new Error(TOO_NEW)
     await seedTogether($, raw)
     const latest = loadSave(raw)
     const next = change(latest)
     if (next === latest || JSON.stringify(next) === JSON.stringify(latest)) return { latest, next: latest }
     if (tries < 3 && JSON.stringify(await $.store.get('save')) !== JSON.stringify(raw)) continue
-    await $.store.set('save', next)
+    await $.store.set('save', { ...next, version: SAVE_VERSION })
     return { latest, next }
   }
 }
@@ -460,10 +462,13 @@ async function writeSave($: EngineInterface, change: (s: Save) => Save) {
 // Applies `change` to the latest save (another Claude Code session may have written since), then stores
 // and adopts the result, so sessions running side by side don't undo each other. A write the store refuses (another
 // window holding its lock) changes nothing here: the save and the party drawn are read again from the store.
-function mutate($: EngineInterface, change: (s: Save) => Save) {
+// `withLedgers`: `change` also gets the session ledgers, read in the queue just before the write, so a fold landing
+// first can't have its ₽ counted twice (as when a purchase checks the wallet).
+function mutate($: EngineInterface, change: (s: Save, ledgers: Record<string, Ledger>) => Save, withLedgers = false) {
   let isRedrawn = false
   const run = queued(async () => {
-    const { latest, next } = await writeSave($, change)
+    const ledgers = withLedgers ? await readLedgers($) : {}
+    const { latest, next } = await writeSave($, s => change(s, ledgers))
     isRedrawn = isOtherParty(latest, save)
     save = next
     // A fold may have landed with it: ledger XP is counted against the save's own marks.
@@ -522,30 +527,35 @@ async function readLedgers($: EngineInterface): Promise<Record<string, Ledger>> 
 async function foldLedgers($: EngineInterface) {
   const ledgers = await readLedgers($)
   const now = Date.now()
-  for (const [key, l] of Object.entries(ledgers)) {
-    if (key === ledgerKey || now - l.at < LEDGER_STALE_MS) continue
-    // XP it gained after an earlier fold is folded too, before it can go.
-    if (foldLedger(save, key, l) !== save) await mutate($, s => foldLedger(s, key, l))
-    else {
-      const latest = loadLedger(await $.store.get(key))
-      if (latest.at === l.at) await $.store.delete(key)
-    }
-  }
+  const stale = Object.entries(ledgers).filter(([key, l]) => key !== ledgerKey && now - l.at >= LEDGER_STALE_MS)
+  // XP a ledger gained after an earlier fold is folded too, before it can go.
+  const toFold = stale.filter(([key, l]) => foldLedger(save, key, l) !== save)
   // Marks of ledgers gone from the store are dropped.
   const gone = (save.folded ?? []).filter(k => !(k in ledgers))
-  if (gone.length)
+  // One write for the whole round, however many sessions ended: each window runs it on its own timer.
+  if (toFold.length || gone.length)
     await mutate($, s => {
-      const folded = (s.folded ?? []).filter(k => !gone.includes(k))
-      const foldedXp = Object.fromEntries(Object.entries(s.foldedXp ?? {}).filter(([k]) => !gone.includes(k)))
-      const foldedMoney = Object.fromEntries(Object.entries(s.foldedMoney ?? {}).filter(([k]) => !gone.includes(k)))
-      const { folded: _, foldedXp: __, foldedMoney: ___, ...rest } = s
+      const folded = toFold.reduce((acc, [key, l]) => foldLedger(acc, key, l), s)
+      if (!gone.length) return folded
+      const keep = <T,>(o: Record<string, T> | undefined) =>
+        Object.fromEntries(Object.entries(o ?? {}).filter(([k]) => !gone.includes(k)))
+      const marks = (folded.folded ?? []).filter(k => !gone.includes(k))
+      const foldedXp = keep(folded.foldedXp)
+      const foldedMoney = keep(folded.foldedMoney)
+      const { folded: _, foldedXp: __, foldedMoney: ___, ...rest } = folded
       return {
         ...rest,
-        ...(folded.length ? { folded } : {}),
+        ...(marks.length ? { folded: marks } : {}),
         ...(Object.keys(foldedXp).length ? { foldedXp } : {}),
         ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),
       }
     })
+  // Folded on an earlier round and unchanged since: removed.
+  for (const [key, l] of stale) {
+    if (toFold.some(([k]) => k === key)) continue
+    const latest = loadLedger(await $.store.get(key))
+    if (latest.at === l.at) await $.store.delete(key)
+  }
 }
 
 // The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites. That retry
@@ -556,7 +566,7 @@ async function retry($: EngineInterface) {
   await sync($)
   if (++syncs % FOLD_EVERY === 0) await foldLedgers($)
   if (save.isOff || retrying) return
-  if (!save.party.length) retrying = setLead($, '')
+  if (!save.party.length) retrying = setLead($, '', true)
   else if (isPartyStale) retrying = refreshParty($)
   if (retrying) await retrying.finally(() => (retrying = null))
 }
@@ -660,7 +670,9 @@ const isLevelled = (query: string) => readLevel(query).level !== undefined
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
 // box comes out; a new one leads, and the old lead goes into the PC box with its level and what it holds. `shiny`
 // names a shiny one: with none of it shiny owned, a new shiny one is caught, however many plain ones there are.
-async function setLead($: EngineInterface, query: string): Promise<string> {
+// `isFirst`: a session's first Pokémon, caught because its save looked empty. A save that only looked empty (a read the
+// store refused) has its party when written: then nothing is caught, and the lead stays.
+async function setLead($: EngineInterface, query: string, isFirst = false): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
   // A misspelt name gets its suggestion first, a full box its refusal before the sprite's download; the save write
@@ -675,6 +687,10 @@ async function setLead($: EngineInterface, query: string): Promise<string> {
   await mutate($, latest => {
     isCaught = false
     const gone = latest.party[0]
+    if (isFirst && gone) {
+      text = ''
+      return latest
+    }
     if (gone && isBoxFull(latest)) {
       text = noRoomForLead(gone)
       return latest
@@ -853,15 +869,30 @@ async function giveItem($: EngineInterface, args: string): Promise<string> {
   await sync($)
   if (item.kind === 'candy') return feedCandy($, who, item)
   if (item.kind === 'hold') return holdItem($, who, item, `give ${item.id} `)
-  const spot = pickIn(save, who, ['party'], `give ${item.id} `)
-  if (typeof spot === 'string') return spot
-  // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
-  const name = displayName(spot.member.species, spot.member.form)
-  return answerSoon(
-    $,
-    evolveMember($, spot.member.id, false, item.id),
-    `Giving the ${item.name} to ${name}: what it does shows ${whenShown()}.`,
-  )
+  // The longest start of the words that names one of the party is who; the rest, if any, the branch it takes
+  // (`give thunder-stone pikachu alolan raichu`), as `/pokemon evolve` reads them.
+  const typed = who.trim().split(/\s+/)
+  let answer = ''
+  for (let n = typed.length; n >= 1; n--) {
+    const as = typed.slice(0, n).join(' ')
+    const spot = pickIn(save, as, ['party'], `give ${item.id} `)
+    if (typeof spot === 'string') {
+      answer ||= spot
+      continue
+    }
+    const rest = typed.slice(n)
+    // A number left over is a twin's that isn't there (`eevee 2` with one): the longer name's answer says so.
+    if (answer && rest.length === 1 && /^\d+$/.test(rest[0] ?? '')) return answer
+    const into = slug(rest.filter(w => !/^(into|to)$/i.test(w)).join(' '))
+    // It checks the Bag before anything plays, and takes the item in the same write as the evolution.
+    const name = displayName(spot.member.species, spot.member.form)
+    return answerSoon(
+      $,
+      evolveMember($, spot.member.id, false, item.id, undefined, into ? { into, as } : undefined),
+      `Giving the ${item.name} to ${name}: what it does shows ${whenShown()}.`,
+    )
+  }
+  return answer
 }
 
 // The member `query` names holds `item` from the Bag (an Everstone is free); what it held goes back to the Bag.
@@ -1011,24 +1042,33 @@ export async function buyItem(
   if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_BAG)
     return { text: "That isn't a quantity you can buy.", isError: true }
   let result = { text: '', isError: true }
-  const ledgers = await readLedgers($)
-  await mutate($, s => {
-    const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
-    result = { text: bought.text, isError: bought.isError }
-    return bought.save
-  })
+  await mutate(
+    $,
+    (s, ledgers) => {
+      const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
+      result = { text: bought.text, isError: bought.isError }
+      return bought.save
+    },
+    true,
+  )
   return result
 }
 
 // The Mart by tab with prices, for a bare `/pokemon buy`.
-function formatMart(balance: number): string {
+function formatMart(balance: number, columns = Infinity): string {
   const lines = [`PokéMart · ${formatMoney(balance)}`]
   for (const tab of TABS) {
     const items = forSale().filter(i => i.tab === tab)
     if (items.length)
-      lines.push(`  ${tab.padEnd(10)}  ${items.map(i => `${i.name} ${formatMoney(i.price)}`).join(' · ')}`)
+      lines.push(
+        ...tabLines(
+          tab,
+          items.map(i => `${i.name} ${formatMoney(i.price)}`),
+          columns,
+        ),
+      )
   }
-  lines.push('  /pokemon buy <item> [count] buys, e.g. /pokemon buy fire stone 3')
+  lines.push('  /pokemon buy <item> [count], e.g. buy fire stone 3')
   return lines.join('\n')
 }
 
@@ -1036,7 +1076,7 @@ function formatMart(balance: number): string {
 // come first or last, as `give` takes an item.
 async function buyCommand($: EngineInterface, args: string): Promise<string> {
   await sync($)
-  if (!args.trim()) return formatMart(balanceOf(save, cash))
+  if (!args.trim()) return formatMart(balanceOf(save, cash), replyColumns)
   const tokens = args.trim().split(/\s+/)
   const isCount = (t: string | undefined) => t !== undefined && /^[-+]?\d+(\.\d+)?$/.test(t)
   const countAt = isCount(tokens[0]) ? 0 : isCount(tokens[tokens.length - 1]) ? tokens.length - 1 : -1
@@ -1098,21 +1138,10 @@ function styleChoices(current: EvolutionStyle): string {
 }
 
 // Letters to change, add or drop to turn `a` into `b`.
-function editDistance(a: string, b: string): number {
-  let row = Array.from({ length: b.length + 1 }, (_, i) => i)
-  for (let i = 1; i <= a.length; i++) {
-    const next = [i]
-    for (let j = 1; j <= b.length; j++)
-      next[j] = Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, (row[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1))
-    row = next
-  }
-  return row[b.length] ?? 0
-}
-
 // What to answer a word that isn't a style: the choices, led by a guess when it is a near typo.
 function unknownStyle(word: string, current: EvolutionStyle): string {
-  const [guess] = EVOLUTION_STYLES.filter(s => editDistance(word, s) <= 2).sort(
-    (a, b) => editDistance(word, a) - editDistance(word, b),
+  const [guess] = EVOLUTION_STYLES.filter(s => distance(word, s, 2) <= 2).sort(
+    (a, b) => distance(word, a, 2) - distance(word, b, 2),
   )
   return `${guess ? `Did you mean ${guess}? ` : ''}Evolution screen styles:\n${styleChoices(current)}`
 }
@@ -1136,6 +1165,8 @@ async function evolutionsOf($: EngineInterface, member: Member): Promise<{ stage
     `pokeapi/species-${member.species}.json`,
     isJson,
   )
+  // A species PokeAPI doesn't have (the sprite list ahead of it): no evolutions, stored once, never asked every minute.
+  if (res.status === 404) return { stages: [], genderRate: undefined }
   if (!res.ok) throw new Error(`evolution data: HTTP ${res.status}`)
   const data = JSON.parse(res.text) as { evolution_chain?: { url?: string }; gender_rate?: unknown }
   const genderRate = data.gender_rate
@@ -1196,16 +1227,18 @@ async function setEvolution($: EngineInterface, mode: string): Promise<string> {
 // name. `manual` or `auto` alone sets the mode, and nothing shows it.
 async function evolveByName($: EngineInterface, query: string): Promise<string> {
   const word = query.trim().toLowerCase()
-  if (!slug(query) || isEvolutionMode(word)) return setEvolution($, word)
+  if (!query.trim() || isEvolutionMode(word)) return setEvolution($, word)
   await sync($)
   if (save.isOff) return RESTING
   const { level: lv, rest: named } = readLevel(query)
   const words = named.trim().split(/\s+/).filter(Boolean)
   const firstWords = (n: number) => [...words.slice(0, n), ...(lv === undefined ? [] : [`lv ${lv}`])].join(' ')
   let answer = ''
-  // A level alone (`lv 30`) names whoever is at it.
+  // A level alone (`lv 30`) names whoever is at it: the one, or which one when several are.
   for (let n = words.length; n >= (words.length ? 1 : 0); n--) {
-    const spot = pickIn(save, firstWords(n), ['party'], 'evolve ')
+    const found = find(save, firstWords(n), ['party'], 'evolve ')
+    const only = !n && 'choices' in found && found.choices.length === 1 ? found.choices[0] : undefined
+    const spot = only ?? spotOf(found, firstWords(n), 'evolve ')
     const rest = words.slice(n)
     // A number left over is a twin's that isn't there (`charmander 2` with one): the longer name's answer says so.
     if (typeof spot !== 'string' && answer && rest.length === 1 && /^\d+$/.test(rest[0] ?? '')) return answer
@@ -1392,6 +1425,8 @@ type Evolved = { text: string; isShown?: boolean }
 // `ask`: set when the person asked (/pokemon evolve): the species they named ('' for none), and the words that named
 // the Pokémon (`eevee 2`), to suggest again.
 type Ask = { into: string; as: string }
+// The forms the games give a species in another region.
+const isRegional = (form: string) => /^(alola|galar|hisui|paldea)\b/.test(form)
 function evolveMember(
   $: EngineInterface,
   id: string,
@@ -1558,8 +1593,14 @@ async function evolveNow(
       if (duePicks.length > 1) return pickOne(duePicks)
       choices = due
     } else if (isAsked && picks.length > 1) return pickOne(picks)
+    // Not asked for by name, a regional form other than the Pokémon's own is left to those who ask for it: a Thunder
+    // Stone makes a Kanto Pikachu a Kanto Raichu, as outside Alola in the games (`give thunder-stone pikachu alolan
+    // raichu` asks). One is taken only when there is no other (Cubone at night). Looks (Vivillon's patterns) and
+    // other forms (Toxtricity's) are rolled by the Pokémon's id, as before.
+    const own = choices.filter(s => !isRegional(formOf(s)) || formOf(s) === member.form)
+    const pool = into === undefined && own.length ? own : choices
     // A preview shows any branch; a real evolution takes this Pokémon's own.
-    const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, choices)
+    const next = isPreview ? choices[Math.floor(Math.random() * choices.length)] : chooseStage(member.id, pool)
     if (!next) {
       if (!isPreview && !options.length)
         await mutate($, s => ({
@@ -2306,7 +2347,7 @@ async function tick($: EngineInterface) {
 
 // Plays one animation on demand, for trying them out.
 async function play($: EngineInterface, args: string): Promise<string> {
-  const name = args.trim().toLowerCase()
+  const name = args.normalize('NFKC').trim().toLowerCase()
   const later = (ms: number, fn: () => void) => $.clock.after(ms, fn)
   feel('activity')
   const words = name.split(/\s+/)
@@ -2386,7 +2427,10 @@ const SPECIES_WAIT_MS = 2000
 const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
 
-async function pokemon($: EngineInterface, args: string): Promise<string> {
+async function pokemon($: EngineInterface, typed: string): Promise<string> {
+  // Full-width letters and digits (a Japanese or Chinese keyboard: `ｅｅｖｅｅ ２`) read as the plain ones, numbers
+  // included, wherever a word is read.
+  const args = typed.normalize('NFKC')
   const [head = '', ...rest] = args.trim().split(/\s+/)
   const tail = rest.join(' ')
   // A name is looked up among every species and form too (`zygarde 10` is a form, not the 10th Zygarde). A list not
@@ -2418,7 +2462,7 @@ async function pokemon($: EngineInterface, args: string): Promise<string> {
       return evolveByName($, tail)
     case 'bag':
       await sync($)
-      return formatBag(save, cash)
+      return formatBag(save, cash, replyColumns)
     case 'give':
       return giveItem($, tail)
     case 'take':
@@ -2448,11 +2492,13 @@ async function readCache($: EngineInterface, path: string): Promise<{ text: stri
   }
 }
 
-// The local UTC offset in minutes. The plugin's clock normally knows it; when it claims UTC, the host is
-// asked (`date` on macOS and Linux, PowerShell on Windows), since that may just mean it couldn't tell.
-async function readTimeZone($: EngineInterface): Promise<number> {
+// The host's UTC offset in minutes, asked (`date` on macOS and Linux, PowerShell on Windows) only when the plugin's
+// clock claims UTC, since that may just mean it couldn't tell. A clock that knows its offset is read afresh each
+// time instead (null here): kept from start-up, a London session open across the clocks going back would run an hour
+// fast all winter.
+async function readTimeZone($: EngineInterface): Promise<number | null> {
   const own = -new Date().getTimezoneOffset()
-  if (own !== 0) return own
+  if (own !== 0) return null
   try {
     const { stdout } = await $.process.run(['date', '+%z'], { timeoutMs: 5000 })
     const m = /^([+-])(\d\d)(\d\d)/.exec(stdout.trim())
@@ -2535,7 +2581,7 @@ const settled = ($: EngineInterface) => Promise.race([started, $.clock.sleep(STA
 async function start($: EngineInterface) {
   tzOffsetMin = await readTimeZone($)
   if (save.party.length) await refreshParty($)
-  else if (!save.isOff) await setLead($, '')
+  else if (!save.isOff) await setLead($, '', true)
   await learnEvolutions($)
 }
 
@@ -2667,13 +2713,20 @@ export const register: Register = on => {
       // Refused by a hook beneath: nothing ran.
       if ('deny' in ran) return ran
       const result = ran.result as
-        | { status?: string; agentId?: string; stdout?: string; stderr?: string; backgroundTaskId?: string }
+        | {
+            status?: string
+            agentId?: string
+            stdout?: string
+            stderr?: string
+            backgroundTaskId?: string
+            interrupted?: boolean
+          }
         | string
         | undefined
       const record = typeof result === 'object' ? result : undefined
       if (token && record?.status === 'async_launched' && record.agentId) agents.add(record.agentId)
-      // Still running in the background: how it went isn't known yet.
-      if (record?.backgroundTaskId) return ran
+      // Still running in the background: how it went isn't known yet. Stopped by the person: it says nothing either.
+      if (record?.backgroundTaskId || record?.interrupted) return ran
       // The output as the model read it, and as the tool recorded it.
       const recorded = record ? [record.stdout, record.stderr] : [typeof result === 'string' ? result : '']
       const output = [ran.text, ...recorded].filter(Boolean).join('\n')

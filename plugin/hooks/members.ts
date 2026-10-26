@@ -1,7 +1,7 @@
 // One name finder for every command that names a Pokémon: the members a query names in the party and the PC box,
 // and the numbered pick among several.
 import { itemName } from './items'
-import { isSpacedOut, lookup, slug, spell } from './lookup'
+import { lookup, namedPick, slug, spell } from './lookup'
 import type { Lookup, Pick, Species } from './lookup'
 import { displayName, formatParty, nameOf } from './save'
 import type { BoxPick, Member, Save } from './save'
@@ -46,8 +46,7 @@ export function readLevel(query: string): { level?: number; rest: string } {
 // spaced apart (`porygon 2`) pick it too. The lookup when it picks nothing.
 function matching(pool: Spot[], named: string[], wantsShiny: boolean): Spot[] | Lookup | null {
   const found = named.length && pool.length ? lookup(namesOf(pool.map(p => p.member)), named) : null
-  const isSpaced = found && 'guess' in found && isSpacedOut(found.guess, named)
-  const pick = found && ('pick' in found ? found.pick : isSpaced && 'guess' in found ? found.guess : null)
+  const pick = namedPick(found, named)
   if (!pick) return found
   const { species, form } = pick
   const exact = pool.filter(p => p.member.species === species && p.member.form === form)
@@ -60,7 +59,7 @@ const isSpots = (found: Spot[] | Lookup | null): found is Spot[] => Array.isArra
 // Whether `words` are a name of their own among `names` (every species and form), spelled right or only spaced apart.
 function isName(names: Species[], words: string[]): boolean {
   const found = names.length && words.length ? lookup(names, words) : null
-  return Boolean(found && ('pick' in found || ('guess' in found && isSpacedOut(found.guess, words))))
+  return Boolean(namedPick(found, words))
 }
 
 // The members `query` names in `places`, party first then the PC box, each in its stored order. `shiny` anywhere asks
@@ -90,6 +89,15 @@ export function findMembers(
     .filter(place => places.includes(place))
     .flatMap(place => (place === 'party' ? s.party : (s.box ?? [])).map((member, at) => ({ place, at, member })))
     .filter(p => atLevel === undefined || levelOf(p.member) === atLevel)
+  const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
+  const none = (name: string) =>
+    `No ${name} in your ${where}.${places.includes('party') ? ` ${formatParty(s, columns)}` : ''}`
+  // No name, only `shiny` or a level: every one of yours it fits, as a list even of one, so no command acts on words
+  // that name no one (`evolve lv 16` takes a list of one as its pick).
+  if (!named.length && (wantsShiny || atLevel !== undefined)) {
+    const fits = pool.filter(p => !wantsShiny || p.member.isShiny)
+    return fits.length ? { choices: fits } : { error: none(keep.trim()) }
+  }
   const last = named[named.length - 1] ?? ''
   const isNumbered = named.length > 1 && /^\d+$/.test(last)
   // `-1` slugs to `1` and `1.5` to `15`: only a whole number as typed picks; a signed one or a fraction is out of
@@ -109,9 +117,6 @@ export function findMembers(
   // Just one of the name before the number: 1 is that one (`porygon 1`).
   const only = listed.length === 1 && nth === 1 ? listed[0] : undefined
   if (only) return { spot: only }
-  const where = places.includes('party') ? (places.includes('box') ? 'party or PC box' : 'party') : 'PC box'
-  const none = (name: string) =>
-    `No ${name} in your ${where}.${places.includes('party') ? ` ${formatParty(s, columns)}` : ''}`
   // What a guess finds typed back as suggested: the guess, or else another form of it that is here (a plain name never
   // takes one out of the PC box), and how many.
   const reach = (guess: Pick, isShiny: boolean) => {
@@ -172,8 +177,7 @@ export function inBox(
   if (!words.length && !lv) return { error: `No Pokémon called "${query.trim()}" in your PC box.` }
   const none = { error: `No ${query.trim()} in your PC box.` }
   const found = named.length && box.length ? lookup(namesOf(box), named) : null
-  const isSpaced = found && 'guess' in found && isSpacedOut(found.guess, named)
-  const pick = found && ('pick' in found ? found.pick : isSpaced && 'guess' in found ? found.guess : null)
+  const pick = namedPick(found, named)
   if (named.length && !pick)
     return found && 'guess' in found
       ? { error: didYouMean(found.guess, `${command}${wantsShiny ? 'shiny ' : ''}${lv ? `${lv} ` : ''}`) }
@@ -244,7 +248,9 @@ export function formatChoices(choices: Spot[], query: string, command: string, l
     ]
     lines.push(`  … and ${more} more.${ways.length ? ' Fewer:' : ''}`, ...ways.map(way => `    ${way}`))
   }
-  const name = first ? displayName(first.species, isOneForm ? first.form : 'regular') : typed
+  // Several species (a level or `shiny` alone picks them): which one of them, not of the first.
+  const isOneSpecies = choices.every(c => c.member.species === first?.species)
+  const name = !first ? typed : isOneSpecies ? displayName(first.species, isOneForm ? first.form : 'regular') : 'one'
   const example = more ? LIST_MAX : choices.length
   return [`Which ${name}?`, ...lines, `Add the number: ${hint(typed)} ${example}`].join('\n')
 }
