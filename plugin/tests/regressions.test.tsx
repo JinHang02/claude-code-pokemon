@@ -5,6 +5,7 @@ import { localHourOf } from '../hooks/backdrop'
 import { suggest } from '../hooks/commands'
 import type { Owned } from '../hooks/commands'
 import { chooseStage } from '../hooks/evolution'
+import { formatChoices } from '../hooks/members'
 import { classify } from '../hooks/reactions'
 import { parseAnsi } from '../hooks/sprite'
 import { emptySave, level, SAVE_VERSION, xpForLevel } from '../hooks/save'
@@ -269,4 +270,15 @@ test('a Thunder Stone with the branch named makes Alolan Raichu, as the player a
   await cmd($, 'pokemon', 'give thunder-stone pikachu alolan raichu')
   await until($, () => w.saveNow().party[0]?.species === 'raichu')
   expect(w.saveNow().party[0]?.form).toBe('alola')
+})
+
+test('a list of several species asks which one, not which of the first', () => {
+  const choices = [member('passimian'), member('charmander')].map((m, at) => ({
+    place: 'party' as const,
+    at,
+    member: m,
+  }))
+  expect(formatChoices(choices, 'lv 1', 'evolve ', m => level(m.xp)).split('\n')[0]).toBe('Which one?')
+  const twins = [member('eevee'), member('eevee')].map((m, at) => ({ place: 'party' as const, at, member: m }))
+  expect(formatChoices(twins, 'eevee', 'release ', m => level(m.xp)).split('\n')[0]).toBe('Which Eevee?')
 })

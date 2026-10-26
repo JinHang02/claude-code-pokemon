@@ -248,7 +248,9 @@ export function formatChoices(choices: Spot[], query: string, command: string, l
     ]
     lines.push(`  … and ${more} more.${ways.length ? ' Fewer:' : ''}`, ...ways.map(way => `    ${way}`))
   }
-  const name = first ? displayName(first.species, isOneForm ? first.form : 'regular') : typed
+  // Several species (a level or `shiny` alone picks them): which one of them, not of the first.
+  const isOneSpecies = choices.every(c => c.member.species === first?.species)
+  const name = !first ? typed : isOneSpecies ? displayName(first.species, isOneForm ? first.form : 'regular') : 'one'
   const example = more ? LIST_MAX : choices.length
   return [`Which ${name}?`, ...lines, `Add the number: ${hint(typed)} ${example}`].join('\n')
 }

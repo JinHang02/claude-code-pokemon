@@ -32,7 +32,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - After the clocks went back, a session left open across the change ran an hour fast all winter (dusk read as
   night, for evolutions and the sky). The hour follows daylight saving as it changes.
 - `/pokemon evolve lv 16` evolves the one at that level, as promised; `release shiny` and other commands given only
-  a level or `shiny` list who fits instead of saying there is no one.
+  a level or `shiny` list who fits instead of saying there is no one, under _"Which one?"_ when they are of several
+  species.
 - A sentence pasted after a command answered after seconds (up to 20 s for 80 words) and held the band still
   meanwhile. Lookups stop at the longest name, and over 12 words is no name.
 - Full-width letters and digits (`ｅｅｖｅｅ ２`, `buy fire stone ３`) read as the plain ones.
