@@ -1,9 +1,11 @@
 import type { Landscape, Phase } from './backdrop'
 import type { Pick, Species } from './lookup'
+import { moonVisitor } from './moon'
 import type { DexEntry } from './save'
 import { SPECIES } from './species-data'
 
-export type Where = { landscape: Landscape; phase: Phase; dex: Record<string, DexEntry> }
+// `moon`: the moon's shape tonight (moon.ts), for the full moon's own visitor.
+export type Where = { landscape: Landscape; phase: Phase; dex: Record<string, DexEntry>; moon?: number }
 
 const RARE_SHARE = 0.01
 const FORM_SHARE = 1 / 8
@@ -119,8 +121,11 @@ function drawFrom(t: Table, rand: () => number): Pick | undefined {
   return t.picks[lo]
 }
 
-// One wild Pokémon for this place and time: the rare pool 1% of the time, else the common one.
+// One wild Pokémon for this place and time: now and then one only dusk or a full moon brings (moon.ts), else the
+// rare pool 1% of the time, else the common one.
 export function drawWild(list: Species[], where: Where, rand = Math.random): Pick {
+  const special = moonVisitor(list, where.phase, where.moon ?? -1, rand)
+  if (special) return special
   const { rare, common } = tables(list, where)
   const first = rand() < RARE_SHARE ? rare : common
   const pool = first.total > 0 ? first : first === rare ? common : rare

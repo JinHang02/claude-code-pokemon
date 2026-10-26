@@ -76,6 +76,18 @@ const ANIMATION_ABOUT: [string, string][] = [
   ['work', 'busy, as while Claude works'],
   ['clones', 'clones, as for subagents'],
 ]
+// The moons /pokemon-play shows by name (moon.ts reads the same words).
+const MOON_ABOUT: [string, string][] = [
+  ['full', 'a full-moon night'],
+  ['new', 'a new moon, barely there'],
+  ['crescent', 'a thin crescent moon'],
+  ['half', 'a half moon'],
+  ['gibbous', 'a moon nearly full'],
+]
+const moons = (from: number, to?: number) =>
+  MOON_ABOUT.slice(from, to)
+    .map(([word]) => `${word} moon`)
+    .join(', ')
 const PHASE_ABOUT: Record<Phase, string> = {
   day: 'daytime',
   dusk: 'the sun going down',
@@ -107,6 +119,8 @@ export const PLAY: Sub[] = [
     about: WEATHER_ABOUT[word],
     args: ['landscape' as const],
   })),
+  { word: 'moon', usage: 'moon', about: "tonight's moon, as it really is" },
+  ...MOON_ABOUT.map(([word, about]) => ({ word: `${word} moon`, usage: `${word} moon`, about })),
 ]
 
 // The commands' own lines in the typeahead and /help: one short line each, so none is cut off, and the hint the
@@ -120,7 +134,7 @@ export const COMMANDS = {
   play: {
     name: 'pokemon-play',
     description: 'Try an animation, a time of day, a landscape or weather · /pokemon-help lists all',
-    argumentHint: '[animation | time | landscape | weather]',
+    argumentHint: '[animation | time | landscape | weather | moon]',
   },
   dex: {
     name: 'pokedex',
@@ -158,6 +172,9 @@ export const ALL_HELP = [
   `    times: ${Object.keys(PHASE_ABOUT).join(', ')}`,
   `    places: ${LANDSCAPES.join(', ')}`,
   `    weather: ${Object.keys(WEATHER_ABOUT).join(', ')}, e.g. night rain lake`,
+  line({ word: '', usage: 'moon', about: "tonight's moon, as it really is" }),
+  `    or: ${moons(0, 3)},`,
+  `    ${moons(3)}`,
   '',
   '/pokedex             all you have seen and caught',
   '/pokedex <name>      one species: types, evolutions',

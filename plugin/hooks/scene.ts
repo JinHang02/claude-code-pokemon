@@ -695,11 +695,13 @@ export { phaseAt } from './backdrop'
 export type { Landscape, Phase } from './backdrop'
 
 // `overlays`: painted last, over everything (a Poké Ball and its sparkles).
-// `ready`: per party member, whether it's waiting to evolve (gold motes rise around it).
+// `ready`: per party member, whether it's waiting to evolve (gold motes rise around it). `moon`: the moon's shape
+// tonight, 0 (new) to 7 (moon.ts), full when left out.
 export type Look = {
   phase: Phase
   landscape?: Landscape
   weather?: Weather
+  moon?: number
   wild?: Pixels
   evolveFrom?: Pixels
   overlays?: Placed[]
@@ -710,7 +712,7 @@ export type Look = {
 // the scene's left `scene` columns, so they never hide under the wallet nor go when the button does.
 export function scenery(total: number, rows: number, look: Look, t: number, scene = total): Pixels {
   const out: Pixels = { pixels: Array<number>(total * rows * 2).fill(CLEAR), width: total, height: rows * 2 }
-  const kind = backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene)
+  const kind = backdrop(out, look.phase, look.landscape ?? 'meadow', t, 1000 / TICK_MS, scene, look.moon)
   if (look.weather) drawWeather(out, kind, look.weather, look.phase, t, 1000 / TICK_MS)
   return out
 }

@@ -78,7 +78,7 @@ test('each PokeAPI detail becomes the way it works here', () => {
   expect(wayOf({ trigger: named('use-item'), item: named('peat-block'), time_of_day: 'full-moon' })).toEqual({
     kind: 'item',
     item: 'peat-block',
-    time: 'night',
+    time: 'full-moon',
   })
   // A trade while holding an item is giving that item; a plain trade is the Linking Cord.
   expect(wayOf({ trigger: named('trade'), held_item: named('reaper-cloth') })).toEqual({

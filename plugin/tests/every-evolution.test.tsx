@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { chooseStage, FRIENDSHIP_MS } from '../hooks/evolution'
 import type { Time } from '../hooks/evolution'
 import { itemName } from '../hooks/items'
+import { isFullMoonAt } from '../hooks/moon'
 import { spell } from '../hooks/lookup'
 import { emptySave, xpForLevel } from '../hooks/save'
 import type { Member, Save } from '../hooks/save'
@@ -19,8 +20,12 @@ declare const console: { log: (line: string) => void }
 const chains = Object.fromEntries(LIST.map(s => [s.name, CHAINS[CHAIN_OF[s.name] ?? -1]]).filter(([, c]) => c))
 // The plugin's hour at clock 0: the machine's own offset, or the +0800 the fake `date` answers when it claims UTC.
 const offsetHours = (-new Date().getTimezoneOffset() || 480) / 60
-const HOURS: Record<Time, number> = { day: 12, night: 23, dusk: 18 }
-const clockAt = (time: Time | undefined) => ((((HOURS[time ?? 'day'] - offsetHours) % 24) + 24) % 24) * 3_600_000
+const HOURS: Record<Time, number> = { day: 12, night: 23, dusk: 18, 'full-moon': 23 }
+const hourMs = (time: Time | undefined) => ((((HOURS[time ?? 'day'] - offsetHours) % 24) + 24) % 24) * 3_600_000
+// A full moon's paths play on the first night after the epoch with the moon full (Ursaluna).
+const FULL_MOON_DAY = Array.from({ length: 30 }, (_, d) => d).find(d => isFullMoonAt(d * 86_400_000 + hourMs('night')))
+const clockAt = (time: Time | undefined) =>
+  hourMs(time) + (time === 'full-moon' ? (FULL_MOON_DAY ?? 0) * 86_400_000 : 0)
 const net = (now: number): Net => ({
   isOnline: true,
   list: JSON.stringify(LIST),

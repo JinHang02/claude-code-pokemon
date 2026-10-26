@@ -87,7 +87,7 @@ export const STARTING_MONEY = 3000
 export const MAX_LEVEL = 100
 // The most one heartbeat adds to time together: a closed laptop isn't time together.
 export const TOGETHER_CAP_MS = 120_000
-const TIMES: Time[] = ['day', 'night', 'dusk']
+const TIMES: Time[] = ['day', 'night', 'dusk', 'full-moon']
 export const GENERATIONS = [151, 251, 386, 493, 649, 721, 809, 905]
 const SIZES: Size[] = ['auto', 'normal', 'small']
 
@@ -554,10 +554,16 @@ const bar = (caught: number, seen: number, total: number, width = 10) => {
   )
 }
 
-export const TIME_TEXT: Record<Time, string> = { day: 'by day', night: 'at night', dusk: 'at dusk' }
+export const TIME_TEXT: Record<Time, string> = {
+  day: 'by day',
+  night: 'at night',
+  dusk: 'at dusk',
+  'full-moon': 'under a full moon',
+}
 
 function wayText(w: Way, m: Member): string {
-  const when = 'time' in w && w.time ? ` ${TIME_TEXT[w.time]}` : ''
+  // A full moon comes once a month: "only" says it isn't any night.
+  const when = 'time' in w && w.time ? ` ${w.time === 'full-moon' ? 'only ' : ''}${TIME_TEXT[w.time]}` : ''
   if (w.kind === 'level')
     return `at Lv ${w.level}${when}${w.partyType ? ` with a ${titleCase(w.partyType)}-type in the party` : ''}`
   if (w.kind === 'item') return `with ${withArticle(itemName(w.item))}${when}`

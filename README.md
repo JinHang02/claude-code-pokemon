@@ -209,7 +209,7 @@ Build a **party of up to three** and they'll travel together. Twins are welcome:
 
 ## Day, night and 20 landscapes
 
-The meadow follows your local clock: a rising sun at dawn, drifting clouds by day, a setting sun at dusk, then stars, a crescent moon and fireflies after dark. And every hour your party wanders somewhere new: an open **meadow**, rolling **hills**, snowy **mountains**, a shimmering **lake** or the edge of a **forest**. Every session you have open shows the same place.
+The meadow follows your local clock: a rising sun at dawn, drifting clouds by day, a setting sun at dusk, then stars, the moon and fireflies after dark. The moon is the real one: worked out from the date, it waxes from a faint new moon through crescent, half and gibbous to full and wanes again over 29½ days. Dusk brings its own visitors (Rockruff, Murkrow, Misdreavus, Hoothoot, Zubat, Gastly, Houndour, Sableye come about one visit in four), a Clefairy may come to dance on a full-moon night, and Ursaring becomes Ursaluna with a Peat Block only under a full moon. And every hour your party wanders somewhere new: an open **meadow**, rolling **hills**, snowy **mountains**, a shimmering **lake** or the edge of a **forest**. Every session you have open shows the same place.
 
 <p align="center">
 <img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/dusk.gif" width="400" alt="A shiny Pikachu and Charmander on the hills at dusk">
@@ -224,7 +224,7 @@ The meadow follows your local clock: a rising sun at dawn, drifting clouds by da
 <tr><th>Night</th><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-meadow.png" width="170" alt="Night meadow"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-hills.png" width="170" alt="Night hills"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-mountains.png" width="170" alt="Night mountains"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-lake.png" width="170" alt="Night lake"></td><td><img src="https://raw.githubusercontent.com/JinHang02/claude-code-pokemon/assets/landscapes/night-forest.png" width="170" alt="Night forest"></td></tr>
 </table>
 
-Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it for 15 seconds.
+Can't wait an hour? `/pokemon-play dusk lake` (or any time and place) shows it for 15 seconds, and `/pokemon-play full moon` (or `moon`, `new moon`, `crescent moon`...) the night sky under that moon.
 
 Some hours it rains, snows (on the mountains, hills and forest) or a fog rolls in, the same in every window; a Water-type Pokémon now and then hops for joy in the rain. It's only for the eye. Try `/pokemon-play rain`, `snow`, `fog` or `clear`, alone or with a time and place: `/pokemon-play night rain lake`.
 

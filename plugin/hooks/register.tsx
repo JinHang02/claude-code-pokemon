@@ -110,6 +110,7 @@ import type { Happening, Look, Phase, Status } from './scene'
 import { SPECIES } from './species-data'
 import { landscapeAt, LANDSCAPES, localHourOf } from './backdrop'
 import type { Landscape } from './backdrop'
+import { FULL_MOON, isFullMoonAt, MOON_PHASES, MOON_WORDS, moonAge, moonPhaseAt, SYNODIC_DAYS } from './moon'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
@@ -266,7 +267,7 @@ function recheck($: EngineInterface) {
   checkedInputs = inputs
   background($, learnEvolutions($))
 }
-let shown: { phase?: Phase; landscape?: Landscape; weather?: Weather; until: number } | null = null
+let shown: { phase?: Phase; landscape?: Landscape; weather?: Weather; moon?: number; until: number } | null = null
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
 let ready: Promise<void> = Promise.resolve()
@@ -338,6 +339,12 @@ const isShowing = () => shown !== null && tickNo < shown.until
 function phaseNow(): Phase {
   if (isShowing() && shown?.phase) return shown.phase
   return phaseAt(((localHour() % 24) + 24) % 24)
+}
+
+// The moon's shape tonight (moon.ts), from the same clock as the hour, or the one /pokemon-play shows.
+function moonNow(): number {
+  if (isShowing() && shown?.moon !== undefined) return shown.moon
+  return moonPhaseAt(clockMs ?? Date.now())
 }
 
 // A different landscape every hour, the same in every session.
@@ -1281,24 +1288,35 @@ async function evolveByName($: EngineInterface, query: string): Promise<string> 
   return answer
 }
 
-type Surroundings = { phase: Phase; party: string[]; partyTypes: string[] }
+// `moonDays`: days until the next full moon, 0 within a day of one.
+type Surroundings = { phase: Phase; isFullMoon: boolean; moonDays: number; party: string[]; partyTypes: string[] }
 
-// The time of day and the party, as evolutions see them; types are fetched only when a member needs one.
+// The time of day, the moon and the party, as evolutions see them; types are fetched only when a member needs one.
 async function evolutionContext($: EngineInterface): Promise<Surroundings> {
-  const hour = localHour(await $.clock.now())
+  const ms = await $.clock.now()
+  const hour = localHour(ms)
+  const isFullMoon = isFullMoonAt(ms)
+  const moonDays = isFullMoon ? 0 : Math.max(1, Math.round((SYNODIC_DAYS * 1.5 - moonAge(ms)) % SYNODIC_DAYS))
   const party = save.party.map(m => m.species)
   const needsTypes = save.party.some(m => m.next?.some(s => s.way.kind === 'level' && s.way.partyType))
   const partyTypes = needsTypes
     ? (await Promise.all(save.party.map(m => typesOf($, pokeapiForm(m.species, m.form))))).flat()
     : []
-  return { phase: phaseAt(((hour % 24) + 24) % 24), party, partyTypes }
+  return { phase: phaseAt(((hour % 24) + 24) % 24), isFullMoon, moonDays, party, partyTypes }
 }
+
+// When the full moon a full-moon evolution waits for comes: this one, once it's dark, or in so many days.
+const untilFullMoon = (c: Surroundings) =>
+  c.isFullMoon
+    ? ': the moon is full, so after dark'
+    : `: the next is in about ${c.moonDays} day${c.moonDays === 1 ? '' : 's'}`
 
 // The stages `m` reaches by itself now.
 const dueFor = (m: Member, c: Surroundings): Stage[] =>
   dueStages(m.next ?? [], {
     level: level(m.xp),
     phase: c.phase,
+    isFullMoon: c.isFullMoon,
     ...(m.heldItem ? { heldItem: m.heldItem } : {}),
     togetherMs: m.togetherMs ?? 0,
     party: c.party,
@@ -1550,7 +1568,9 @@ async function evolveNow(
     const allowed = isPreview
       ? options
       : given
-        ? byItem.filter(s => timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase))
+        ? byItem.filter(s =>
+            timeMatches(s.way.kind === 'item' ? s.way.time : undefined, context.phase, context.isFullMoon),
+          )
         : dueFor(withTime({ ...member, xp: member.xp + (extra[member.id] ?? 0), next: stages }, times), context)
     const list = await loadSpecies($)
     const formOf = (s: Stage) => evolvedForm(s, member.form, list.find(p => p.name === s.species)?.forms ?? [])
@@ -1630,7 +1650,7 @@ async function evolveNow(
         const time = way?.kind === 'item' ? way.time : undefined
         return {
           text: time
-            ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}.`
+            ? `${name} can use ${withArticle(itemName(given))} only ${TIME_TEXT[time]}${time === 'full-moon' ? untilFullMoon(context) : ''}.`
             : `${name} can't use ${withArticle(itemName(given))}.`,
         }
       }
@@ -1867,7 +1887,9 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     const held = isAsked ? null : wildHeld
     wildHeld = null
     const pick =
-      named.pick ?? held?.pick ?? drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex })
+      named.pick ??
+      held?.pick ??
+      drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex, moon: moonNow() })
     const wantsShiny = named.wantsShiny || (held?.isShiny ?? Math.random() < SHINY_ODDS)
     const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
@@ -2135,6 +2157,7 @@ const lookNow = (): Look => ({
   phase: phaseNow(),
   landscape: landscapeNow(),
   weather: weatherNow(),
+  moon: moonNow(),
   wild: (wild && (pitch ? wildLook(pitch, wild.left) : wild.left)) ?? undefined,
   evolveFrom: evolveFrom ?? undefined,
   ...(pitch ? { overlays: ballOverlays(pitch) } : {}),
@@ -2374,6 +2397,13 @@ async function play($: EngineInterface, args: string): Promise<string> {
   const phase = PHASES.find(p => words.includes(p))
   const landscape = LANDSCAPES.find(l => words.includes(l))
   const weather = WEATHERS.find(w => words.includes(w))
+  // `full moon`, `new moon lake`, or `moon` for tonight's: the night sky under that moon.
+  if (words.includes('moon') && words[0] !== 'wild') {
+    const said = words.find(w => Object.hasOwn(MOON_WORDS, w))
+    const moon = said ? (MOON_WORDS[said] ?? FULL_MOON) : moonPhaseAt(await $.clock.now())
+    shown = { phase: 'night', landscape, weather, moon, until: tickNo + ticks(15_000) }
+    return `Showing ${said ? 'a' : "tonight's"} ${MOON_PHASES[moon]}${landscape ? ` over the ${landscape}` : ''} for 15 seconds.`
+  }
   // After `wild` every word belongs to the name: `wild lycanroc dusk` is a Pokémon, not a scene.
   if ((phase || landscape || weather) && words[0] !== 'wild') {
     shown = { phase, landscape, weather, until: tickNo + ticks(15_000) }
@@ -2417,7 +2447,7 @@ async function play($: EngineInterface, args: string): Promise<string> {
     const said = await spawnWild($, words.slice(1).join(' '))
     if (said) return said
     return wild ? `A wild ${wild.mon.name} wanders by.` : 'No wild Pokémon showed up.'
-  } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES, ...WEATHERS].join(', ')}.`
+  } else return `Try one of: ${[...ANIMATIONS, ...PHASES, ...LANDSCAPES, ...WEATHERS, 'moon', 'full moon'].join(', ')}.`
   return `Playing ${name}.`
 }
 
