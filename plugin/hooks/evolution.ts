@@ -30,7 +30,8 @@ export type ChainLink = {
   evolution_details?: EvolutionDetail[]
 }
 
-export type Time = 'day' | 'night' | 'dusk'
+// `full-moon`: a night within a day of the real full moon (moon.ts), as Ursaluna asks.
+export type Time = 'day' | 'night' | 'dusk' | 'full-moon'
 
 // How an evolution happens here. `level`: at that level, at that time, with a party member of that type.
 // `item`: given, at once. `hold`: while held. `friendship`: after FRIENDSHIP_MS together. `party`: with that species
@@ -52,7 +53,7 @@ export const FALLBACK_LEVEL = 30
 export const FALLBACK_GAP = 10
 export const FRIENDSHIP_MS = 10 * 60 * 60_000
 
-const TIMES: Record<string, Time> = { day: 'day', night: 'night', dusk: 'dusk', 'full-moon': 'night' }
+const TIMES: Record<string, Time> = { day: 'day', night: 'night', dusk: 'dusk', 'full-moon': 'full-moon' }
 // Forms the games pick by the time of day without naming them in the chain.
 const TIME_FORMS: Record<string, Partial<Record<Time, string>>> = {
   lycanroc: { day: 'lycanroc-midday', night: 'lycanroc-midnight', dusk: 'lycanroc-dusk' },
@@ -193,26 +194,32 @@ export function nextStages(
 }
 
 // What an evolution check sees: the Pokémon's level, held item and time together; the time of day; the party's
-// species and types.
+// species and types. `isFullMoon`: the moon is within a day of full.
 export type DueContext = {
   level: number
   phase: Phase
+  isFullMoon?: boolean
   heldItem?: string
   togetherMs: number
   party: string[]
   partyTypes: string[]
 }
 
-// "day" in the games includes the morning.
-export const timeMatches = (time: Time | undefined, phase: Phase) =>
-  !time || (time === 'day' ? phase === 'day' || phase === 'dawn' : time === phase)
+// "day" in the games includes the morning; a full moon is a night with the moon full.
+export const timeMatches = (time: Time | undefined, phase: Phase, isFullMoon = false) =>
+  !time ||
+  (time === 'day'
+    ? phase === 'day' || phase === 'dawn'
+    : time === 'full-moon'
+      ? phase === 'night' && isFullMoon
+      : time === phase)
 
 // The stages that happen by themselves now. Given items and Shedinja never do; an Everstone stops them all. Of the
 // ways into one species, one that needs this time of day wins: Cubone becomes Alolan Marowak at night.
 export function dueStages(stages: Stage[], c: DueContext): Stage[] {
   if (c.heldItem === 'everstone') return []
   const due = stages.filter(({ way }) => {
-    if ('time' in way && !timeMatches(way.time, c.phase)) return false
+    if ('time' in way && !timeMatches(way.time, c.phase, c.isFullMoon)) return false
     if (way.kind === 'level') return c.level >= way.level && (!way.partyType || c.partyTypes.includes(way.partyType))
     if (way.kind === 'hold') return c.heldItem === way.item
     if (way.kind === 'friendship') return c.togetherMs >= FRIENDSHIP_MS

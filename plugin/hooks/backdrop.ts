@@ -1,3 +1,4 @@
+import { FULL_MOON, MOON_SIZE, moonShape } from './moon'
 import { CLEAR } from './sprite'
 import type { Pixels } from './sprite'
 
@@ -80,7 +81,6 @@ const FLOWERS = [0xf2d24b, 0xf0f0f0, 0xe86a8a]
 const STAR = [0xcfd8ff, 0x8e9ac4]
 const FIREFLY = 0xd8ff6a
 const MUSHROOM = 0xd9473a
-const MOON_GLYPH = [0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0]
 
 const channel = (c: number, shift: number, k: number) => Math.min(255, Math.round(((c >> shift) & 0xff) * k)) << shift
 const tint = (c: number, [r = 1, g = 1, b = 1]: number[]) => channel(c, 16, r) | channel(c, 8, g) | channel(c, 0, b)
@@ -109,16 +109,19 @@ const sunAt = (phase: Phase, width: number, ground: number): [number, number] =>
       ? [Math.round(width * 0.14), Math.round(ground * 0.55)]
       : [Math.round(width * 0.86), Math.round(ground * 0.55)]
 
-// `scene`: the columns the sun and moon stay within (the scene's, left of the ₽ button), of `width`.
-function sky(still: Still, width: number, ground: number, p: Palette, phase: Phase, scene: number) {
+// `scene`: the columns the sun and moon stay within (the scene's, left of the ₽ button), of `width`. `moon`: which
+// of its eight shapes the moon has (moon.ts); its dark part is drawn faint over the sky.
+function sky(still: Still, width: number, ground: number, p: Palette, phase: Phase, scene: number, moon: number) {
   // Down through the tuft row, so the gaps between tufts show sky.
   for (let y = 0; y <= ground; y++) {
     const c = mix(p.sky[0], p.sky[1], ground <= 1 ? 1 : Math.min(1, y / (ground - 1)))
     for (let x = 0; x < width; x++) set(still, width, x, y, c, SKY)
   }
   if (phase === 'night') {
-    for (let i = 0; i < MOON_GLYPH.length; i++)
-      if (MOON_GLYPH[i]) set(still, width, scene - 8 + (i % 5), 1 + Math.floor(i / 5), p.sun, LAND)
+    for (const { x, y, isLit } of moonShape(moon)) {
+      const at = (1 + y) * width + scene - MOON_SIZE - 3 + x
+      set(still, width, scene - MOON_SIZE - 3 + x, 1 + y, isLit ? p.sun : mix(still.pixels[at] ?? p.sky[0], p.sun, 0.1))
+    }
     return
   }
   const [sx, sy] = sunAt(phase, scene, ground)
@@ -223,11 +226,11 @@ function grass(still: Still, width: number, height: number, p: Palette, landscap
 }
 
 // The parts of a landscape that never move, built once per size, time of day and landscape.
-function still(width: number, height: number, phase: Phase, landscape: Landscape, scene: number): Still {
+function still(width: number, height: number, phase: Phase, landscape: Landscape, scene: number, moon: number): Still {
   const out: Still = { pixels: Array<number>(width * height).fill(CLEAR), kind: new Uint8Array(width * height) }
   const p = PALETTES[phase]
   const ground = height - 2
-  sky(out, width, ground, p, phase, scene)
+  sky(out, width, ground, p, phase, scene, moon)
   if (landscape === 'hills') hills(out, width, ground, p)
   if (landscape === 'mountains') mountains(out, width, ground, p)
   if (landscape === 'lake') lake(out, width, ground, p, phase, scene)
@@ -239,7 +242,8 @@ function still(width: number, height: number, phase: Phase, landscape: Landscape
 let cached: { key: string; layer: Still } | null = null
 
 // Paints the landscape into `out` (sized to the band): the still layer, then drifting clouds, twinkling
-// stars, shimmering water and fireflies at tick `t`. The sun and moon stay within the left `scene` columns.
+// stars, shimmering water and fireflies at tick `t`. The sun and moon stay within the left `scene` columns; `moon`
+// is the moon's shape at night (moon.ts), part of the cached layer, so a new shape costs one rebuild.
 export function backdrop(
   out: Pixels,
   phase: Phase,
@@ -247,10 +251,11 @@ export function backdrop(
   t: number,
   ticksPerSecond = 20,
   scene = out.width,
+  moon = FULL_MOON,
 ) {
   const { width, height } = out
-  const key = `${width}x${height}|${scene}|${phase}|${landscape}`
-  if (cached?.key !== key) cached = { key, layer: still(width, height, phase, landscape, scene) }
+  const key = `${width}x${height}|${scene}|${phase}|${landscape}|${phase === 'night' ? moon : ''}`
+  if (cached?.key !== key) cached = { key, layer: still(width, height, phase, landscape, scene, moon) }
   const { pixels, kind } = cached.layer
   for (let i = 0; i < pixels.length; i++) out.pixels[i] = pixels[i] ?? CLEAR
   const p = PALETTES[phase]

@@ -61,6 +61,18 @@ const ANIMATION_ABOUT: [string, string][] = [
   ['work', 'busy, as while Claude works'],
   ['clones', 'clones, as for subagents'],
 ]
+// The moons /pokemon-play shows by name (moon.ts reads the same words).
+const MOON_ABOUT: [string, string][] = [
+  ['full', 'a full-moon night'],
+  ['new', 'a new moon, barely there'],
+  ['crescent', 'a thin crescent moon'],
+  ['half', 'a half moon'],
+  ['gibbous', 'a moon nearly full'],
+]
+const moons = (from: number, to?: number) =>
+  MOON_ABOUT.slice(from, to)
+    .map(([word]) => `${word} moon`)
+    .join(', ')
 const PHASE_ABOUT: Record<Phase, string> = {
   day: 'daytime',
   dusk: 'the sun going down',
@@ -79,6 +91,8 @@ export const PLAY: Sub[] = [
     args: ['landscape' as const],
   })),
   ...LANDSCAPES.map(word => ({ word, usage: `${word} [time]`, about: `the ${word}`, args: ['phase' as const] })),
+  { word: 'moon', usage: 'moon', about: "tonight's moon, as it really is" },
+  ...MOON_ABOUT.map(([word, about]) => ({ word: `${word} moon`, usage: `${word} moon`, about })),
 ]
 
 // The commands' own lines in the typeahead and /help: one short line each, so none is cut off, and the hint the
@@ -125,6 +139,9 @@ export const ALL_HELP = [
   line({ word: '', usage: '<time> <place>', about: 'e.g. dusk lake, for 15 s' }),
   `    times: ${Object.keys(PHASE_ABOUT).join(', ')}`,
   `    places: ${LANDSCAPES.join(', ')}`,
+  line({ word: '', usage: 'moon', about: "tonight's moon, as it really is" }),
+  `    or: ${moons(0, 3)},`,
+  `    ${moons(3)}`,
   '',
   '/pokedex             all you have seen and caught',
   '/pokemon-help        this list',

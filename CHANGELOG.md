@@ -6,6 +6,16 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Added: the real moon, and dusk visitors
+
+- The night sky shows the moon as it really is tonight, worked out from the date (no network): eight shapes from a
+  faint new moon through crescent, half and gibbous to full. `/pokemon-play moon` shows tonight's, and
+  `/pokemon-play full moon` (or `new`, `crescent`, `half`, `gibbous moon`) any of them for 15 seconds.
+- Ursaring becomes Ursaluna with a Peat Block only under a full moon (a night within a day of it), as in the games,
+  not on any night; the reply says when the next full moon is.
+- About one wild visit in four at dusk (17:00–19:00) is a dusk Pokémon: Rockruff, Murkrow, Misdreavus, Hoothoot,
+  Zubat, Gastly, Houndour or Sableye. On a full-moon night about one visit in ten is a Clefairy.
+
 ### Fixed: lighter on the CPU, the same party
 
 - Each frame of the band is packed for the terminal about thirty times faster: the cells are written in place and
