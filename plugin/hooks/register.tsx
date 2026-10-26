@@ -2381,6 +2381,8 @@ function screenCells(s: Screen, columns: number, rows: number): string {
 // that stirs the party (`wake`) brings it back to every tick at once.
 // The pending wait for the next tick: `rearm` cuts it short and starts again from now, at the pace the party needs.
 let pending: { cancel: () => void; rearm: () => void; isLong: boolean } | null = null
+// Something stirred the party since the last tick: the next one draws, calm or not, so it shows at once.
+let isStirred = false
 const isBatched = () =>
   Boolean(band && fitted) && !save.isOff && isAsleep(status) && isCalm(status) && !pitch && !screen && !mart.isOpen
 
@@ -2409,6 +2411,7 @@ function loopTicks($: EngineInterface) {
 }
 
 function wake() {
+  isStirred = true
   // Only a batched wait is worth cutting short: an awake loop ticks next anyway.
   if (pending?.isLong) pending.rearm()
 }
@@ -2451,7 +2454,9 @@ async function tick($: EngineInterface) {
   if (status.mood?.kind !== 'evolve') evolveFrom = null
   // The scene keeps moving underneath; nothing is drawn over the Mart.
   if (mart.isOpen) return
-  if (!pitch && isCalm(status) && tickNo % CALM_EVERY !== 0) return
+  const isDue = isStirred || tickNo % CALM_EVERY === 0
+  isStirred = false
+  if (!pitch && isCalm(status) && !isDue) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return

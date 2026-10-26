@@ -105,6 +105,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - A Pokémon that fell asleep halfway through a skip no longer keeps the band drawing at the full rate all night.
 - Asleep, the band wakes the plugin once per frame it draws instead of twenty times a second; anything that stirs
   the party wakes it at once. Frames don't pile up behind a slow terminal either: one tick runs at a time.
+- What stirs the party shows on the next frame, even in a still scene: the thought bubble when Claude starts work
+  came up to a fifth of a second late.
 
 ### Changed: regional forms are yours to ask for
 
