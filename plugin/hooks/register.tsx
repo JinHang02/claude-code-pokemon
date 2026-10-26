@@ -2694,13 +2694,20 @@ export const register: Register = on => {
       // Refused by a hook beneath: nothing ran.
       if ('deny' in ran) return ran
       const result = ran.result as
-        | { status?: string; agentId?: string; stdout?: string; stderr?: string; backgroundTaskId?: string }
+        | {
+            status?: string
+            agentId?: string
+            stdout?: string
+            stderr?: string
+            backgroundTaskId?: string
+            interrupted?: boolean
+          }
         | string
         | undefined
       const record = typeof result === 'object' ? result : undefined
       if (token && record?.status === 'async_launched' && record.agentId) agents.add(record.agentId)
-      // Still running in the background: how it went isn't known yet.
-      if (record?.backgroundTaskId) return ran
+      // Still running in the background: how it went isn't known yet. Stopped by the person: it says nothing either.
+      if (record?.backgroundTaskId || record?.interrupted) return ran
       // The output as the model read it, and as the tool recorded it.
       const recorded = record ? [record.stdout, record.stderr] : [typeof result === 'string' ? result : '']
       const output = [ran.text, ...recorded].filter(Boolean).join('\n')

@@ -5,9 +5,10 @@ import { localHourOf } from '../hooks/backdrop'
 import { suggest } from '../hooks/commands'
 import type { Owned } from '../hooks/commands'
 import { chooseStage } from '../hooks/evolution'
+import { classify } from '../hooks/reactions'
 import { emptySave, level, SAVE_VERSION, xpForLevel } from '../hooks/save'
 import { CHAIN_OF, CHAINS } from './fixtures/evolutions'
-import { begin, cmd, KIT, LIST, member, until } from './world'
+import { bash, begin, cmd, KIT, LIST, member, until } from './world'
 
 test('a save read the store refuses at start-up leaves the lead alone: nothing new is caught', KIT, async ($, on) => {
   let reads = 0
@@ -205,4 +206,38 @@ test('/pokemon buy and /pokemon bag wrap their lists to the terminal', KIT, asyn
 test('/pokemon evolve with only symbols says there is no such Pokémon, not the evolution mode', KIT, async ($, on) => {
   await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [] })] })
   expect(await cmd($, 'pokemon', 'evolve 🎉')).not.toContain('Evolution is')
+})
+
+test('reactions: no false faints, and XP only for real work', () => {
+  const run = (command: string, isError: boolean, output?: string) => classify('Bash', command, isError, 0, output)
+  // pytest that collects nothing exits 5: neither a pass nor a fail.
+  expect(run('pytest -k nothing', true, '=== no tests ran in 0.01s ===')).toEqual({ happenings: [], xp: 0, streak: 0 })
+  // A passing run whose log mentions errors earlier: the summary at the end decides.
+  const log = 'validate: 2 errors expected\n--- PASS: TestValidate\nok  \tpkg\t0.2s'
+  expect(run('go test ./... -v | tee out.txt', false, log).happenings).toEqual(['cheer'])
+  // A summary with both is a failure.
+  expect(run('pytest | tail -3', false, '=== 1 failed, 2 passed in 0.1s ===').happenings).toEqual(['tool-error'])
+  // Amends and empty commits earn nothing; a plain one does.
+  expect(run('git commit --amend --no-edit', false).xp).toBe(0)
+  expect(run('git commit --allow-empty -m x', false).xp).toBe(0)
+  expect(run('git commit -m x', false).xp).toBe(10)
+  // A script whose name only starts with "test" is no test run.
+  expect(run('npm run testdb:seed', false).xp).toBe(0)
+  expect(run('npm run test:unit', false).xp).toBe(5)
+  // A commit piped into tail went through when git printed its summary.
+  expect(run('git commit -m fix 2>&1 | tail -3', false, '[main 1a2b3c4] fix\n 1 file changed').xp).toBe(10)
+  expect(run('git commit -m fix 2>&1 | tail -3', false, 'nothing to commit, working tree clean').xp).toBe(0)
+})
+
+test('an interrupted test run says nothing about the tests: no XP for what ran before the stop', KIT, async ($, on) => {
+  // Stopped after a first file passed: the summary so far reads as a pass, which the stop makes meaningless.
+  on('tool.call', async () => ({
+    result: { stdout: 'PASS src/a.test.ts\nTests: 3 passed', stderr: '', interrupted: true },
+    text: 'Tests: 3 passed',
+  }))
+  const w = await begin($, on, { ...emptySave(), party: [member('pikachu', { id: 'p', next: [] })] })
+  const xp = w.partyNow()[0]?.xp
+  await $.tool.call(bash('npm test') as never)
+  await cmd($, 'pokemon', 'party')
+  expect(w.partyNow()[0]?.xp).toBe(xp)
 })
