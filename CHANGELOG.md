@@ -6,6 +6,15 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Fixed: catching in a wide terminal
+
+- With a wild Pokémon out in a wide terminal and a busy sky (fog, rain, snow), the band stopped drawing and Claude
+  Code said `Client hooks/aim.tsx: a tree serializing to more than 100000 characters`. While you can aim, the band is
+  coloured text in a click layer, and Claude Code refuses a layer past 100,000 characters. A band too big for one is
+  now drawn by several click layers stacked, each a strip of whole rows within the limit: every cell is drawn exactly
+  as before, and a click on any strip lands on the band row under it. A band that fits in one (most terminals in
+  clear weather) is drawn as before.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added: /pokedex <name>

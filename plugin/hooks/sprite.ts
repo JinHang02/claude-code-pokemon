@@ -203,6 +203,32 @@ export function textRows({ pixels, width, height }: Pixels): TextRun[][] {
   return lines
 }
 
+// What one run adds to a click layer's tree once serialized, and one line around its runs: Claude Code unmounts a
+// surface module whose tree passes 100,000 characters.
+export const runCost = ([text, fg, bg]: TextRun) =>
+  34 + text.length + (fg || bg ? 11 : 0) + (fg ? 17 : 0) + (bg ? 27 : 0) + (fg && bg ? 1 : 0)
+const LINE_COST = 34
+// What one click layer is given at most, well under that limit.
+export const STRIP_BUDGET = 80_000
+
+// The lines cut into strips of whole lines, each within `budget`, top to bottom: a band too wide and busy for one
+// click layer (fog or rain across a wide terminal) is drawn by several stacked, every cell as it is.
+export function strips(lines: TextRun[][], budget = STRIP_BUDGET): { top: number; lines: TextRun[][] }[] {
+  const out: { top: number; lines: TextRun[][] }[] = []
+  let cost = 0
+  lines.forEach((runs, y) => {
+    const line = LINE_COST + runs.reduce((n, r) => n + runCost(r), 0)
+    const last = out[out.length - 1]
+    if (last && cost + line <= budget) last.lines.push(runs)
+    else {
+      out.push({ top: y, lines: [runs] })
+      cost = 0
+    }
+    cost += line
+  })
+  return out
+}
+
 // The platform's own encoder where there is one (about thirty times faster on a band's 60 KB), else by hand.
 function toBase64(bytes: Uint8Array): string {
   const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64
