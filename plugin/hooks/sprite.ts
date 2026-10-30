@@ -184,20 +184,64 @@ export function toCells(
 // Pixels as coloured text, one line per two pixel rows: runs of [text, fg, bg], '' for the terminal's own colour.
 export type TextRun = [string, string, string]
 
-export function textRows({ pixels, width, height }: Pixels): TextRun[][] {
-  const hex = (c: number) => (c === CLEAR ? '' : `#${c.toString(16).padStart(6, '0')}`)
+// What one run adds to the click layer's tree once serialized: Claude Code unmounts a surface module whose tree
+// passes 100,000 characters, so the runs are held to TEXT_BUDGET, well under it.
+export const runCost = ([text, fg, bg]: TextRun) =>
+  34 + text.length + (fg || bg ? 11 : 0) + (fg ? 17 : 0) + (bg ? 27 : 0) + (fg && bg ? 1 : 0)
+const LINE_COST = 34
+export const TEXT_BUDGET = 80_000
+// Colour steps tried in turn when a frame is too busy to fit (fog and rain blend almost every cell differently):
+// neighbours that differ by less than a step merge into one run.
+const STEPS = [1, 8, 16, 32, 64, 128]
+
+export function textRows(img: Pixels, budget = TEXT_BUDGET): TextRun[][] {
+  for (const step of STEPS) {
+    const lines = runsOf(img, step)
+    if (costOf(lines) <= budget) return lines
+  }
+  // Still too busy: each line becomes as many solid stretches as fit, the same width as before.
+  return stretches(
+    img,
+    Math.max(1, Math.floor((budget / Math.ceil(img.height / 2) - LINE_COST) / runCost(['', '', '#000000']) / 2)),
+  )
+}
+
+const costOf = (lines: TextRun[][]) =>
+  lines.reduce((sum, runs) => sum + LINE_COST + runs.reduce((n, r) => n + runCost(r), 0), 0)
+const hex = (c: number) => (c === CLEAR ? '' : `#${c.toString(16).padStart(6, '0')}`)
+// A colour snapped to `step` per channel; clear stays clear.
+function snap(c: number, step: number) {
+  if (c === CLEAR || step === 1) return c
+  const one = (v: number) => Math.min(255, Math.round(v / step) * step)
+  return (one((c >> 16) & 0xff) << 16) | (one((c >> 8) & 0xff) << 8) | one(c & 0xff)
+}
+
+function runsOf({ pixels, width, height }: Pixels, step: number): TextRun[][] {
   const lines: TextRun[][] = []
   for (let r = 0; r < Math.ceil(height / 2); r++) {
     const runs: TextRun[] = []
     for (let x = 0; x < width; x++) {
-      const top = pixels[2 * r * width + x] ?? CLEAR
-      const bottom = 2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR
+      const top = snap(pixels[2 * r * width + x] ?? CLEAR, step)
+      const bottom = snap(2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR, step)
       const cell: TextRun =
         top === bottom ? [' ', '', hex(top)] : top === CLEAR ? ['▄', hex(bottom), ''] : ['▀', hex(top), hex(bottom)]
       const last = runs[runs.length - 1]
       if (last && last[0].endsWith(cell[0]) && last[1] === cell[1] && last[2] === cell[2]) last[0] += cell[0]
       else runs.push(cell)
     }
+    lines.push(runs)
+  }
+  return lines
+}
+
+// Each line cut into `count` stretches of blank cells, each the colour of its first cell's upper pixel.
+function stretches({ pixels, width, height }: Pixels, count: number): TextRun[][] {
+  const size = Math.ceil(width / Math.min(count, width))
+  const lines: TextRun[][] = []
+  for (let r = 0; r < Math.ceil(height / 2); r++) {
+    const runs: TextRun[] = []
+    for (let x = 0; x < width; x += size)
+      runs.push([' '.repeat(Math.min(size, width - x)), '', hex(snap(pixels[2 * r * width + x] ?? CLEAR, 64))])
     lines.push(runs)
   }
   return lines

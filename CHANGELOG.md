@@ -6,6 +6,14 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Fixed: catching in a wide terminal
+
+- With a wild Pokémon out in a wide terminal and a busy sky (fog, rain, snow), the band stopped drawing and Claude
+  Code said `Client hooks/aim.tsx: a tree serializing to more than 100000 characters`. The band's text layer for
+  aiming made a separate coloured run for nearly every cell; it now merges colours that differ only slightly when
+  the frame would be too big, and in the busiest frames draws each line as a few solid stretches. A frame that fits
+  keeps its exact colours, and every cell stays where a click expects it.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added: /pokedex <name>
