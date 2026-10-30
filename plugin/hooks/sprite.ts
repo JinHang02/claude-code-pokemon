@@ -184,92 +184,49 @@ export function toCells(
 // Pixels as coloured text, one line per two pixel rows: runs of [text, fg, bg], '' for the terminal's own colour.
 export type TextRun = [string, string, string]
 
-// What one run adds to the click layer's tree once serialized: Claude Code unmounts a surface module whose tree
-// passes 100,000 characters, so the runs are held to TEXT_BUDGET, well under it.
-export const runCost = ([text, fg, bg]: TextRun) =>
-  34 + text.length + (fg || bg ? 11 : 0) + (fg ? 17 : 0) + (bg ? 27 : 0) + (fg && bg ? 1 : 0)
-const LINE_COST = 34
-export const TEXT_BUDGET = 80_000
-// How far apart, per channel, two colours may be and still share a run, tried in turn while a frame is too busy to
-// fit (fog and rain blend almost every cell a little differently). A run keeps its first cell's colours, so a gradient
-// becomes a few steps of its own colours instead of one flat colour.
-const TOLERANCES = [0, 3, 6, 10, 16, 24, 32, 48, 64]
-
-// The frame as text within `budget`, or null when even the loosest tolerance can't fit it (sharp detail all over: rain
-// across a very wide band), for the caller to draw something calmer.
-export function textRowsWithin(img: Pixels, budget = TEXT_BUDGET): TextRun[][] | null {
-  for (const tolerance of TOLERANCES) {
-    const lines = runsOf(img, tolerance)
-    if (costOf(lines) <= budget) return lines
-  }
-  return null
-}
-
-// The frame as text within `budget` whatever it holds: at worst each line becomes as many solid stretches as fit, the
-// same width as before.
-export function textRows(img: Pixels, budget = TEXT_BUDGET): TextRun[][] {
-  return (
-    textRowsWithin(img, budget) ??
-    stretches(
-      img,
-      Math.max(1, Math.floor((budget / Math.ceil(img.height / 2) - LINE_COST) / runCost(['', '', '#000000']) / 2)),
-    )
-  )
-}
-
-const costOf = (lines: TextRun[][]) =>
-  lines.reduce((sum, runs) => sum + LINE_COST + runs.reduce((n, r) => n + runCost(r), 0), 0)
-const hex = (c: number) => (c === CLEAR ? '' : `#${c.toString(16).padStart(6, '0')}`)
-// Whether two colours are within `tolerance` on every channel; clear is near only to clear.
-function isNear(a: number, b: number, tolerance: number) {
-  if (a === b) return true
-  if (a === CLEAR || b === CLEAR) return false
-  return (
-    Math.abs(((a >> 16) & 0xff) - ((b >> 16) & 0xff)) <= tolerance &&
-    Math.abs(((a >> 8) & 0xff) - ((b >> 8) & 0xff)) <= tolerance &&
-    Math.abs((a & 0xff) - (b & 0xff)) <= tolerance
-  )
-}
-
-function runsOf({ pixels, width, height }: Pixels, tolerance: number): TextRun[][] {
-  const lines: TextRun[][] = []
-  for (let r = 0; r < Math.ceil(height / 2); r++) {
-    // Each run as its glyph, its first cell's colours and its width.
-    const runs: { glyph: string; fg: number; bg: number; width: number }[] = []
-    for (let x = 0; x < width; x++) {
-      const top = pixels[2 * r * width + x] ?? CLEAR
-      const bottom = 2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR
-      const cell = isNear(top, bottom, tolerance)
-        ? { glyph: ' ', fg: CLEAR, bg: top }
-        : top === CLEAR
-          ? { glyph: '▄', fg: bottom, bg: CLEAR }
-          : { glyph: '▀', fg: top, bg: bottom }
-      const last = runs[runs.length - 1]
-      if (
-        last &&
-        last.glyph === cell.glyph &&
-        isNear(last.fg, cell.fg, tolerance) &&
-        isNear(last.bg, cell.bg, tolerance)
-      )
-        last.width++
-      else runs.push({ ...cell, width: 1 })
-    }
-    lines.push(runs.map(({ glyph, fg, bg, width: w }) => [glyph.repeat(w), hex(fg), hex(bg)]))
-  }
-  return lines
-}
-
-// Each line cut into `count` stretches of blank cells, each the colour of its first cell's upper pixel.
-function stretches({ pixels, width, height }: Pixels, count: number): TextRun[][] {
-  const size = Math.ceil(width / Math.min(count, width))
+export function textRows({ pixels, width, height }: Pixels): TextRun[][] {
+  const hex = (c: number) => (c === CLEAR ? '' : `#${c.toString(16).padStart(6, '0')}`)
   const lines: TextRun[][] = []
   for (let r = 0; r < Math.ceil(height / 2); r++) {
     const runs: TextRun[] = []
-    for (let x = 0; x < width; x += size)
-      runs.push([' '.repeat(Math.min(size, width - x)), '', hex(pixels[2 * r * width + x] ?? CLEAR)])
+    for (let x = 0; x < width; x++) {
+      const top = pixels[2 * r * width + x] ?? CLEAR
+      const bottom = 2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR
+      const cell: TextRun =
+        top === bottom ? [' ', '', hex(top)] : top === CLEAR ? ['▄', hex(bottom), ''] : ['▀', hex(top), hex(bottom)]
+      const last = runs[runs.length - 1]
+      if (last && last[0].endsWith(cell[0]) && last[1] === cell[1] && last[2] === cell[2]) last[0] += cell[0]
+      else runs.push(cell)
+    }
     lines.push(runs)
   }
   return lines
+}
+
+// What one run adds to a click layer's tree once serialized, and one line around its runs: Claude Code unmounts a
+// surface module whose tree passes 100,000 characters.
+export const runCost = ([text, fg, bg]: TextRun) =>
+  34 + text.length + (fg || bg ? 11 : 0) + (fg ? 17 : 0) + (bg ? 27 : 0) + (fg && bg ? 1 : 0)
+const LINE_COST = 34
+// What one click layer is given at most, well under that limit.
+export const STRIP_BUDGET = 80_000
+
+// The lines cut into strips of whole lines, each within `budget`, top to bottom: a band too wide and busy for one
+// click layer (fog or rain across a wide terminal) is drawn by several stacked, every cell as it is.
+export function strips(lines: TextRun[][], budget = STRIP_BUDGET): { top: number; lines: TextRun[][] }[] {
+  const out: { top: number; lines: TextRun[][] }[] = []
+  let cost = 0
+  lines.forEach((runs, y) => {
+    const line = LINE_COST + runs.reduce((n, r) => n + runCost(r), 0)
+    const last = out[out.length - 1]
+    if (last && cost + line <= budget) last.lines.push(runs)
+    else {
+      out.push({ top: y, lines: [runs] })
+      cost = 0
+    }
+    cost += line
+  })
+  return out
 }
 
 // The platform's own encoder where there is one (about thirty times faster on a band's 60 KB), else by hand.

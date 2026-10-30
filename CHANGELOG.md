@@ -9,11 +9,11 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 ### Fixed: catching in a wide terminal
 
 - With a wild Pokémon out in a wide terminal and a busy sky (fog, rain, snow), the band stopped drawing and Claude
-  Code said `Client hooks/aim.tsx: a tree serializing to more than 100000 characters`. The band's text layer for
-  aiming made a separate coloured run for nearly every cell. When a frame would be too big it now lets neighbouring
-  cells of nearly the same colour share a run, each keeping its own colour, so fog looks as before with faint steps;
-  rain too fine to fit across a very wide band is left out while you aim, the sky drawn clear. A frame that fits keeps
-  its exact colours, and every cell stays where a click expects it.
+  Code said `Client hooks/aim.tsx: a tree serializing to more than 100000 characters`. While you can aim, the band is
+  coloured text in a click layer, and Claude Code refuses a layer past 100,000 characters. A band too big for one is
+  now drawn by several click layers stacked, each a strip of whole rows within the limit: every cell is drawn exactly
+  as before, and a click on any strip lands on the band row under it. A band that fits in one (most terminals in
+  clear weather) is drawn as before.
 
 ## [1.8.0] - 2026-10-26
 

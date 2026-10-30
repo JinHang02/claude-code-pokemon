@@ -116,7 +116,7 @@ import { landscapeAt, LANDSCAPES, localHourOf } from './backdrop'
 import type { Landscape } from './backdrop'
 import { FULL_MOON, isFullMoonAt, MOON_PHASES, MOON_WORDS, moonAge, moonPhaseAt, SYNODIC_DAYS } from './moon'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
-import { fit, parseAnsi, textRows, textRowsWithin, toCells } from './sprite'
+import { fit, parseAnsi, strips, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
 import { shopSize } from './shop'
 import type { ShopProps } from './shop'
@@ -2941,7 +2941,8 @@ export const register: Register = on => {
   })
 
   on('ui.message', async ($, e, next) => {
-    const click = e.element === 'aim' ? readClick(e.data) : null
+    // The band's click layer, or one strip of it: each reports clicks in the band's own rows.
+    const click = /^aim\d*$/.test(String(e.element)) ? readClick(e.data) : null
     if (click) throwAt($, click)
     // A click on a button drawn before a visitor came opens nothing.
     if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
@@ -3036,13 +3037,20 @@ export const register: Register = on => {
     lastCells = cells
     // The click layer is the whole picture, the button's corner included: anything narrower leaves that corner blank,
     // and a click there is a throw like any other.
-    if (isAiming) {
-      // Too much sharp detail to fit as text (rain across a very wide band): the sky is drawn clear while aiming.
-      const lines =
-        textRowsWithin(img) ??
-        textRows(frame(status, fitted.lefts, columns, rows, { ...lookNow(), weather: 'clear' }, total))
-      return <Client key="aim" module="./aim.tsx" width={total} height={rows} props={{ lines }} />
-    }
+    if (isAiming)
+      return (
+        <Box flexDirection="column">
+          {strips(textRows(img)).map((strip, i) => (
+            <Client
+              key={i ? `aim${i}` : 'aim'}
+              module="./aim.tsx"
+              width={total}
+              height={strip.lines.length}
+              props={{ lines: strip.lines, top: strip.top }}
+            />
+          ))}
+        </Box>
+      )
     // The whole band is one picture, the landscape running on under the button; only a wild visitor walks there, and
     // then the button is gone.
     const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />
