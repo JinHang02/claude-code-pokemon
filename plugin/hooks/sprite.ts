@@ -190,46 +190,71 @@ export const runCost = ([text, fg, bg]: TextRun) =>
   34 + text.length + (fg || bg ? 11 : 0) + (fg ? 17 : 0) + (bg ? 27 : 0) + (fg && bg ? 1 : 0)
 const LINE_COST = 34
 export const TEXT_BUDGET = 80_000
-// Colour steps tried in turn when a frame is too busy to fit (fog and rain blend almost every cell differently):
-// neighbours that differ by less than a step merge into one run.
-const STEPS = [1, 8, 16, 32, 64, 128]
+// How far apart, per channel, two colours may be and still share a run, tried in turn while a frame is too busy to
+// fit (fog and rain blend almost every cell a little differently). A run keeps its first cell's colours, so a gradient
+// becomes a few steps of its own colours instead of one flat colour.
+const TOLERANCES = [0, 3, 6, 10, 16, 24, 32, 48, 64]
 
-export function textRows(img: Pixels, budget = TEXT_BUDGET): TextRun[][] {
-  for (const step of STEPS) {
-    const lines = runsOf(img, step)
+// The frame as text within `budget`, or null when even the loosest tolerance can't fit it (sharp detail all over: rain
+// across a very wide band), for the caller to draw something calmer.
+export function textRowsWithin(img: Pixels, budget = TEXT_BUDGET): TextRun[][] | null {
+  for (const tolerance of TOLERANCES) {
+    const lines = runsOf(img, tolerance)
     if (costOf(lines) <= budget) return lines
   }
-  // Still too busy: each line becomes as many solid stretches as fit, the same width as before.
-  return stretches(
-    img,
-    Math.max(1, Math.floor((budget / Math.ceil(img.height / 2) - LINE_COST) / runCost(['', '', '#000000']) / 2)),
+  return null
+}
+
+// The frame as text within `budget` whatever it holds: at worst each line becomes as many solid stretches as fit, the
+// same width as before.
+export function textRows(img: Pixels, budget = TEXT_BUDGET): TextRun[][] {
+  return (
+    textRowsWithin(img, budget) ??
+    stretches(
+      img,
+      Math.max(1, Math.floor((budget / Math.ceil(img.height / 2) - LINE_COST) / runCost(['', '', '#000000']) / 2)),
+    )
   )
 }
 
 const costOf = (lines: TextRun[][]) =>
   lines.reduce((sum, runs) => sum + LINE_COST + runs.reduce((n, r) => n + runCost(r), 0), 0)
 const hex = (c: number) => (c === CLEAR ? '' : `#${c.toString(16).padStart(6, '0')}`)
-// A colour snapped to `step` per channel; clear stays clear.
-function snap(c: number, step: number) {
-  if (c === CLEAR || step === 1) return c
-  const one = (v: number) => Math.min(255, Math.round(v / step) * step)
-  return (one((c >> 16) & 0xff) << 16) | (one((c >> 8) & 0xff) << 8) | one(c & 0xff)
+// Whether two colours are within `tolerance` on every channel; clear is near only to clear.
+function isNear(a: number, b: number, tolerance: number) {
+  if (a === b) return true
+  if (a === CLEAR || b === CLEAR) return false
+  return (
+    Math.abs(((a >> 16) & 0xff) - ((b >> 16) & 0xff)) <= tolerance &&
+    Math.abs(((a >> 8) & 0xff) - ((b >> 8) & 0xff)) <= tolerance &&
+    Math.abs((a & 0xff) - (b & 0xff)) <= tolerance
+  )
 }
 
-function runsOf({ pixels, width, height }: Pixels, step: number): TextRun[][] {
+function runsOf({ pixels, width, height }: Pixels, tolerance: number): TextRun[][] {
   const lines: TextRun[][] = []
   for (let r = 0; r < Math.ceil(height / 2); r++) {
-    const runs: TextRun[] = []
+    // Each run as its glyph, its first cell's colours and its width.
+    const runs: { glyph: string; fg: number; bg: number; width: number }[] = []
     for (let x = 0; x < width; x++) {
-      const top = snap(pixels[2 * r * width + x] ?? CLEAR, step)
-      const bottom = snap(2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR, step)
-      const cell: TextRun =
-        top === bottom ? [' ', '', hex(top)] : top === CLEAR ? ['▄', hex(bottom), ''] : ['▀', hex(top), hex(bottom)]
+      const top = pixels[2 * r * width + x] ?? CLEAR
+      const bottom = 2 * r + 1 < height ? (pixels[(2 * r + 1) * width + x] ?? CLEAR) : CLEAR
+      const cell = isNear(top, bottom, tolerance)
+        ? { glyph: ' ', fg: CLEAR, bg: top }
+        : top === CLEAR
+          ? { glyph: '▄', fg: bottom, bg: CLEAR }
+          : { glyph: '▀', fg: top, bg: bottom }
       const last = runs[runs.length - 1]
-      if (last && last[0].endsWith(cell[0]) && last[1] === cell[1] && last[2] === cell[2]) last[0] += cell[0]
-      else runs.push(cell)
+      if (
+        last &&
+        last.glyph === cell.glyph &&
+        isNear(last.fg, cell.fg, tolerance) &&
+        isNear(last.bg, cell.bg, tolerance)
+      )
+        last.width++
+      else runs.push({ ...cell, width: 1 })
     }
-    lines.push(runs)
+    lines.push(runs.map(({ glyph, fg, bg, width: w }) => [glyph.repeat(w), hex(fg), hex(bg)]))
   }
   return lines
 }
@@ -241,7 +266,7 @@ function stretches({ pixels, width, height }: Pixels, count: number): TextRun[][
   for (let r = 0; r < Math.ceil(height / 2); r++) {
     const runs: TextRun[] = []
     for (let x = 0; x < width; x += size)
-      runs.push([' '.repeat(Math.min(size, width - x)), '', hex(snap(pixels[2 * r * width + x] ?? CLEAR, 64))])
+      runs.push([' '.repeat(Math.min(size, width - x)), '', hex(pixels[2 * r * width + x] ?? CLEAR)])
     lines.push(runs)
   }
   return lines

@@ -116,7 +116,7 @@ import { landscapeAt, LANDSCAPES, localHourOf } from './backdrop'
 import type { Landscape } from './backdrop'
 import { FULL_MOON, isFullMoonAt, MOON_PHASES, MOON_WORDS, moonAge, moonPhaseAt, SYNODIC_DAYS } from './moon'
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
-import { fit, parseAnsi, textRows, toCells } from './sprite'
+import { fit, parseAnsi, textRows, textRowsWithin, toCells } from './sprite'
 import type { Pixels } from './sprite'
 import { shopSize } from './shop'
 import type { ShopProps } from './shop'
@@ -3036,8 +3036,13 @@ export const register: Register = on => {
     lastCells = cells
     // The click layer is the whole picture, the button's corner included: anything narrower leaves that corner blank,
     // and a click there is a throw like any other.
-    if (isAiming)
-      return <Client key="aim" module="./aim.tsx" width={total} height={rows} props={{ lines: textRows(img) }} />
+    if (isAiming) {
+      // Too much sharp detail to fit as text (rain across a very wide band): the sky is drawn clear while aiming.
+      const lines =
+        textRowsWithin(img) ??
+        textRows(frame(status, fitted.lefts, columns, rows, { ...lookNow(), weather: 'clear' }, total))
+      return <Client key="aim" module="./aim.tsx" width={total} height={rows} props={{ lines }} />
+    }
     // The whole band is one picture, the landscape running on under the button; only a wild visitor walks there, and
     // then the button is gone.
     const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />

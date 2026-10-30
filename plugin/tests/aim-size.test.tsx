@@ -7,7 +7,7 @@ import { LANDSCAPES } from '../hooks/backdrop'
 import type { Phase } from '../hooks/backdrop'
 import { frame, initialStatus, newScene } from '../hooks/scene'
 import type { Status } from '../hooks/scene'
-import { runCost, TEXT_BUDGET, textRows } from '../hooks/sprite'
+import { runCost, TEXT_BUDGET, textRows, textRowsWithin } from '../hooks/sprite'
 import type { Pixels, TextRun } from '../hooks/sprite'
 import { WEATHERS } from '../hooks/weather'
 
@@ -69,4 +69,13 @@ test('the estimate of a run never comes in under what the tree holds', () => {
 test('a scene that fits keeps its exact colours', () => {
   const img = scene(80, 8, 'day', 'meadow', 'clear')
   expect(textRows(img)).toEqual(textRows(img, Infinity))
+})
+
+test('fog keeps its own colours in a wide band; rain too sharp to fit is left for a clear sky', () => {
+  const fog = textRowsWithin(scene(300, 24, 'dawn', 'forest', 'fog'))
+  expect(fog).not.toBeNull()
+  // A few steps of the fog's own colours, not a handful of flat ones.
+  expect(new Set(JSON.stringify(fog).match(/#[0-9a-f]{6}/g)).size).toBeGreaterThan(40)
+  expect(textRowsWithin(scene(300, 24, 'night', 'lake', 'rain'))).toBeNull()
+  expect(textRowsWithin(scene(300, 24, 'night', 'lake', 'clear'))).not.toBeNull()
 })
