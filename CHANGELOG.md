@@ -6,6 +6,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-10-30
+
 ### Fixed: catching in a wide terminal
 
 - With a wild Pokémon out in a wide terminal and a busy sky (fog, rain, snow), the band stopped drawing and Claude
@@ -819,7 +821,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.5.0...v1.6.0
