@@ -53,6 +53,8 @@ test(
       [170, 12],
       [250, 15],
       [300, 24],
+      // The widest band there is (register.tsx caps it at 512).
+      [512, 24],
     ] as const)
       for (const phase of ['day', 'dusk', 'night', 'dawn'] as Phase[])
         for (const landscape of LANDSCAPES)
