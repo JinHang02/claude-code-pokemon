@@ -394,27 +394,38 @@ test('each preview plays its reaction on the band', KIT, async ($, on) => {
   for (const word of ['rebase', 'sparkle']) expect(await cmd($, 'pokemon-play', word)).toBe(`Playing ${word}.`)
 })
 
-test('a turn past 10 minutes sets up camp until it ends; a shorter one does not', KIT, async ($, on) => {
-  on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }))
-  on('turn.complete', async () => ({ text: '' }))
-  const w = await begin($, on, party, undefined, undefined, noon)
-  await cmd($, 'pokemon', 'party')
-  const band = (await mountBand($)) as { drawn: () => Promise<unknown> }
-  await band.drawn()
-  // The flames' orange alone: their red is also the "!" a wild visitor brings.
-  const lit = () => onBand(w.band.cells, { pixels: [0xff8c1a], width: 1, height: 1 })
-  await $.turn.start({ text: 'hi', turnId: 'm1' } as never)
-  for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
-  await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1, turnId: 'm1' } as never)
-  await $.turn.start({ text: 'again', turnId: 'm2' } as never)
-  for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
-  expect(lit()).toBe(false)
-  await w.clock.advance(61_000)
-  expect(lit()).toBe(true)
-  await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1, turnId: 'm2' } as never)
-  await w.clock.advance(200)
-  expect(lit()).toBe(false)
-})
+// Twenty minutes of ticks, and a wild visitor to wait out: longer than a usual session test.
+test(
+  'a turn past 10 minutes sets up camp until it ends; a shorter one does not',
+  { timeoutMs: 90_000 },
+  async ($, on) => {
+    on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', async () => ({ text: '' }))
+    const w = await begin($, on, party, undefined, undefined, noon)
+    await cmd($, 'pokemon', 'party')
+    const band = (await mountBand($)) as { drawn: () => Promise<unknown> }
+    await band.drawn()
+    // The flames' orange alone: their red is also the "!" a wild visitor brings.
+    const lit = () => onBand(w.band.cells, { pixels: [0xff8c1a], width: 1, height: 1 })
+    await $.turn.start({ text: 'hi', turnId: 'm1' } as never)
+    for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
+    await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1, turnId: 'm1' } as never)
+    await $.turn.start({ text: 'again', turnId: 'm2' } as never)
+    for (let i = 0; i < 9; i++) await w.clock.advance(60_000)
+    expect(lit()).toBe(false)
+    // A wild visitor may come by about now: while it can be aimed at the band draws through its click layer, so these
+    // cells wait until it has crossed (well inside a minute).
+    const eventually = async (want: boolean) => {
+      for (let i = 0; i < 60 && lit() !== want; i++) await w.clock.advance(1000)
+      return lit()
+    }
+    await w.clock.advance(61_000)
+    expect(await eventually(true)).toBe(true)
+    await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1, turnId: 'm2' } as never)
+    await w.clock.advance(200)
+    expect(await eventually(false)).toBe(false)
+  },
+)
 
 // Six minutes and more of ticks: longer than a usual session test.
 test('after them the party still falls asleep, drawing at the calm rate', { timeoutMs: 90_000 }, async ($, on) => {
