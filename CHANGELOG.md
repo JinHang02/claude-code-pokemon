@@ -6,6 +6,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-23
+
 ### Added: five more small moments
 
 - **`git stash`:** the lead digs, a Poké Ball sinks into the ground in front of it, and a heap of dirt stays a moment.
@@ -836,7 +838,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...v1.7.0
