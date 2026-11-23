@@ -1,7 +1,7 @@
 import { backdrop } from './backdrop'
 import { SCREEN_MS } from './evolution-screen'
 import type { Landscape, Phase } from './backdrop'
-import { BIG_BOULDER, BOULDER, BOX, CONFUSED, LETTER, PIDGEY } from './moments'
+import { BIG_BOULDER, BOULDER, BOX, CONFUSED, FLAMES, LETTER, LOGS, MOUND, PIDGEY, SQUINT, STASH_BALL } from './moments'
 import { CLEAR, mirror, shrink } from './sprite'
 import type { Pixels } from './sprite'
 import { drawWeather } from './weather'
@@ -115,6 +115,22 @@ const CONFUSE_SPIN = ticks(150)
 const SPINS = 4
 const DUST_OFF = ticks(600)
 const HEAVE = ticks(400)
+// A stash buried in front of the lead: dug in, sunk, then a heap of dirt left a moment.
+const STASH = ticks(3500)
+const STASH_DIG = 0.4
+const STASH_SINK = 0.65
+// A rebase's shimmer sweeps the band right to left, twice.
+const WARP = ticks(1600)
+const WARP_TINT = 0xd8c8ff
+// Twinkles around the lead after a lint or type check passes.
+const SPARKLE = ticks(1500)
+const TWINKLE = ticks(600)
+// The lead turns away, shrinks and trembles at an `rm -rf`.
+const CRINGE = ticks(2000)
+// The campfire of a long turn, and how far apart the party sits around it.
+const FIRE_W = LOGS.width
+const FLICKER = ticks(150)
+const SEAT_GAP = 2
 
 // `pace` scales a stroll's walking speed.
 export type Roam = { kind: 'walk' | 'idle' | 'turn' | 'look' | 'skip'; left: number; age: number; pace?: number }
@@ -123,14 +139,14 @@ export type Scene = { x: number; v: number; facing: 1 | -1; roam: Roam; t: numbe
 
 // `isScreen`: an evolution playing on its own screen, not in place.
 export type Mood = {
-  kind: 'hop' | 'cheer' | 'faint' | 'spring' | 'evolve' | 'confused'
+  kind: 'hop' | 'cheer' | 'faint' | 'spring' | 'evolve' | 'confused' | 'cringe'
   t: number
   actor?: number
   isScreen?: true
 } | null
 
 export type Particle = {
-  kind: 'dust' | 'spark' | 'z' | 'confetti'
+  kind: 'dust' | 'spark' | 'z' | 'confetti' | 'twinkle'
   x: number
   // Pixels from the ground row (negative is up); a spark keeps a random seed here, a Z its actor, and
   // confetti counts from its owner's head.
@@ -183,6 +199,12 @@ export type Status = {
   boxes?: number
   // The lead's Strength against a long test or build: ticks pushing, then ticks left of dusting off once it ended.
   strength?: { t: number; dust?: number }
+  // Ticks left of a stash being buried, of a rebase's shimmer and of a passed lint's twinkles.
+  stash?: number
+  warp?: number
+  sparkle?: number
+  // A long turn's campfire: ticks it has burned, and its left column (placed on the first tick).
+  camp?: { t: number; x?: number }
 }
 
 export type Happening =
@@ -199,6 +221,12 @@ export type Happening =
   | 'confused'
   | 'boulder-start'
   | 'boulder-end'
+  | 'stash'
+  | 'rebase'
+  | 'sparkle'
+  | 'eyes'
+  | 'camp-start'
+  | 'camp-end'
 
 export const newScene = (x = 0): Scene => ({
   x,
@@ -236,7 +264,9 @@ const moodLength = (mood: NonNullable<Mood>) =>
           : EVOLVE
         : mood.kind === 'confused'
           ? CONFUSE
-          : SPRING
+          : mood.kind === 'cringe'
+            ? CRINGE
+            : SPRING
 
 // Nobody dozes off with a wild Pokémon around.
 export const isAsleep = (s: Status) =>
@@ -275,6 +305,30 @@ export function react(s: Status, what: Happening): Status {
       return s.strength && s.strength.dust === undefined
         ? { ...awake, strength: { ...s.strength, dust: DUST_OFF } }
         : awake
+    case 'stash':
+      return { ...awake, stash: STASH }
+    case 'rebase':
+      return { ...awake, warp: WARP }
+    case 'sparkle':
+      return { ...awake, sparkle: SPARKLE }
+    case 'eyes':
+      return { ...awake, mood: mood({ kind: 'cringe', t: 0 }) }
+    case 'camp-start':
+      return s.camp ? awake : { ...awake, camp: { t: 0 } }
+    case 'camp-end': {
+      const { camp: _, ...rest } = awake
+      const x = s.camp?.x
+      if (x === undefined) return rest
+      // The fire goes out in a puff of smoke.
+      const smoke = [1, 3, 5].map((i, k) => ({
+        kind: 'dust' as const,
+        x: x + i,
+        y: -2 - (k % 2),
+        age: 0,
+        life: ticks(700),
+      }))
+      return { ...rest, fx: [...rest.fx, ...smoke] }
+    }
   }
 }
 
@@ -410,6 +464,25 @@ export function carryActors(was: string[], keys: string[], actors: Scene[], plac
   })
 }
 
+// Where party member `i` sits around a campfire whose left column is `fire`: the lead on its left, the next on its
+// right, the third behind the lead.
+function seat(fire: number, i: number, w: number, width: number): number {
+  const rank = Math.floor(i / 2)
+  const x = i % 2 === 0 ? fire - SEAT_GAP - w - rank * (w + 1) : fire + FIRE_W + SEAT_GAP + rank * (w + 1)
+  return Math.min(Math.max(0, x), Math.max(0, width - w))
+}
+
+// One tick toward a seat by the fire, running; once there it sits facing the flames.
+function toSeat(scene: Scene, target: number, w: number, fireMiddle: number): Scene {
+  const dx = target - scene.x
+  if (Math.abs(dx) <= RUN) {
+    const facing = fireMiddle > target + w / 2 ? 1 : -1
+    return { ...scene, x: target, v: 0, facing, t: scene.t + 1 }
+  }
+  const dir = dx > 0 ? 1 : -1
+  return { ...scene, x: scene.x + RUN * dir, v: RUN, facing: dir, t: scene.t + 1, stride: scene.stride + RUN }
+}
+
 // One tick: a mood plays on (everyone holds still for it), idle ones doze off, free ones roam (running
 // while Claude works); clones, the wild visitor and particles come and go. `widths` per actor. The party keeps to
 // `width` columns; the visitor roams `room` (the whole band, the button's corner included).
@@ -432,11 +505,14 @@ export function step(
   // The "!" goes with the visitor: gone early (the band shrank under it), so is the "!".
   const alert = stepsOut ? ALERT : wild ? Math.max(0, s.alert - 1) : 0
   const isStill = Boolean(mood) || s.isCompacting || asleep || alert > 0
-  // The lead stays at its boulder, the rest roam on.
+  const camp = s.camp && { t: s.camp.t + 1, x: s.camp.x ?? Math.max(0, Math.round(width / 2) - Math.ceil(FIRE_W / 2)) }
+  // The lead stays at its boulder or its digging, the rest roam on (or gather at the campfire).
   let actors = s.actors.map((scene, i) =>
-    isStill || (i === 0 && s.strength)
+    isStill || (i === 0 && (s.strength || s.stash !== undefined))
       ? { ...scene, v: 0, t: scene.t + 1 }
-      : advance(scene, width, widths[i] ?? 1, rand, s.isWorking),
+      : camp
+        ? toSeat(scene, seat(camp.x, i, widths[i] ?? 1, width), widths[i] ?? 1, camp.x + FIRE_W / 2)
+        : advance(scene, width, widths[i] ?? 1, rand, s.isWorking),
   )
   // Everyone turns to look at the newcomer.
   if (alert > 0 && wild)
@@ -449,11 +525,19 @@ export function step(
     actors = actors.map((a, i) => (mood.actor === undefined || mood.actor === i ? { ...a, facing: flip(a.facing) } : a))
   if (mood?.kind === 'confused' && mood.t % CONFUSE_SPIN === 0 && mood.t <= CONFUSE_SPIN * SPINS)
     actors = actors.map(a => ({ ...a, facing: flip(a.facing) }))
+  // At an `rm -rf` the lead turns away, and back once it's over.
+  if (mood?.kind === 'cringe' && (mood.t === ticks(150) || mood.t === CRINGE - ticks(300)))
+    actors = actors.map((a, i) => (i === 0 ? { ...a, facing: flip(a.facing) } : a))
   // A boulder needs room ahead of the lead: against a wall, it pushes the other way.
   const first = actors[0]
   if (first && s.strength?.t === 0 && s.strength.dust === undefined) {
     const ahead = first.facing === 1 ? width - first.x - (widths[0] ?? 1) : first.x
     if (ahead < BIG_BOULDER.width + 1) actors = [{ ...first, facing: flip(first.facing) }, ...actors.slice(1)]
+  }
+  // A stash is buried ahead of the lead: against a wall, it digs the other way.
+  if (first && s.stash === STASH) {
+    const ahead = first.facing === 1 ? width - first.x - (widths[0] ?? 1) : first.x
+    if (ahead < STASH_BALL.width + 2) actors = [{ ...first, facing: flip(first.facing) }, ...actors.slice(1)]
   }
 
   const lead = actors[0] ?? newScene()
@@ -527,8 +611,32 @@ export function step(
       ...xs.map((i, k) => ({ kind: 'dust' as const, x: left + i, y: -1 - (k % 2), age: 0, life: ticks(600) })),
     ]
   }
+  // Digging: dirt kicked up behind the lead.
+  if (s.stash !== undefined && 1 - s.stash / STASH < STASH_DIG && t % 4 === 0) {
+    const left = Math.round(lead.x)
+    const x = lead.facing === 1 ? left - 1 : left + leadWidth
+    fx = [...fx, { kind: 'dust' as const, x, y: -1 - (t % 8 ? 0 : 1), age: 0, life: ticks(400) }]
+  }
+  // A passed lint: twinkles come and go around the lead.
+  if (s.sparkle !== undefined && s.sparkle > TWINKLE / 2 && t % 3 === 0) {
+    const left = Math.round(lead.x)
+    fx = [
+      ...fx,
+      {
+        kind: 'twinkle' as const,
+        x: left - 2 + Math.floor(rand() * (leadWidth + 4)),
+        y: Math.floor(rand() * 100),
+        age: 0,
+        life: TWINKLE,
+      },
+    ]
+  }
   const compactT = s.isCompacting ? s.compactT + 1 : 0
   const out: Status = { ...s, actors, mood, idleTicks, clones, trail, fx, compactT, wild, alert, t }
+  if (camp) out.camp = camp
+  if (out.stash !== undefined && --out.stash <= 0) delete out.stash
+  if (out.warp !== undefined && --out.warp <= 0) delete out.warp
+  if (out.sparkle !== undefined && --out.sparkle <= 0) delete out.sparkle
   // A moment over leaves no key behind: the status is as calm as before it.
   if (out.flight !== undefined && --out.flight <= 0) delete out.flight
   if (out.boxes !== undefined && --out.boxes <= 0) delete out.boxes
@@ -549,6 +657,10 @@ export const isCalm = (s: Status) =>
   s.flight === undefined &&
   s.boxes === undefined &&
   !s.strength &&
+  s.stash === undefined &&
+  s.warp === undefined &&
+  s.sparkle === undefined &&
+  !s.camp &&
   // A skip that sleep cut short stays frozen mid-air, as still as the rest.
   s.actors.every(a => a.v === 0 && (a.roam.kind !== 'skip' || isAsleep(s))) &&
   s.fx.every(p => p.kind === 'z') &&
@@ -630,6 +742,7 @@ export function pose(s: Status, height: number, actor = 0): Pose {
   if (mood?.kind === 'faint') return faintPose(mood.t, height)
   if ((mood?.kind === 'hop' || mood?.kind === 'cheer') && (mood.actor === undefined || mood.actor === actor))
     return hopPose(mood.t % HOP)
+  if (mood?.kind === 'cringe') return actor === 0 ? { ...REST, scale: 0.82, shake: mood.t % 4 < 2 ? 1 : 0 } : REST
   if (mood?.kind === 'evolve' || mood?.kind === 'confused') return REST
   if (actor === 0 && s.strength) {
     const { t, dust } = s.strength
@@ -637,7 +750,12 @@ export function pose(s: Status, height: number, actor = 0): Pose {
     if (dust !== undefined) return { ...REST, shake: dust % 4 < 2 ? 1 : -1 }
     return { ...REST, scale: 0.92, shake: Math.floor(t / HEAVE) % 2 ? scene.facing : 0 }
   }
+  // Digging: crouching down and up again, paws in the dirt.
+  if (actor === 0 && s.stash !== undefined && 1 - s.stash / STASH < STASH_DIG)
+    return { ...REST, scale: Math.floor(s.stash / ticks(200)) % 2 ? 0.86 : 0.95 }
   if (s.alert > ALERT - STARTLE) return { ...REST, lift: arc((ALERT - s.alert + 1) / (STARTLE + 1), 2) }
+  // Sitting by the campfire.
+  if (s.camp && scene.v === 0) return { ...REST, scale: 0.9 }
   if (isAsleep(s)) {
     const breath = 0.5 + 0.5 * Math.sin((2 * Math.PI * (scene.t + actor * 13)) / ticks(3000))
     return { ...REST, scale: 1 - 0.05 * breath, sink: 1, light: 0.8 }
@@ -876,6 +994,14 @@ export function frame(
     paint(out, dim(rock, night), stone, ground, ground)
   }
 
+  // The campfire: logs that dim at night like the rest, flames that never do.
+  if (s.camp?.x !== undefined) {
+    const x = s.camp.x
+    paint(out, dim(LOGS, night), x, ground, ground)
+    const flame = FLAMES[Math.floor(s.t / FLICKER) % FLAMES.length] ?? LOGS
+    paint(out, flame, x + 1, ground - 1, ground)
+  }
+
   const tops: number[] = []
   const ready: (Placed & { seed: number })[] = []
   // Last over the lead, so a Pokémon standing behind it never evolves out of sight.
@@ -921,8 +1047,21 @@ export function frame(
       const w = lefts[i]?.width ?? 0
       if (top !== undefined) paint(out, dim(BOX, night), Math.round(a.x + w / 2) - 2, Math.max(BOX.height - 1, top - 1))
     })
+  // A stash ahead of the lead, in front of the party: a Poké Ball on the ground, then sinking out of sight, then a heap of dirt over it.
+  if (s.stash !== undefined && leadLeft) {
+    const p = 1 - s.stash / STASH
+    const [first, last] = reach(lead.facing === 1 ? mirror(leadLeft) : leadLeft)
+    const left = Math.round(lead.x)
+    const spot = lead.facing === 1 ? left + last + 2 : left + first - 1 - STASH_BALL.width
+    if (p < STASH_SINK) {
+      const sunk = p < STASH_DIG ? 0 : Math.round(((p - STASH_DIG) / (STASH_SINK - STASH_DIG)) * STASH_BALL.height)
+      paint(out, dim(STASH_BALL, night), spot, ground + sunk, ground)
+    } else paint(out, dim(MOUND, night), spot, ground, ground)
+  }
   if (s.mood?.kind === 'confused' && tops[0] !== undefined && leadLeft)
     paint(out, CONFUSED, Math.round(lead.x + leadLeft.width / 2) - 3, Math.max(CONFUSED.height - 1, tops[0] - 1))
+  if (s.mood?.kind === 'cringe' && tops[0] !== undefined && leadLeft)
+    paint(out, SQUINT, Math.round(lead.x + leadLeft.width / 2) - 3, Math.max(SQUINT.height - 1, tops[0] - 1))
 
   for (const fx of s.fx) {
     const age = fx.age / fx.life
@@ -944,6 +1083,21 @@ export function frame(
       for (const [dx, dy] of BOLT)
         paint(out, dot(pick(SPARK, age)), fx.x + (dx ?? 0), top + (fx.y % half) + (dy ?? 0), ground, true)
     }
+    // A twinkle: a dot that opens into a four-pointed star and closes again.
+    if (fx.kind === 'twinkle') {
+      const top = tops[0] ?? ground
+      const half = Math.max(2, Math.ceil((leadLeft?.height ?? 4) / 2))
+      const [x, y] = [fx.x, top - 2 + (fx.y % (half + 2))]
+      paint(out, dot(0xffffff), x, y, ground, true)
+      if (age > 0.25 && age < 0.75)
+        for (const [dx, dy] of [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [0, 1],
+        ])
+          paint(out, dot(SPARK[1] ?? 0xffffff), x + (dx ?? 0), y + (dy ?? 0), ground, true)
+    }
     if (fx.kind === 'z') {
       const actor = s.actors[fx.y] ?? lead
       const rise = Math.floor(fx.age / ticks(300))
@@ -962,6 +1116,27 @@ export function frame(
     paint(out, dim(bird, night), left, floor)
     paint(out, dim(LETTER, night), left + 3, floor + LETTER.height)
   }
+  if (s.warp !== undefined) shimmer(out, 1 - s.warp / WARP)
   for (const o of look.overlays ?? []) paint(out, dim(o.img, night), o.left, o.floor)
   return out
 }
+
+// A rebase rewinding time: a band of pale light sweeps right to left, twice, over a faint lavender wash.
+function shimmer(out: Pixels, p: number) {
+  const sweep = (p * 2) % 1
+  const band = 10
+  const at = Math.round(out.width - sweep * (out.width + band))
+  const wash = 0.18 * Math.sin(p * Math.PI)
+  for (let y = 0; y < out.height; y++)
+    for (let x = 0; x < out.width; x++) {
+      const i = y * out.width + x
+      const c = out.pixels[i] ?? CLEAR
+      if (c === CLEAR) continue
+      const d = x - at
+      const k = wash + (d >= 0 && d < band ? 0.55 * Math.sin((Math.PI * (d + 0.5)) / band) : 0)
+      if (k > 0) out.pixels[i] = blend(c, WARP_TINT, Math.min(1, k))
+    }
+}
+
+const blend = (a: number, b: number, k: number) =>
+  [16, 8, 0].reduce((c, sh) => c | (Math.round(((a >> sh) & 0xff) * (1 - k) + ((b >> sh) & 0xff) * k) << sh), 0)
