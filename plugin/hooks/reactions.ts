@@ -19,6 +19,16 @@ const PUSHED = /^\s*[+*]?\s*(\[new [a-z]+\]|[0-9a-f]{7,40}\.{2,3}[0-9a-f]{7,40})
 // Adds a package, or installs what the project lists (`npm install`, `pip install -r requirements.txt`).
 const INSTALL =
   /^((npm|pnpm|yarn|bun) (install|i|add|ci)|pip3? install|uv (add|sync|pip install)|poetry (add|install)|cargo add|bundle install|go get|gem install|composer (install|require))(\s|$)/
+// A stash that sets work aside (`git stash`, `git stash push -m x`, `git stash -u`), not one that brings it back.
+const STASH = /^git\s+(-\S+\s+([^-\s]\S*\s+)?)*stash(\s+(push|save)(\s|$)|\s+-|\s*$)/
+const NOTHING_STASHED = /No local changes to save/
+// A rebase, but not one being given up on or only asked about.
+const REBASE = /^git\s+(-\S+\s+([^-\s]\S*\s+)?)*rebase(\s|$)/
+const NOT_REBASING = new Set(['--abort', '--quit', '--edit-todo', '--show-current-patch', '--help'])
+const NOTHING_REBASED = /is up to date\b|^(fatal|error): /m
+// A linter or type checker (a build's `tsc` included): passing earns a sparkle.
+const LINT =
+  /^(tsc|ruff(?! format)|eslint|biome (check|lint)|mypy|pyright|flake8|pylint|golangci-lint run|cargo (check|clippy)|go vet|(npm|pnpm|yarn|bun)( run)? (lint|typecheck|type-check|check-types)(?:[:.-][\w:.-]*)?)(\s|$)/
 // A merge, rebase, cherry-pick or pull that stopped at conflicting changes.
 const CONFLICT = /^CONFLICT \([^)]+\): |\bAutomatic merge failed\b/m
 // Words that run the command after them: `FOO=1 sudo npx jest`, `uv run pytest`, `python -m pytest`,
@@ -248,8 +258,18 @@ const isCommit = (command: string) =>
 // What git prints for a commit that went through: `[main 1a2b3c4] message`.
 const COMMITTED = /^\[[^\]\n]+ [0-9a-f]{7,40}\] /m
 
+// Deletes a folder and all in it without asking: `rm -rf`, `rm -fr dir`, `rm -r -f`, `rm --recursive --force`.
+function isRmRf(command: string): boolean {
+  const ws = words(command)
+  if (ws[0] !== 'rm') return false
+  const flags = ws.slice(1).filter(w => w.startsWith('-'))
+  const short = flags.filter(w => !w.startsWith('--')).join('')
+  return (/[rR]/.test(short) || flags.includes('--recursive')) && (short.includes('f') || flags.includes('--force'))
+}
+
 // The smaller moments of a finished command, which pay no XP: a push that went through flies off with a Pidgey (one
-// a pipe hides counts when git printed a branch it sent), an install carries boxes, a merge conflict confuses.
+// a pipe hides counts when git printed a branch it sent), an install carries boxes, a stash is buried, a rebase that
+// went through shimmers, a passed lint sparkles, an `rm -rf` makes the lead cover its eyes, a merge conflict confuses.
 function moments(command: string, isError: boolean, output = ''): Happening[] {
   const ran = deciders(command)
   const isDryRun = (c: string) => words(c).some(w => w === '--dry-run' || w === '-n' || w === '--help')
@@ -258,9 +278,20 @@ function moments(command: string, isError: boolean, output = ''): Happening[] {
     ? !isError && !NOT_PUSHED.test(output)
     : everyRun(command).some(pushes) && PUSHED.test(output) && !NOT_PUSHED.test(output)
   const isInstalled = !isError && ran.some(c => INSTALL.test(c) && !isDryRun(c))
+  const isStashed = !isError && ran.some(c => STASH.test(c)) && !NOTHING_STASHED.test(output)
+  const isRebased =
+    !isError &&
+    ran.some(c => REBASE.test(c) && !words(c).some(w => NOT_REBASING.has(w))) &&
+    !NOTHING_REBASED.test(output) &&
+    !CONFLICT.test(output)
+  const isLinted = !isError && ran.some(c => LINT.test(c) && !NO_RUN.test(c))
   return [
     ...(isPushed ? (['push'] as const) : []),
     ...(isInstalled ? (['boxes'] as const) : []),
+    ...(isStashed ? (['stash'] as const) : []),
+    ...(isRebased ? (['rebase'] as const) : []),
+    ...(isLinted ? (['sparkle'] as const) : []),
+    ...(everyRun(command).some(isRmRf) ? (['eyes'] as const) : []),
     ...(CONFLICT.test(output) ? (['confused'] as const) : []),
   ]
 }

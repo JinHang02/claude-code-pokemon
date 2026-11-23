@@ -13,7 +13,7 @@ and evolve as you ship.
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](https://code.claude.com/docs/en/plugins)
 [![MIT license](https://img.shields.io/badge/license-MIT-3fd1ff?style=flat-square)](LICENSE)
 [![CI](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml/badge.svg)](https://github.com/JinHang02/claude-code-pokemon/actions/workflows/ci.yml)
-[![1102 tests](https://img.shields.io/badge/tests-1102_passing-27c93f?style=flat-square)](plugin/tests)
+[![1112 tests](https://img.shields.io/badge/tests-1112_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
 [Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
@@ -71,8 +71,13 @@ A few smaller moments, none of them worth XP:
 - **A test or build runs past 30 seconds:** your lead puts its Strength into a boulder until it ends, then dusts itself off.
 - **A package install finishes** (`npm install`, `pip install`, `cargo add` and friends): everyone carries a box for a few seconds.
 - **A merge hits a conflict:** the party spins around, confused, a "?!" over your lead.
+- **A `git stash` sets work aside:** your lead digs, buries a Poké Ball and leaves a little heap of dirt over it.
+- **A `git rebase` goes through:** a time-warp shimmer sweeps the band, right to left, twice.
+- **A lint or type check passes** (`eslint`, `ruff check`, `tsc`, `mypy`, `cargo clippy`, `npm run lint` and friends): twinkles around your lead.
+- **Claude runs an `rm -rf`:** your lead turns away, shrinks and covers its eyes, a "><" over its head.
+- **A turn of Claude's runs past 10 minutes:** the party sets up camp around a campfire until the turn ends.
 
-Each one plays on demand too: `/pokemon-play push`, `boulder`, `boxes` or `confused`.
+Each one plays on demand too: `/pokemon-play push`, `boulder`, `boxes`, `confused`, `stash`, `rebase`, `sparkle`, `eyes` or `camp`.
 
 Between all that they just live their lives: short strolls in any direction, stopping for a moment, looking around, changing their minds halfway, skipping in place.
 

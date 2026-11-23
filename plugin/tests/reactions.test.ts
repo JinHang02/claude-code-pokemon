@@ -16,10 +16,11 @@ test('failing tests faint, passing tests cheer and earn xp', () => {
     expect(classify('Bash', cmd, false, 0).happenings).toEqual(['cheer'])
 })
 
-test('a failing build or lint faints; a passing one is no news', () => {
+test('a failing build or lint faints; a passing lint only sparkles', () => {
   for (const cmd of ['npx tsc -p .', 'ruff check .', 'npm run build', 'make all', 'docker compose build engine'])
     expect(classify('Bash', cmd, true, 0).happenings).toEqual(['tool-error'])
-  expect(classify('Bash', 'ruff check .', false, 0)).toEqual({ happenings: [], xp: 0, streak: 0 })
+  expect(classify('Bash', 'ruff check .', false, 0)).toEqual({ happenings: ['sparkle'], xp: 0, streak: 0 })
+  expect(classify('Bash', 'make all', false, 0)).toEqual({ happenings: [], xp: 0, streak: 0 })
 })
 
 test('a commit cheers and earns the most xp', () => {

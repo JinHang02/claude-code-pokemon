@@ -6,6 +6,23 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-23
+
+### Added: five more small moments
+
+- **`git stash`:** the lead digs, a Poké Ball sinks into the ground in front of it, and a heap of dirt stays a moment.
+  Popping, applying, listing or a stash with nothing to save doesn't count.
+- **A `git rebase` that went through:** a lavender shimmer sweeps the band right to left, twice. One that stops at a
+  conflict is still confused; an abort, or a branch already up to date, does nothing.
+- **A lint or type check that passed** (`tsc`, `eslint`, `ruff check`, `mypy`, `pyright`, `flake8`, `pylint`,
+  `biome`, `golangci-lint`, `cargo check` / `clippy`, `go vet`, `npm run lint` / `typecheck`): twinkles around the
+  lead. A failing one faints as before; `ruff format` isn't a lint.
+- **`rm -rf`** (or `-fr`, `-r -f`, `--recursive --force`), anywhere in a command: the lead turns away, shrinks and
+  trembles under a "><". A plain `rm` or `git rm` does nothing.
+- **A turn of Claude's past 10 minutes:** the party gathers on both sides of a campfire, facing it, until the turn
+  ends, then the fire goes out in a puff of smoke. The band draws as often as it does while Claude works anyway.
+- None of them pays XP. Each plays on demand: `/pokemon-play stash`, `rebase`, `sparkle`, `eyes`, `camp`.
+
 ## [1.8.1] - 2026-10-30
 
 ### Fixed: catching in a wide terminal
@@ -821,7 +838,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.6.0...v1.7.0

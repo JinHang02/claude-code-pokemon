@@ -82,6 +82,11 @@ const ANIMATION_ABOUT: [string, string][] = [
   ['boulder', 'Strength, as on a long test or build'],
   ['boxes', 'boxes carried, as after an install'],
   ['confused', 'confused, as at a merge conflict'],
+  ['stash', 'a Poké Ball buried, as on git stash'],
+  ['rebase', 'time-warp shimmer, as after a rebase'],
+  ['camp', 'a campfire, as on a 10-minute turn'],
+  ['sparkle', 'twinkles, as when a lint passes'],
+  ['eyes', 'eyes covered, as at rm -rf'],
 ]
 // The moons /pokemon-play shows by name (moon.ts reads the same words).
 const MOON_ABOUT: [string, string][] = [

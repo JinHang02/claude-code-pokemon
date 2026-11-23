@@ -148,6 +148,11 @@ const ANIMATIONS = [
   'boulder',
   'boxes',
   'confused',
+  'stash',
+  'rebase',
+  'camp',
+  'sparkle',
+  'eyes',
   'evolve',
   'wild',
 ] as const
@@ -155,6 +160,9 @@ const ANIMATIONS = [
 const LONG_RUN_MS = 30_000
 // Long runs going on now (several can run side by side): the boulder goes once the last one ends.
 let longRuns = 0
+// A turn of Claude's still going after this long: the party sets up camp around a fire until it ends.
+const LONG_TURN_MS = 10 * 60_000
+let campTimer: { cancel: () => void } | null = null
 const PHASES: Phase[] = ['day', 'dusk', 'night', 'dawn']
 
 const party = atom({ plugin: 'pokemon', key: 'party' } as const, [])
@@ -2506,8 +2514,11 @@ async function play($: EngineInterface, args: string): Promise<string> {
   if (name === 'hop') feel('turn-answer')
   else if (name === 'cheer') feel('cheer')
   else if (name === 'faint') feel('tool-error')
-  else if (name === 'push' || name === 'boxes' || name === 'confused') feel(name)
-  else if (name === 'boulder') {
+  else if (['push', 'boxes', 'confused', 'stash', 'rebase', 'sparkle', 'eyes'].includes(name)) feel(name as Happening)
+  else if (name === 'camp') {
+    feel('camp-start')
+    later(8000, () => feel('camp-end'))
+  } else if (name === 'boulder') {
     feel('boulder-start')
     later(5000, () => feel('boulder-end'))
   } else if (name === 'sleep') status = { ...status, idleTicks: Number.MAX_SAFE_INTEGER }
@@ -2871,11 +2882,18 @@ export const register: Register = on => {
   on('turn.start', async ($, e, next) => {
     // A subagent's turn ends with no main turn.complete of its own: it counts as activity, not as Claude working.
     feel(e.agentId ? 'activity' : 'turn-start')
+    if (!e.agentId) {
+      campTimer?.cancel()
+      campTimer = $.clock.after(LONG_TURN_MS, () => feel('camp-start'))
+    }
     return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) {
+      campTimer?.cancel()
+      campTimer = null
+      feel('camp-end')
       feel(e.reason === 'answer' ? 'turn-answer' : 'turn-end')
       if (e.reason === 'answer') background($, earn($, XP.reply))
     } else if (agents.delete(e.agentId)) countAgents()

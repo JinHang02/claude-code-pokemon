@@ -128,7 +128,7 @@ test('/pokemon-help and the typeahead offer the weather words', () => {
     const start = /\S*$/.exec(text)?.index ?? text.length
     return suggest(text, text.length, text.slice(start), start, owned as never).map(r => r.text)
   }
-  expect(texts('/pokemon-play r')).toEqual(['rain '])
+  expect(texts('/pokemon-play r')).toEqual(['rebase', 'rain '])
   expect(texts('/pokemon-play s')).toContain('snow ')
   expect(texts('/pokemon-play f')).toEqual(['faint', 'forest ', 'fog ', 'full moon'])
   expect(texts('/pokemon-play rain ')).toEqual(LANDSCAPES)

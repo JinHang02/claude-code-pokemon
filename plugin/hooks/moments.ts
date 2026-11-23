@@ -1,5 +1,6 @@
 // The pictures of the party's smaller moments: a Pidgey flying a push off with a letter, the boulder a long test or
-// build is pushed as, the boxes carried after an install and the "?!" of a merge conflict. `scene.ts` places them.
+// build is pushed as, the boxes carried after an install, the "?!" of a merge conflict, the Poké Ball buried at a
+// stash, the campfire of a long turn and the "><" of an `rm -rf`. `scene.ts` places them.
 import { CLEAR } from './sprite'
 import type { Pixels } from './sprite'
 
@@ -26,6 +27,12 @@ const PALETTE: Record<string, number> = {
   o: 0xf4f4f4,
   q: 0x7a4fd6,
   x: 0xe0352b,
+  // Dirt heaped over a buried stash.
+  D: 0x7a5230,
+  E: 0x5e3d22,
+  // Campfire flames: orange and yellow over the red.
+  O: 0xff8c1a,
+  Y: 0xffd84a,
 }
 
 const art = (rows: string[]): Pixels => ({
@@ -42,6 +49,18 @@ export const PIDGEY: [Pixels, Pixels] = [
 export const LETTER = art(['wwwww', 'ewwwe', 'wewew', 'wwrww'])
 export const BOULDER = art(['..mmmmm..', '.mhhmmmm.', 'mhhmmmmms', 'mhmmmsmms', 'mmmmmmmms', '.mmsmmms.', '..sssss..'])
 export const BOX = art(['CCCCC', 'ccTcc', 'ccTcc', 'CCCCC'])
+// A Poké Ball buried at a `git stash`, and the heap of dirt left over it.
+export const STASH_BALL = art(['.rrr.', 'kkokk', '.www.'])
+export const MOUND = art(['.DDD.', 'DDEDD'])
+// Crossed logs and three flickers of flame over them.
+export const LOGS = art(['Cc...cC', '.cCCCc.'])
+export const FLAMES: Pixels[] = [
+  art(['..Y..', '.YOY.', '.OYOx', 'xOOOx']),
+  art(['.Y...', '.OY..', 'xOYO.', 'xOOOx']),
+  art(['...Y.', '..YO.', '.OYOx', 'xOOOx']),
+]
+// Eyes squeezed shut, "><", at an `rm -rf`.
+export const SQUINT = art(['.ooooo.', 'okoooko', 'ookokoo', 'okoooko', '.ooooo.'])
 export const CONFUSED = art(['.ooooo.', 'oqqqoxo', 'oooqoxo', 'ooqqoxo', 'ooooooo', 'ooqooxo', '.ooooo.'])
 
 // Twice the size, each pixel doubled: the boulder a tall Pokémon pushes.

@@ -14,7 +14,7 @@ claude --plugin-dir plugin
 
 That loads the plugin from your clone. In an interactive session Claude Code watches the folder and reloads the plugin whenever you save a file, so you see changes within a second.
 
-`/pokemon-play <animation>` plays any animation on demand (`hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `push`, `boulder`, `boxes`, `confused`, `evolve`, `wild`, `day`, `dusk`, `night`, `dawn`), which is the fastest way to check visual changes.
+`/pokemon-play <animation>` plays any animation on demand (`hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `push`, `boulder`, `boxes`, `confused`, `stash`, `rebase`, `camp`, `sparkle`, `eyes`, `evolve`, `wild`, `day`, `dusk`, `night`, `dawn`), which is the fastest way to check visual changes.
 
 ## Before you open a pull request
 
@@ -38,7 +38,7 @@ CI runs validation, the tests and the formatting check on every push and pull re
 | :--------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `plugin/hooks/register.tsx`        | Wires Claude Code events to everything else: the commands and their replies, reactions and XP, saving and syncing with other windows, wild visitors and Poké Balls, the PokéMart, giving items, evolutions and their screen, the frame timer and the band |
 | `plugin/hooks/scene.ts`            | The animation: roaming, moods, particles, clones, wild visitors, day and night                                                                                                                                                                            |
-| `plugin/hooks/moments.ts`          | The smaller reactions' pictures: the push's Pidgey and letter, the boulder, the boxes, the confused "?!"                                                                                                                                                  |
+| `plugin/hooks/moments.ts`          | The smaller reactions' pictures: the push's Pidgey and letter, the boulder, the boxes, the confused "?!", the stash's Poké Ball and dirt, the campfire, the "><"                                                                                          |
 | `plugin/hooks/sprite.ts`           | Parses the ANSI sprites, scales them and turns pixels into terminal cells                                                                                                                                                                                 |
 | `plugin/hooks/save.ts`             | The save's shape and loading, names as the games spell them, levels and XP, ₽ and the ledgers, the Pokédex, the Bag, time together; the text of `/pokemon party`, `box` (30 a page), `bag` and `/pokedex`, fitted to narrow terminals                     |
 | `plugin/hooks/members.ts`          | Finds the party and PC box members a name fits (with `shiny`, `lv <n>` and a number), the numbered list among several and its ways to narrow it, and `box <name>`                                                                                         |
