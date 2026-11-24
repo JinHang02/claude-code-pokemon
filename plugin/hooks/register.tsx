@@ -135,7 +135,9 @@ const SYNC_MS = 10_000
 const TOGETHER_EVERY_MS = 60_000
 // A download taking longer than this has failed.
 const FETCH_TIMEOUT_MS = 20_000
-const WILD_EVERY = [ticks(10 * 60_000), ticks(20 * 60_000)] as const
+// A wild visitor comes this long after the last one (the first, after the first tick), on the clock: counting ticks
+// instead let a busy machine, which ticks less often, bring it late.
+const WILD_EVERY = [10 * 60_000, 20 * 60_000] as const
 const ANIMATIONS = [
   'hop',
   'cheer',
@@ -162,7 +164,9 @@ const LONG_RUN_MS = 30_000
 let longRuns = 0
 // A turn of Claude's still going after this long: the party sets up camp around a fire until it ends.
 const LONG_TURN_MS = 10 * 60_000
-let campTimer: { cancel: () => void } | null = null
+// When the turn going on began, on the clock, until its camp is set up: checked each tick rather than held as one
+// 10-minute timer, which a test clock lets go after 10 seconds of real time.
+let turnSince: number | null = null
 const PHASES: Phase[] = ['day', 'dusk', 'night', 'dawn']
 
 const party = atom({ plugin: 'pokemon', key: 'party' } as const, [])
@@ -270,7 +274,8 @@ const isVisited = () => Boolean(status.wild || pitch)
 let isButtonHidden = false
 const canAim = () =>
   Boolean(wild && wildRate !== null && status.wild && status.wild.rustle === 0 && !status.wild.isFleeing && !pitch)
-let wildDue = WILD_EVERY[0]
+// The clock time the next visitor is due.
+let wildAt: number | null = null
 // The timer's visitor whose downloads ended under an evolution's screen: it comes as soon as the screen is over.
 let wildHeld: { pick: Pick; isShiny: boolean } | null = null
 let evolveFrom: Pixels | null = null
@@ -1993,7 +1998,7 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
       if (isAsked) return 'No wild Pokémon comes by while an evolution is on screen.'
       // The timer's visitor isn't lost: the first tick after the screen brings it.
       wildHeld = { pick, isShiny }
-      wildDue = 0
+      wildAt = 0
       return null
     }
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
@@ -2427,10 +2432,15 @@ function wake() {
 async function tick($: EngineInterface) {
   if (!band || !fitted || save.isOff) return
   tickNo++
-  await readClock($)
+  const now = await readClock($)
+  if (turnSince !== null && now - turnSince >= LONG_TURN_MS) {
+    turnSince = null
+    feel('camp-start')
+  }
+  wildAt ??= now + WILD_EVERY[0]
   // A visitor due while a screen plays comes once it has ended.
-  if (--wildDue <= 0 && !status.wild && !isAsleep(status) && !screen) {
-    wildDue = between(...WILD_EVERY)
+  if (now >= wildAt && !status.wild && !isAsleep(status) && !screen) {
+    wildAt = now + between(...WILD_EVERY)
     background($, spawnWild($))
   }
   status = step(
@@ -2883,16 +2893,14 @@ export const register: Register = on => {
     // A subagent's turn ends with no main turn.complete of its own: it counts as activity, not as Claude working.
     feel(e.agentId ? 'activity' : 'turn-start')
     if (!e.agentId) {
-      campTimer?.cancel()
-      campTimer = $.clock.after(LONG_TURN_MS, () => feel('camp-start'))
+      turnSince = await $.clock.now()
     }
     return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) {
-      campTimer?.cancel()
-      campTimer = null
+      turnSince = null
       feel('camp-end')
       feel(e.reason === 'answer' ? 'turn-answer' : 'turn-end')
       if (e.reason === 'answer') background($, earn($, XP.reply))

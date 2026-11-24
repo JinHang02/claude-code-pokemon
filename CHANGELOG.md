@@ -6,6 +6,21 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-24
+
+### Changed
+
+- **A ball that breaks free wobbles more often first.** Each wobble is now a check, and three in a row is a catch, so
+  the odds of a catch stay the same. A starter that breaks free used to pop straight out every time; now it wobbles
+  once about 30% of the time and twice about 17%. Even a legendary wobbles now and then before it bursts out.
+
+### Fixed
+
+- **A wild visitor comes on time on a busy machine.** Its 10 to 20 minutes are now counted on the clock rather than in
+  frames drawn, so a slow machine, which draws fewer frames, no longer brings it late.
+- **The campfire of a long turn is checked on every frame** against when the turn began, rather than waiting on one
+  10-minute timer, which the test clock drops after 10 seconds of real time on a slow machine.
+
 ## [1.9.0] - 2026-11-23
 
 ### Added: five more small moments
@@ -838,7 +853,8 @@ The first release, **Pokémon Journey for Claude Code**.
 - **Colors:** the VS Code / Cursor terminal needs `"terminal.integrated.minimumContrastRatio": 1`, and the old Windows console can't show 24-bit color.
 - **Sprites in the previews:** the plugin ships no Pokémon art, but the README's preview images (on the `assets` branch) show sprites as the plugin draws them.
 
-[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/JinHang02/claude-code-pokemon/compare/v1.7.0...v1.8.0
