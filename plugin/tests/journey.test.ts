@@ -5,6 +5,7 @@ import { keptJourney, newJourney, TRAVEL_REGIONS, speciesIn, unlockedOf } from '
 import type { Journey, TravelRegion, RegionId } from '../hooks/travel-regions'
 import { balanceOf, emptySave, extraMoney, extraXp, loadSave, MAX_BOX, MAX_PARTY, STARTING_MONEY } from '../hooks/save'
 import type { DexEntry, Ledger, Member, Save } from '../hooks/save'
+import { REGIONS } from '../hooks/region'
 
 const region = (id: RegionId): TravelRegion => {
   const r = TRAVEL_REGIONS.find(x => x.id === id)
@@ -277,6 +278,7 @@ const played = (): Save => ({
   size: 'small',
   evolution: 'auto',
   evolutionStyle: 'white',
+  region: 'alola',
   isOff: true,
   folded: ['xp:old'],
   foldedXp: { 'xp:old': { p1: 50 } },
@@ -303,6 +305,7 @@ test('starting fresh wipes the game, keeps the settings and opens Kanto’s choi
     size: 'small',
     evolution: 'auto',
     evolutionStyle: 'white',
+    region: 'alola',
     isOff: true,
     dex: {},
     recent: [],
@@ -334,4 +337,14 @@ test('starting fresh on a new save keeps it new, and rerunning it gives the same
   const once = startFresh(played(), ledgers).save
   expect(startFresh(once, ledgers).save).toEqual(once)
   expect(startFresh(emptySave(), {}).save).toEqual({ ...emptySave(), journey: newJourney() })
+})
+
+test('starting fresh keeps every /pokemon region forms setting, through a store round trip and a rerun', () => {
+  for (const r of REGIONS) {
+    const once = startFresh({ ...played(), region: r }, {}).save
+    expect(once.region).toBe(r)
+    expect(loadSave(JSON.parse(JSON.stringify(once))).region).toBe(r)
+    expect(startFresh(once, {}).save).toEqual(once)
+  }
+  expect('region' in startFresh({ ...played(), region: undefined }, {}).save).toBe(false)
 })

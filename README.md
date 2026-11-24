@@ -254,7 +254,7 @@ The starter choice and the other screens in the band take a click; once you've c
 - **Keep my save:** everything stays (party, PC box, Pokédex, ₽, items, XP), and you start in Kanto with the later regions locked.
 - **Start fresh:** asks once more, in red, then wipes it all and gives you a new Kanto starter and ₽3,000.
 
-Until you pick, the game plays your save as kept and asks again the next time it starts. Want a clean slate later? `/pokemon restart` asks first, says what it wipes, and starts your journey over from a Kanto starter. Your sprite size, evolution style and evolve setting are kept.
+Until you pick, the game plays your save as kept and asks again the next time it starts. Want a clean slate later? `/pokemon restart` asks first, says what it wipes, and starts your journey over from a Kanto starter. Your sprite size, evolution style, evolve setting and `/pokemon region` forms are kept.
 
 ---
 

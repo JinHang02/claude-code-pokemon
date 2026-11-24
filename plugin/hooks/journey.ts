@@ -123,6 +123,7 @@ export function startFresh(save: Save, ledgers: Record<string, Ledger>): Change 
       recent: [],
       journey: newJourney(),
       ...(save.evolutionStyle ? { evolutionStyle: save.evolutionStyle } : {}),
+      ...(save.region ? { region: save.region } : {}),
       ...(save.isOff ? { isOff: save.isOff } : {}),
       ...(keys.length ? { folded: keys, foldedXp } : {}),
       ...(Object.keys(foldedMoney).length ? { foldedMoney } : {}),

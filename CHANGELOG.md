@@ -28,7 +28,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - `/pokedex` opens with where you are and how many regions are open, then a line per region, a ▶ on the current one.
   A region whose ticket you don't own shows "Unavailable".
 - `/pokemon restart` opens a confirmation in the band that says what it wipes; yes starts the journey over from a
-  Kanto starter with ₽3,000. The sprite size, evolution style, evolve setting and on/off stay.
+  Kanto starter with ₽3,000. The sprite size, evolution style, evolve setting, `/pokemon region` forms and on/off
+  stay.
 - A save from before regions opens a choice the first time: **Keep my save** (everything stays; you start in Kanto
   with the later regions locked) or **Start fresh** (asks again in red, then as restart). Until you choose, the save
   plays as kept and the choice opens again at the next start.
