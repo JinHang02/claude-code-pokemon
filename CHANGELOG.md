@@ -12,6 +12,11 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   the odds of a catch stay the same. A starter that breaks free used to pop straight out every time; now it wobbles
   once about 30% of the time and twice about 17%. Even a legendary wobbles now and then before it bursts out.
 
+### Fixed
+
+- **A wild visitor comes on time on a busy machine.** Its 10 to 20 minutes are now counted on the clock rather than in
+  frames drawn, so a slow machine, which draws fewer frames, no longer brings it late.
+
 ## [1.9.0] - 2026-11-23
 
 ### Added: five more small moments
