@@ -16,7 +16,7 @@ and evolve as you ship.
 [![1112 tests](https://img.shields.io/badge/tests-1112_passing-27c93f?style=flat-square)](plugin/tests)
 [![905 Pokémon](https://img.shields.io/badge/Pok%C3%A9mon-905-ffd23f?style=flat-square)](#gotta-see-em-all)
 
-[Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
+[Website](https://jinhang02.github.io/claude-code-pokemon/) · [Install](#install) · [What they do](#they-react-to-your-work) · [Level up & evolve](#raise-them-into-legends) · [PokéMart](#welcome-to-the-pokémart) · [Regions](#regions-and-ferry-tickets) · [Landscapes](#day-night-and-20-landscapes) · [Commands](#commands) · [FAQ](#faq) · [Known limitations](#known-limitations)
 
 </div>
 
@@ -31,7 +31,7 @@ Two commands inside Claude Code:
 /plugin install pokemon@claude-code-pokemon
 ```
 
-Start a new session and a wild Pokémon will be waiting above your prompt. Want a specific partner?
+Start a new session and choose your partner: Bulbasaur, Charmander or Squirtle wait in their Poké Balls above your prompt. Click one and answer **Yes**, or type `/pokemon choose squirtle`. Want a specific partner too?
 
 ```text
 /pokemon pikachu
@@ -181,7 +181,7 @@ Love your Charmander just the way it is? Give it an everstone and it won't evolv
 
 Every 10 to 20 minutes **a wild Pokémon wanders through**. The tall grass rustles at the edge, your party jumps and turns to it with a red **!** speech bubble, and Claude Code tells you who it is: _"A wild Bulbasaur appeared!"_. It roams the whole band, the ₽ corner too, stops halfway to look around, then moves on.
 
-Who comes depends on **where and when you are**, as in the games. On average a Pidgey turns up about once in 190 visits, an Eevee once in 970 and a Dratini once in 1,900: ten Pidgey for every Dratini. Legendaries, mythicals and Ultra Beasts together come about once in 100. Water types gather at the lake, Ghosts come out at night, and a Pokémon **you've never seen** is 2.5 times as likely to step out of the grass:
+Who comes depends on **where and when you are**, as in the games. Every visitor is from [the region you're in](#regions-and-ferry-tickets), common ones far more often than rare ones. Legendaries, mythicals and Ultra Beasts together come about once in 100. Water types gather at the lake, Ghosts come out at night, and a Pokémon **you've never seen** is 2.5 times as likely to step out of the grass:
 
 | Where or when                    | Who's more likely                                  |
 | :------------------------------- | :------------------------------------------------- |
@@ -197,18 +197,19 @@ Who comes depends on **where and when you are**, as in the games. On average a P
 | Legendary, mythical, Ultra Beast | about 1 in 100                                     |
 | Never seen yet                   | ×2.5                                               |
 
-A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but anyone can still wander anywhere. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only, costume, gift or event form, a Furfrou trim, or a form the games hand out through an item (Rotom's appliances, the Therian and Origin formes, Genesect's Drives, Sky Shaymin, Alcremie's sweets...): those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
+A fitting place makes a Pokémon 4 times as likely and a fitting hour twice (Ghost 1.5 times at dusk), but any of the region's Pokémon can still wander anywhere. Dusk brings a few visitors of its own (Murkrow, Houndour, Gastly and others), and a full moon brings Clefairy, each only in its own region. Regional forms count their own types, so an Alolan Vulpix likes the mountains. Wild Pokémon never come as a Mega, Gigantamax, Primal, battle-only, costume, gift or event form, a Furfrou trim, or a form the games hand out through an item (Rotom's appliances, the Therian and Origin formes, Genesect's Drives, Sky Shaymin, Alcremie's sweets...): those you call with `/pokemon <name>`. Everything you meet goes into your Pokédex:
 
 ```text
 /pokedex
 
-Pokédex: 37 / 905 seen · 4 caught · 2 shiny
-  Gen 1  ▓░░░░░░░░░  21/151 seen · 3 caught · 1 shiny
-  Gen 2  ▓░░░░░░░░░  9/100 seen · 1 caught · 1 shiny
-  Gen 3  ░░░░░░░░░░  4/135 seen · 0 caught · 0 shiny
+In Johto · 2 of 8 regions open
+Pokédex: 113 / 905 seen · 14 caught · 2 shiny
+  Kanto   █▓▓▓▓▓▓░░░  104/151 seen · 12 caught · 1 shiny
+▶ Johto   ▓░░░░░░░░░  9/100 seen · 2 caught · 1 shiny
+  Hoenn   Unavailable
   ...
 Shinies: Pikachu, Granbull
-Recently seen: Bulbasaur, Golurk, Eevee, Charmander
+Recently seen: Hoothoot, Sentret, Pidgey, Rattata
 ```
 
 Build a **party of up to three** and they'll travel together. Twins are welcome: two Eevees walk side by side, and each evolves its own way.
@@ -218,6 +219,42 @@ Build a **party of up to three** and they'll travel together. Twins are welcome:
 /pokemon add alolan vulpix
 /pokemon party
 ```
+
+---
+
+## Regions and ferry tickets
+
+Your journey starts in **Kanto**, and seven more regions lie across the sea: **Johto, Hoenn, Sinnoh, Unova, Kalos, Alola and Galar**. The wild Pokémon that wander by come from the region you're in. The Pokémon you own go everywhere with you, and `/pokemon <name>` still calls any Pokémon, from any region.
+
+To sail on, you need a **ferry ticket** for the next region. They're on the PokéMart's **Tickets tab**, at ₽150,000 each: click the `● KANTO` label in the band's top-left corner to open it, or type `/pokemon buy johto ticket`. A ticket shows _Unavailable_ until you have more experience as a trainer. One ticket is good for as many trips there and back as you like, and Kanto needs none.
+
+```text
+/pokemon travel johto      Sailing to Johto…
+/pokemon travel kanto      sail home again
+/pokemon travel            where you can sail
+```
+
+A ferry carries your party across the band, and the region's name in the corner changes in every window. On a band too small for the crossing, the reply just says _"Sailed to Johto."_. Wild Pokémon from the region you left run off, and none comes by while the ferry sails.
+
+**Your first arrival in a region** brings its starters: Chikorita, Cyndaquil and Totodile wait in their Poké Balls in Johto. Pick one and it joins you, caught. Press `x` to decide later: the choice comes back the next time Claude Code starts, or the next time you sail there.
+
+The starter choice and the other screens in the band take a click; once you've clicked one, `←` `→` choose, `Enter` picks, `y` and `n` answer and `x` closes. No mouse? Each one has a typed answer too:
+
+```text
+/pokemon choose cyndaquil  take one of the starters on offer
+/pokemon keep              keep a save from before regions
+/pokemon fresh             start fresh instead: asks first; fresh yes wipes it
+/pokemon restart yes       answer /pokemon restart's question (no keeps your save)
+```
+
+`/pokedex` counts your Pokémon region by region, with a ▶ on the one you're in. A region whose ferry ticket you don't own shows _Unavailable_.
+
+**Playing since before regions?** The first time a window opens your save, it asks what to do with it:
+
+- **Keep my save:** everything stays (party, PC box, Pokédex, ₽, items, XP), and you start in Kanto with the later regions locked.
+- **Start fresh:** asks once more, in red, then wipes it all and gives you a new Kanto starter and ₽3,000.
+
+Until you pick, the game plays your save as kept and asks again the next time it starts. Want a clean slate later? `/pokemon restart` asks first, says what it wipes, and starts your journey over from a Kanto starter. Your sprite size, evolution style and evolve setting are kept.
 
 ---
 
@@ -309,6 +346,7 @@ Every item has its picture and its description from the games, and a _"Your part
 | Hold items | Metal Coat, King's Rock, Dragon Scale, Up-Grade, Dubious Disc, Protector, Electirizer, Magmarizer, Reaper Cloth, Deep Sea Tooth and Scale, Prism Scale, Sachet, Whipped Dream, Razor Claw and Fang, Oval Stone, Strawberry Sweet | ₽5,000                    |
 | Special    | The Linking Cord, Tart and Sweet Apples, Cracked and Chipped Pots, Black Augurite, Peat Block, the two Scrolls, Galarica Cuff and Wreath                                                                                         | ₽5,000                    |
 | Other      | Rare Candy (one level), Lucky Egg (half as much XP again, rounded down), Soothe Bell (time together counts 1.5 times)                                                                                                            | ₽4,800 / ₽10,000 / ₽4,000 |
+| Tickets    | A ferry ticket for each region after Kanto ([Regions](#regions-and-ferry-tickets))                                                                                                                                               | ₽150,000                  |
 
 Then hand them out. A stone or trade item evolves on the spot and is used up, a Rare Candy is one level, and a hold item is held: one per Pokémon, as in the games, so giving another puts the old one back in your Bag. An item that would do nothing is refused, and nothing is used up.
 
@@ -351,7 +389,12 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon evolution [style]`            | The evolution screen: `rays` (the default), `white` or `gradient`. No style: which one you have, and the three to choose from                                                                                                                                                               |
 | `/pokemon region [region]`              | Whose regional forms evolutions take when you name no branch: `alola`, `galar`, `hisui` or `paldea` (a Thunder Stone then makes an Alolan Raichu). `kanto` (the default): each Pokémon's own form. No region: which one you have, and the choices                                           |
 | `/pokemon mart`                         | Open the PokéMart in the band (or click 🛒 ₽ in its corner)                                                                                                                                                                                                                                 |
-| `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices                                                                                                                                     |
+| `/pokemon buy [item] [count]`           | Buy from the PokéMart by typing, for terminals without mouse clicks (item first or last; count 1 to 999, default 1). No item: list the Mart with prices. `/pokemon buy johto ticket` buys a ferry ticket                                                                                    |
+| `/pokemon travel <region>`              | Sail to a region you hold a ferry ticket for, or back to Kanto. No region: where you can sail                                                                                                                                                                                               |
+| `/pokemon restart [yes\|no]`            | Start your journey over from a Kanto starter. It asks first, in the band, and says what it wipes; `yes` or `no` answers it                                                                                                                                                                  |
+| `/pokemon choose <starter>`             | Take one of the starters on offer, as a click on its Poké Ball does                                                                                                                                                                                                                         |
+| `/pokemon keep`                         | Keep a save from before regions, as **Keep my save** does                                                                                                                                                                                                                                   |
+| `/pokemon fresh [yes\|no]`              | Start a save from before regions fresh: it asks first; `yes` wipes it, `no` goes back                                                                                                                                                                                                       |
 | `/pokemon bag`                          | Your items by tab, your ₽, and who holds what                                                                                                                                                                                                                                               |
 | `/pokemon give <item> <name> [into]`    | Give an item (spaces or hyphens in its name, either order): a stone or trade item evolves it, a hold item is held, a Rare Candy is one level. A regional form is taken only when named (`give thunder-stone pikachu alolan raichu`) or chosen with `/pokemon region`                        |
 | `/pokemon take <name>`                  | Put its held item back in your Bag. Looks in the party, then the PC box; of several, the only holder, else it asks which                                                                                                                                                                    |
@@ -359,7 +402,7 @@ In the Mart: click into it, then `↑` `↓` choose, `←` `→` change tabs, `-
 | `/pokemon off` / `on`                   | Put them in their Poké Balls (nothing drawn, no XP) or bring them back                                                                                                                                                                                                                      |
 | `/pokemon help`                         | Every sub-command, one a line                                                                                                                                                                                                                                                               |
 | `/pokemon-help`                         | Every command of the plugin and every word it takes. While you type `/pokemon` or `/pokemon-play`, the typeahead previews each word: `give <item> <name>`, then your Bag's items, then your party                                                                                           |
-| `/pokedex [name]`                       | Everything you've seen and caught, per generation, plus your shinies. `/pokedex <name>`: one species' number, types, Pokédex counts, evolutions, forms and which of yours are that species                                                                                                  |
+| `/pokedex [name]`                       | Everything you've seen and caught, region by region, plus your shinies. `/pokedex <name>`: one species' number, types, Pokédex counts, evolutions, forms and which of yours are that species                                                                                                |
 | `/pokemon-play <animation>`             | Watch any animation on demand: `hop`, `cheer`, `faint`, `sleep`, `squash`, `work`, `clones`, `evolve [style]` (your lead's evolution on that screen, nothing saved), `wild [shiny] [name]`; or a time and place: `dusk lake`, `night forest`, `mountains`                                   |
 
 ---
@@ -408,7 +451,7 @@ Plugins can't change the "Tip:" line under the spinner, but your own Claude Code
   "tips": [
     "/pokemon-play wild calls a wild Pokémon out of the tall grass",
     "/pokemon everstone <name> keeps your partner just the way it is",
-    "/pokedex shows every Pokémon you've seen, generation by generation",
+    "/pokedex shows every Pokémon you've seen, region by region",
     "Passing tests earn your party 5 XP, and a commit earns 10",
     "A wild Pokémon wanders by every 10 to 20 minutes. Watch the tall grass"
   ]
@@ -486,12 +529,14 @@ Commands Claude runs through its shell tool: test runners like <code>pytest</cod
 ## Known limitations
 
 - **Windows is untested.** It's made on macOS and the tests run on Linux; Windows has had a code review, not a run.
-- **Clicks need Claude Code's fullscreen mode** (`/config`, or `"tui": "fullscreen"` in settings): throwing Poké Balls, the ₽ button and the Mart. Without it, `/pokemon mart` shows the Mart and `/pokemon buy` shops.
+- **Clicks need Claude Code's fullscreen mode** (`/config`, or `"tui": "fullscreen"` in settings): throwing Poké Balls, the ₽ button and the Mart. Without it, `/pokemon mart` shows the Mart and `/pokemon buy` shops, and the band's screens take `/pokemon choose`, `keep`, `fresh` and `restart yes`.
 - **Pixel-exact aim** needs a terminal that says where in a cell you clicked: kitty, Ghostty, iTerm2, WezTerm and foot do. Elsewhere, and through tmux, a click counts both pixels of the cell.
 - **More CPU while you can aim:** for the half minute or so a wild Pokémon can be aimed at, the band costs about 20 to 35% CPU against about 10%.
 - **No Gen 9:** the Pokémon end at Gen 8 (Enamorus), and Gen 9 items (the Gimmighoul Coin, Syrupy Apple, the Teacups...) aren't sold.
 - **Some evolutions keep a level:** 17 that need a move, steps or a battle in the games go by level ([FAQ](#faq)), and a Pokémon holding a level-up item, or Mantyke, evolves within a minute rather than at the level-up itself.
 - **Restart every open window after upgrading.** A window still running an older version writes the save its own way until it restarts. One on 1.2.0 erases your Bag, held items and ₽, and evolves by its old Lv 30 rule; one on 1.3.0 or 1.4.0 resets your evolution style. Any version without manual evolution evolves Pokémon by itself, whatever `/pokemon evolve manual` says. The [CHANGELOG](CHANGELOG.md) has the details.
+- **A window on 1.7.x or older can cost a ticket.** It rewrites the save without your regions, and the next window on 1.10.0 puts them back from a copy kept for this. A ticket bought, a trip or a starter chosen in the instant between the two writes, or when the copy can't be written, is lost, and the ₽150,000 stays spent. Restart old windows before you buy.
+- **Restart 1.7.x windows before you start fresh.** Until a starter is chosen the party is empty, and a window on 1.7.x or older then catches a random Pokémon as its lead and writes the save without your regions: you end up with that Pokémon as well as your starter, or, with no copy of your regions yet, asked again whether to keep your save.
 - **Commands you run while an evolution screen plays already use the new form:** the save has it from the start, so `/pokemon party` and `/pokedex` show it, and a command that names the Pokémon needs its new name (`/pokemon give rare candy charmeleon` while _"CHARMANDER is evolving!"_ is on screen).
 - **Drawn in the terminal only:** not in the Desktop app, the VS Code chat panel or the web (those sessions still earn XP).
 

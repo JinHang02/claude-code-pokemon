@@ -568,6 +568,7 @@
         <a href="#reactions">What they do</a>
         <a href="#levels">Levels</a>
         <a href="#mart">PokéMart</a>
+        <a href="#regions">Regions</a>
         <a href="#landscapes">Landscapes</a>
         <a href="#commands">Commands</a>
         <a href="https://github.com/JinHang02/claude-code-pokemon">GitHub</a>
@@ -594,8 +595,8 @@
               <button class="copy" type="button" data-copy="/plugin install pokemon@claude-code-pokemon">Copy</button>
             </div>
             <p class="note">
-              Run both inside Claude Code, then start a new session. Needs Claude Code 2.1.287 or newer and a terminal
-              with 24-bit color.
+              Run both inside Claude Code, then start a new session and choose your starter. Needs Claude Code 2.1.287
+              or newer and a terminal with 24-bit color.
             </p>
           </div>
           <div class="actions">
@@ -791,8 +792,8 @@
               loading="lazy"
             />
             <figcaption class="dialog">
-              <b>Bought 3 × Water Stone!</b>Four tabs, each item with its picture and its description from the games,
-              and a "Your party: Eevee → Vaporeon" line when it would evolve one of yours.
+              <b>Bought 3 × Water Stone!</b>Every item with its picture and its description from the games, and a "Your
+              party: Eevee → Vaporeon" line when it would evolve one of yours.
             </figcaption>
           </figure>
           <div class="levels shelves">
@@ -825,7 +826,8 @@
                 Ten evolution stones for ₽3,000. The trade items (Metal Coat, Dragon Scale, Up-Grade and the rest), the
                 Linking Cord, Galar's apples and pots, the two Scrolls, Black Augurite, Peat Block, the Galarica Cuff
                 and Wreath for ₽5,000. Rare Candy, a Lucky Egg for half as much XP again (rounded down), and a Soothe
-                Bell that makes time together count one and a half times.
+                Bell that makes time together count one and a half times. And on the Tickets tab, a
+                <a href="#regions">ferry ticket</a> for each region after Kanto, ₽150,000.
               </p>
               <p>
                 No clicks in your terminal? <code>/pokemon buy fire stone 3</code> shops by typing. Clicking needs
@@ -852,6 +854,47 @@
         </div>
       </section>
 
+      <section id="regions">
+        <div class="wrap">
+          <h2>Regions and ferry tickets</h2>
+          <p class="intro">
+            Your journey starts in Kanto. Johto, Hoenn, Sinnoh, Unova, Kalos, Alola and Galar lie across the sea, and
+            the wild Pokémon that wander by come from the region you're in. The ones you own go everywhere with you.
+          </p>
+          <div class="levels shelves">
+            <div>
+              <h3>Buy a ticket, set sail</h3>
+              <p>
+                Each region after Kanto needs a ferry ticket, ₽150,000 on the PokéMart's Tickets tab: click the
+                <code>● KANTO</code> label in the band's top-left corner, or type
+                <code>/pokemon buy johto ticket</code>. A ticket stays unavailable until you have more experience as a
+                trainer, and <code>/pokedex</code> shows each region without its ticket as unavailable.
+              </p>
+              <p>
+                <code>/pokemon travel johto</code> and a ferry carries your party across the band. A ticket is good for
+                every trip there and back, and Kanto needs none. <code>/pokedex</code> counts your Pokémon region by
+                region.
+              </p>
+            </div>
+            <div>
+              <h3>Choose your partner</h3>
+              <p>
+                A new journey starts with a Kanto starter: Bulbasaur, Charmander or Squirtle, in their Poké Balls in the
+                band. Your first arrival in each region brings its own three. Click one, or type
+                <code>/pokemon choose cyndaquil</code>; once you've clicked, <code>←</code> <code>→</code> and
+                <code>Enter</code> work too, and <code>x</code> leaves the choice for later.
+              </p>
+              <p>
+                Playing since before regions? The first time, the band asks: <b>Keep my save</b> starts you in Kanto
+                with everything you have, or <b>Start fresh</b> wipes it for a new starter; no mouse?
+                <code>/pokemon keep</code> or <code>/pokemon fresh</code>. <code>/pokemon restart</code> starts over any
+                time, after asking first: <code>/pokemon restart yes</code> answers it.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="landscapes">
         <div class="wrap">
           <h2>Twenty landscapes, on your clock</h2>
@@ -870,11 +913,12 @@
             <div>
               <h3>Who wanders by</h3>
               <p>
-                Every 10 to 20 minutes a wild Pokémon steps out of the tall grass, and who it is depends on where and
-                when you are. On average a Pidgey turns up about once in 190 visits and a Dratini about once in 1,900,
-                ten Pidgey for every Dratini. Legendaries, mythicals and Ultra Beasts together come about once in 100
-                visits, and a Pokémon you've never seen is 2.5 times as likely. A fitting place makes a type 4 times as
-                likely and a fitting hour twice, but anyone can still wander anywhere.
+                Every 10 to 20 minutes a wild Pokémon of the region you're in steps out of the tall grass, and who it is
+                depends on where and when you are, common ones far more often than rare ones. Legendaries, mythicals and
+                Ultra Beasts together come about once in 100 visits, and a Pokémon you've never seen is 2.5 times as
+                likely. A fitting place makes a type 4 times as likely and a fitting hour twice, but any of the region's
+                Pokémon can still wander anywhere. Dusk visitors and the full-moon Clefairy come only in their own
+                region.
               </p>
               <p>
                 Click it to throw a Poké Ball, in Claude Code's fullscreen mode (<code>/config</code>). Catches join
@@ -957,6 +1001,22 @@
               <code>/pokemon buy &lt;item&gt; [count]</code
               ><span>Shop by typing, if your terminal sends no clicks</span>
             </li>
+            <li>
+              <code>/pokemon travel &lt;region&gt;</code
+              ><span
+                >Sail to a region you hold a ferry ticket for; <code>/pokemon buy johto ticket</code> buys one</span
+              >
+            </li>
+            <li>
+              <code>/pokemon restart</code><span>Start your journey over from a Kanto starter; it asks first</span>
+            </li>
+            <li>
+              <code>/pokemon choose &lt;starter&gt;</code
+              ><span
+                >Take a starter on offer; <code>/pokemon keep</code> and <code>/pokemon fresh</code> answer the
+                fresh-or-keep question</span
+              >
+            </li>
             <li><code>/pokemon bag</code><span>Your items, your ₽, and who holds what</span></li>
             <li>
               <code>/pokemon give &lt;item&gt; &lt;name&gt;</code
@@ -966,7 +1026,7 @@
               <code>/pokemon take &lt;name&gt;</code
               ><span>Put its held item back in your Bag, from the party or the PC box</span>
             </li>
-            <li><code>/pokedex</code><span>Everything you've seen, per generation, plus your shinies</span></li>
+            <li><code>/pokedex</code><span>Everything you've seen, region by region, plus your shinies</span></li>
             <li>
               <code>/pokemon-play &lt;animation&gt;</code
               ><span
@@ -1061,7 +1121,8 @@
                 Yes. They share one party, and all of them earn XP for it. Two windows changing it at once keep both
                 changes; only two writes within the same few milliseconds can lose one. After upgrading, restart every
                 open window: one still running an older version writes the save its own way, and 1.2.0 erases your Bag,
-                held items and ₽.
+                held items and ₽. One on 1.7.x or before can lose a ferry ticket bought at the moment it writes, and
+                catches a random lead for a save whose starter isn't chosen yet.
               </p>
             </details>
             <details>

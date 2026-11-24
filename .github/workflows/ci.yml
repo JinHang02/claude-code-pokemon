@@ -25,5 +25,7 @@ jobs:
         run: claude plugin validate plugin/.claude-plugin/plugin.json --strict
       - name: Run the tests
         run: claude plugin test plugin
+      - name: Check the region docs
+        run: node scripts/check-region-docs.mjs
       - name: Check formatting
         run: npx --yes prettier@3.9.9 --check .
