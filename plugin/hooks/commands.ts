@@ -8,6 +8,7 @@ import { EVOLUTION_STYLES } from './evolution-style'
 import { forSale, ITEMS } from './items'
 import { slug } from './lookup'
 import { REGION_TEXT, REGION_WORDS } from './region'
+import { TRAVEL_REGIONS } from './travel-regions'
 import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
@@ -30,6 +31,7 @@ type Arg =
   | 'landscape'
   | 'phase'
   | 'region'
+  | 'travel'
 
 type Sub = {
   // The word typed after the command; `''` for one that is the whole command (`/pokemon` alone, `/pokemon <name>`).
@@ -67,6 +69,8 @@ export const POKEMON: Sub[] = [
   { word: 'on', usage: 'on, off', about: 'out, or back in their balls', only: 'help' },
   { word: 'on', usage: 'on', about: 'out of their Poké Balls', only: 'typeahead' },
   { word: 'off', usage: 'off', about: 'back in their Poké Balls', only: 'typeahead' },
+  { word: 'travel', usage: 'travel <region>', about: 'sail to a region with a ticket', args: ['travel'] },
+  { word: 'restart', usage: 'restart', about: 'start a new journey from scratch' },
   { word: 'help', usage: 'help', about: 'this list' },
 ]
 
@@ -191,6 +195,9 @@ export const ALL_HELP = [
   '/pokedex             all you have seen and caught',
   '/pokedex <name>      one species: types, evolutions',
   '/pokemon-help        this list',
+  '',
+  'Regions: ferry tickets in the PokéMart open new ones',
+  'as you gain trainer experience.',
   '',
   'Type /pokemon and a letter: the typeahead previews',
   'each command, then your items and Pokémon.',
@@ -340,6 +347,11 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
       return fixed(
         lower,
         (Object.keys(PHASE_ABOUT) as Phase[]).map(p => [p, PHASE_ABOUT[p]]),
+      )
+    case 'travel':
+      return fixed(
+        lower,
+        TRAVEL_REGIONS.map(r => [r.id, `sail to ${r.name}`]),
       )
   }
 }
