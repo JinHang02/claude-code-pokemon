@@ -16,6 +16,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 - **A wild visitor comes on time on a busy machine.** Its 10 to 20 minutes are now counted on the clock rather than in
   frames drawn, so a slow machine, which draws fewer frames, no longer brings it late.
+- **The campfire of a long turn is checked on every frame** against when the turn began, rather than waiting on one
+  10-minute timer, which the test clock drops after 10 seconds of real time on a slow machine.
 
 ## [1.9.0] - 2026-11-23
 

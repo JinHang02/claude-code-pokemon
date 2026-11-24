@@ -164,7 +164,9 @@ const LONG_RUN_MS = 30_000
 let longRuns = 0
 // A turn of Claude's still going after this long: the party sets up camp around a fire until it ends.
 const LONG_TURN_MS = 10 * 60_000
-let campTimer: { cancel: () => void } | null = null
+// When the turn going on began, on the clock, until its camp is set up: checked each tick rather than held as one
+// 10-minute timer, which a test clock lets go after 10 seconds of real time.
+let turnSince: number | null = null
 const PHASES: Phase[] = ['day', 'dusk', 'night', 'dawn']
 
 const party = atom({ plugin: 'pokemon', key: 'party' } as const, [])
@@ -2431,6 +2433,10 @@ async function tick($: EngineInterface) {
   if (!band || !fitted || save.isOff) return
   tickNo++
   const now = await readClock($)
+  if (turnSince !== null && now - turnSince >= LONG_TURN_MS) {
+    turnSince = null
+    feel('camp-start')
+  }
   wildAt ??= now + WILD_EVERY[0]
   // A visitor due while a screen plays comes once it has ended.
   if (now >= wildAt && !status.wild && !isAsleep(status) && !screen) {
@@ -2887,16 +2893,14 @@ export const register: Register = on => {
     // A subagent's turn ends with no main turn.complete of its own: it counts as activity, not as Claude working.
     feel(e.agentId ? 'activity' : 'turn-start')
     if (!e.agentId) {
-      campTimer?.cancel()
-      campTimer = $.clock.after(LONG_TURN_MS, () => feel('camp-start'))
+      turnSince = await $.clock.now()
     }
     return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) {
-      campTimer?.cancel()
-      campTimer = null
+      turnSince = null
       feel('camp-end')
       feel(e.reason === 'answer' ? 'turn-answer' : 'turn-end')
       if (e.reason === 'answer') background($, earn($, XP.reply))
