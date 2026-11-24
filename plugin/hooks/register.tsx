@@ -175,6 +175,9 @@ const ledger = atom({ plugin: 'pokemon', key: 'ledger' } as const, null)
 
 let species: Species[] | null = null
 let save: Save = emptySave()
+// Store key of the recovery copy of `save.journey`: 1.7.0's loadSave drops save fields it doesn't know.
+const JOURNEY_COPY = 'journey'
+let lastCopiedJourneyJson: string | null = null
 // This session's XP ledger key, and the ledgers' XP not yet folded into the save, by member id.
 let ledgerKey = ''
 let extra: Record<string, number> = {}
@@ -515,15 +518,45 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 // ever made twice. Nothing is written when nothing changes. Resolves the save read and the save as it now stands.
 async function writeSave($: EngineInterface, change: (s: Save) => Save) {
   for (let tries = 1; ; tries++) {
-    const raw = await $.store.get('save')
+    const { raw, latest } = await readSave($)
     if (versionOf(raw) > SAVE_VERSION) throw new Error(TOO_NEW)
     await seedTogether($, raw)
-    const latest = loadSave(raw)
     const next = change(latest)
     if (next === latest || JSON.stringify(next) === JSON.stringify(latest)) return { latest, next: latest }
     if (tries < 3 && JSON.stringify(await $.store.get('save')) !== JSON.stringify(raw)) continue
     await $.store.set('save', { ...next, version: SAVE_VERSION })
+    await copyJourney($, next.journey, latest.journey)
     return { latest, next }
+  }
+}
+
+const hasLostJourney = (raw: unknown): boolean =>
+  typeof raw === 'object' && raw !== null && !Array.isArray(raw) && !Object.hasOwn(raw, 'journey')
+
+/**
+ * The save as stored, read with the journey copy only when the stored save has no `journey`.
+ * @returns `raw`: the stored value (undefined for none); `latest`: it loaded.
+ */
+async function readSave($: EngineInterface): Promise<{ raw: unknown; latest: Save }> {
+  const raw: unknown = await $.store.get('save')
+  if (!hasLostJourney(raw)) return { raw, latest: loadSave(raw) }
+  const copy: unknown = await $.store.get(JOURNEY_COPY)
+  if (copy !== undefined) lastCopiedJourneyJson = JSON.stringify(copy)
+  return { raw, latest: loadSave(raw, copy) }
+}
+
+/**
+ * @param journey the journey just written to the save.
+ * @param stored the save's journey as read just before that write.
+ */
+async function copyJourney($: EngineInterface, journey: Save['journey'], stored: Save['journey']) {
+  const json = JSON.stringify(journey)
+  if (json === lastCopiedJourneyJson && json === JSON.stringify(stored)) return
+  try {
+    await $.store.set(JOURNEY_COPY, journey)
+    lastCopiedJourneyJson = json
+  } catch (err) {
+    await report($, err)
   }
 }
 
@@ -564,7 +597,7 @@ async function sync($: EngineInterface) {
   let isNewLook = false
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
-    const latest = loadSave(await $.store.get('save'))
+    const { latest } = await readSave($)
     isNewParty = isOtherParty(latest, save)
     const was = JSON.stringify([save.bag, balanceOf(save, cash)])
     const [wasSize, wasOff] = [save.size, save.isOff]
@@ -2735,9 +2768,9 @@ async function load($: EngineInterface) {
     const fresh = `${LEDGER}${newId()}${newId()}`
     ledgerKey = (await update($, ledger, key => key ?? fresh)) ?? fresh
     await queued(async () => {
-      const raw = await $.store.get('save')
+      const { raw, latest } = await readSave($)
       await seedTogether($, raw)
-      save = loadSave(raw)
+      save = latest
       countLedgers(await readLedgers($))
       countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
     })
