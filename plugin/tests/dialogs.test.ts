@@ -94,6 +94,15 @@ test('hover selects a ball without asking (A85); out of range is ignored', () =>
   expect(run(starter({ sel: 1 }), { hover: 3 }).dialog).toEqual(starter({ sel: 1 }))
 })
 
+test('a hover on the ball or option already selected returns the very same dialog', () => {
+  for (const d of [starter({ sel: 1 }), fresh({ sel: 1 }), fresh()]) {
+    const sel = d.kind === 'starter' ? d.sel : (d.sel ?? 0)
+    expect(dialogAct(d, { hover: sel }, KANTO_STARTERS).dialog).toBe(d)
+    expect(dialogAct(d, { hover: sel }, KANTO_STARTERS).post).toBeUndefined()
+  }
+  expect(dialogAct(starter({ sel: 1 }), { hover: 2 }, KANTO_STARTERS).dialog).toEqual(starter({ sel: 2 }))
+})
+
 test('enter and a pick ask before anything is chosen (A86)', () => {
   expect(run(starter({ sel: 1 }), 'enter')).toEqual({ dialog: starter({ sel: 1, isAsking: true }), posts: [] })
   expect(run(starter(), { pick: 2 })).toEqual({ dialog: starter({ sel: 2, isAsking: true }), posts: [] })

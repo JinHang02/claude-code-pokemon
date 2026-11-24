@@ -90,6 +90,8 @@ export function dialogAct(
 ): { dialog: Dialog | null; post?: DialogPost } {
   if (a === 'close') return { dialog: null }
   const same = { dialog: d }
+  const sel = d.kind === 'starter' ? d.sel : (d.sel ?? 0)
+  if (typeof a === 'object' && 'hover' in a && a.hover === sel) return same
   if (d.kind === 'starter') {
     if (d.isAsking) {
       if (a === 'no') return { dialog: { ...d, isAsking: false } }
