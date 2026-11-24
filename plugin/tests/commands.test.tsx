@@ -181,7 +181,7 @@ test('/pokedex shows sightings and the party', KIT, async ($, on) => {
   await cmd($, 'pokemon', 'add shiny vaporeon')
   const dex = await cmd($, 'pokedex')
   // Eevee may be a lucky shiny (1 in 32); the asked-for Vaporeon always is.
-  expect(dex).toMatch(new RegExp(`Pokédex: 2 / ${LIST.length} seen · 0 caught · [12] shiny`))
+  expect(dex).toMatch(/Pokédex: 2 \/ 905 seen · 0 caught · [12] shiny/)
   expect(dex).toMatch(/Shinies: (Eevee, )?Vaporeon/)
   expect(dex).toMatch(/Lead {2}Pikachu +Lv 1 /)
 })
@@ -234,7 +234,7 @@ test('a warm cache means no downloads at all', KIT, async ($, on) => {
   // Its evolution level and gender already known, so there's nothing to look up either.
   const party = [member('pikachu', { next: [lv('raichu', 30)], gender: 'male' })]
   const w = await begin($, on, { ...emptySave(), party }, ART, files)
-  expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
+  expect(await cmd($, 'pokedex')).toContain('/ 905 seen')
   expect(w.fetched).toEqual([])
 })
 
@@ -1124,7 +1124,7 @@ test('an old species list still serves when its refresh fails', KIT, async ($, o
     list: JSON.stringify(LIST),
     cacheAgeMs: 40 * 24 * 60 * 60_000,
   })
-  expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
+  expect(await cmd($, 'pokedex')).toContain('/ 905 seen')
 })
 
 test('a stalled download never holds up a command', KIT, async ($, on) => {

@@ -7,6 +7,8 @@ import type { Stage, Time, Way } from './evolution'
 import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
 import type { Item } from './items'
 import { loadFriendship } from './friendship'
+import { isObject, keptJourney, loadJourney, TRAVEL_REGIONS, seenIn, speciesIn, unlockedOf } from './travel-regions'
+import type { Journey } from './travel-regions'
 
 export type Size = 'auto' | 'normal' | 'small'
 // `manual`: a Pokémon that can evolve waits for /pokemon evolve; `auto`: it evolves by itself straight away.
@@ -66,6 +68,7 @@ export type Save = {
   spent?: number
   earned?: number
   foldedMoney?: Record<string, number>
+  journey: Journey
 }
 
 // The XP one session has earned, by member id: only that session ever writes it, so sessions running side by
@@ -96,12 +99,18 @@ export const MAX_LEVEL = 100
 // The most one heartbeat adds to time together: a closed laptop isn't time together.
 export const TOGETHER_CAP_MS = 120_000
 const TIMES: Time[] = ['day', 'night', 'dusk', 'full-moon']
-export const GENERATIONS = [151, 251, 386, 493, 649, 721, 809, 905]
 const SIZES: Size[] = ['auto', 'normal', 'small']
 
 export const styleOf = (save: Save): EvolutionStyle => save.evolutionStyle ?? DEFAULT_EVOLUTION_STYLE
 
-export const emptySave = (): Save => ({ party: [], size: 'auto', evolution: 'manual', dex: {}, recent: [] })
+export const emptySave = (): Save => ({
+  party: [],
+  size: 'auto',
+  evolution: 'manual',
+  dex: {},
+  recent: [],
+  journey: keptJourney(),
+})
 
 // Species and form names as the sprite list spells them; anything else never reaches a file path or URL.
 export const isName = (name: unknown): name is string =>
@@ -110,7 +119,6 @@ export const isName = (name: unknown): name is string =>
 export const newId = () => Math.random().toString(36).slice(2, 10)
 
 const count = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0)
-const isObject = (o: unknown): o is Record<string, unknown> => typeof o === 'object' && o !== null && !Array.isArray(o)
 
 function loadWay(w: unknown): Way | null {
   if (!isObject(w)) return null
@@ -203,16 +211,17 @@ function loadMembers(s: Record<string, unknown>): { party: Member[]; box: Member
 
 // The stored save's format, raised with each field a release adds. A window still running an older release keeps only
 // the fields it knows and would erase the rest when it writes: it refuses to write a save stamped newer than itself.
-// 2: `region`.
-export const SAVE_VERSION = 2
+// 2: `region`. 3: `journey`.
+export const SAVE_VERSION = 3
 export const versionOf = (raw: unknown): number =>
   isObject(raw) && typeof raw.version === 'number' && Number.isInteger(raw.version) ? raw.version : 0
 export const TOO_NEW =
   'A newer Pokémon Journey wrote your save, so this window changed nothing. Update the plugin (claude plugin update pokemon@claude-code-pokemon) and restart this window.'
 
 // A stored save, with anything malformed replaced by its default, field by field. Time together kept in it by an
-// earlier version is left out: it lives under its own key (togetherOf moves it there).
-export function loadSave(raw: unknown): Save {
+// earlier version is left out: it lives under its own key (togetherOf moves it there). `copy`: the journey's recovery
+// copy (store key `journey`), read only for a save without one.
+export function loadSave(raw: unknown, copy?: unknown): Save {
   const s = isObject(raw) ? raw : {}
   const { party, box } = loadMembers(s)
   const folded = Array.isArray(s.folded) ? s.folded.filter(isLedgerKey) : []
@@ -244,6 +253,7 @@ export function loadSave(raw: unknown): Save {
     evolution: s.evolution === 'auto' ? 'auto' : 'manual',
     dex,
     recent: (Array.isArray(s.recent) ? s.recent.filter(isName) : []).slice(0, 10),
+    journey: loadJourney(isObject(raw) ? raw : null, copy),
     ...(box.length ? { box } : {}),
     ...(isEvolutionStyle(s.evolutionStyle) ? { evolutionStyle: s.evolutionStyle } : {}),
     ...(isRegion(s.region) ? { region: s.region } : {}),
@@ -765,22 +775,32 @@ export function formatBox(save: Save, page = 1, picked?: BoxPick, columns = Infi
   ].join('\n')
 }
 
-// The Pokédex: totals, progress per generation, shinies and the latest sightings. `names` is the national dex order.
-export function formatDex(save: Save, names: string[]): string {
-  const seen = names.filter(n => save.dex[n])
-  const shinies = names.filter(n => (save.dex[n]?.shiny ?? 0) > 0)
-  const caught = names.filter(n => (save.dex[n]?.caught ?? 0) > 0)
-  const gens = GENERATIONS.map((end, g) => {
-    const start = g === 0 ? 0 : (GENERATIONS[g - 1] ?? 0)
-    const gen = names.slice(start, end)
-    const inGen = gen.filter(n => save.dex[n]).length
-    const caughtInGen = gen.filter(n => (save.dex[n]?.caught ?? 0) > 0).length
-    const shinyInGen = gen.filter(n => (save.dex[n]?.shiny ?? 0) > 0).length
-    return `  Gen ${g + 1}  ${bar(caughtInGen, inGen, end - start)}  ${inGen}/${end - start} seen · ${caughtInGen} caught · ${shinyInGen} shiny`
+const REGION_NAME_WIDTH = Math.max(...TRAVEL_REGIONS.map(r => r.name.length))
+
+/**
+ * The Pokédex: where the player is, totals, progress per open region, shinies and the latest sightings. Counts only
+ * species in the species table.
+ */
+export function formatDex(save: Save): string {
+  const { dex, journey } = save
+  const open = unlockedOf(journey)
+  const current = TRAVEL_REGIONS.find(r => r.id === journey.current)
+  const all = TRAVEL_REGIONS.flatMap(speciesIn)
+  const isShiny = (n: string): boolean => (dex[n]?.shiny ?? 0) > 0
+  const isCaught = (n: string): boolean => (dex[n]?.caught ?? 0) > 0
+  const shinies = all.filter(isShiny)
+  const regions = TRAVEL_REGIONS.map(r => {
+    const head = `${r === current ? '▶' : ' '} ${r.name.padEnd(REGION_NAME_WIDTH)}  `
+    if (!open.includes(r)) return `${head}Unavailable`
+    const species = speciesIn(r)
+    const seen = seenIn(dex, r)
+    const caught = species.filter(isCaught).length
+    return `${head}${bar(caught, seen, species.length)}  ${seen}/${species.length} seen · ${caught} caught · ${species.filter(isShiny).length} shiny`
   })
   return [
-    `Pokédex: ${seen.length} / ${names.length} seen · ${caught.length} caught · ${shinies.length} shiny`,
-    ...gens,
+    `In ${current?.name ?? ''} · ${open.length} of ${TRAVEL_REGIONS.length} regions open`,
+    `Pokédex: ${all.filter(n => dex[n]).length} / ${all.length} seen · ${all.filter(isCaught).length} caught · ${shinies.length} shiny`,
+    ...regions,
     `Shinies: ${shinies.length ? shinies.map(speciesName).join(', ') : 'none yet'}`,
     `Recently seen: ${save.recent.length ? save.recent.map(speciesName).join(', ') : 'nothing yet'}`,
   ].join('\n')

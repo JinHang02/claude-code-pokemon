@@ -2849,10 +2849,7 @@ export const register: Register = on => {
         await loadSpecies($)
         const entry = await dexEntryOf($, e.args)
         if (entry) return entry
-        return `${formatDex(
-          save,
-          (species ?? []).map(s => s.name),
-        )}\n\n${formatParty(view(), replyColumns, readyNow())}`
+        return `${formatDex(save)}\n\n${formatParty(view(), replyColumns, readyNow())}`
       } catch (err) {
         return `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}`
       }

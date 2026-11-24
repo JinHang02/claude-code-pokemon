@@ -139,7 +139,7 @@ test(
     const together = w.togetherNow()
     const pokedex = async () => (await cmd($, 'pokedex')).split('\n\nYour party')[0]
     const dex = await pokedex()
-    expect(dex).toMatch(/^Pokédex: 3 \/ 32 seen · 2 caught · 1 shiny\n/)
+    expect(dex).toMatch(/\nPokédex: 3 \/ 905 seen · 2 caught · 1 shiny\n/)
     const key = [...w.store.keys()].find(k => k.startsWith('xp:'))
     expect(state.get('ledger')).toBe(key)
 
