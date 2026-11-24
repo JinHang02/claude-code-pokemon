@@ -8,6 +8,7 @@ import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
 import { CAUGHT_GREEN, displayName, emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
+import { walletPill } from '../hooks/shop'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 import {
   answerTools,
@@ -2549,7 +2550,7 @@ test(
     const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
     await cmd($, 'pokemon', 'party')
     const band = (await mountBand($)) as Band
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3000, plus: 0 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3000, plus: 0 }))
     expect(await martOf(band)).toBeNull()
     await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
     expect(await martOf(band)).toMatchObject({ balance: 3000, state: { tab: 0, sel: 0, top: 0, qty: 1 } })
@@ -2566,7 +2567,7 @@ test(
     expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 1, top: 0, qty: 2 })
     await band.key({ key: 'x', in: 'mart' })
     expect(await martOf(band)).toBeNull()
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 0, plus: 0 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 0, plus: 0 }))
   },
 )
 
@@ -2771,7 +2772,7 @@ test(
     net.speciesStall = new Promise<void>(resolve => (open = resolve))
     await cmd($, 'pokemon-play', 'wild newmon')
     // A click on the button as last drawn, before the band is drawn again without it.
-    await band.post({ open: true }, { in: 'shop' })
+    await band.post({ open: 'mart' }, { in: 'shop' })
     expect(await martOf(band)).toBeNull()
     expect(await clientProps(band, 'shop')).toBeNull()
     // Through the rustle and after: still no button, and still not aimable.
@@ -2842,10 +2843,10 @@ test('earning shows +₽ under the button for a moment, the button a row taller 
   await $.tool.call(bash('git commit -m x') as never)
   // The ₽ lands in the background: a command waits for it.
   await cmd($, 'pokemon', 'party')
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
+  expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 100 }))
   expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 2 })
   await w.clock.advance(1500)
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
+  expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 0 }))
   expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
 })
 

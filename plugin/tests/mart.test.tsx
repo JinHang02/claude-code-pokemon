@@ -7,7 +7,7 @@ import { BAG, ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
 import { TRAVEL_REGIONS, TICKET_PRICE } from '../hooks/travel-regions'
 import type { TicketState } from '../hooks/travel-regions'
-import { shopRows, shopSize, walletLabel } from '../hooks/shop'
+import { shopRows, shopSize, walletLabel, walletPill } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
 
 const props = (extra: Partial<MartProps> = {}): MartProps => ({
@@ -295,12 +295,12 @@ test('the button fits its 13 columns: the full wallet up to ₽99,999, a short o
 
 test('the button is just its pill: the wallet, and +₽ right-aligned under it while it shows', () => {
   expect(shopRows({ balance: 3020, plus: 0 })).toEqual([' 🛒 ₽ 3,020 '])
-  expect(shopSize({ balance: 3020, plus: 0 })).toEqual({ columns: 12, rows: 1 })
+  expect(shopSize(walletPill({ balance: 3020, plus: 0 }))).toEqual({ columns: 12, rows: 1 })
   // 🛒 takes two columns: both rows are the wallet's 12 wide.
   expect(shopRows({ balance: 3020, plus: 20 })).toEqual([' 🛒 ₽ 3,020 ', '       +₽20 '])
-  expect(shopSize({ balance: 3020, plus: 20 })).toEqual({ columns: 12, rows: 2 })
+  expect(shopSize(walletPill({ balance: 3020, plus: 20 }))).toEqual({ columns: 12, rows: 2 })
   // Never past the 13 columns kept clear for it.
-  expect(shopSize({ balance: 99_999, plus: 99_999 }).columns).toBe(13)
+  expect(shopSize(walletPill({ balance: 99_999, plus: 99_999 })).columns).toBe(13)
 })
 
 // ── Tickets tab ──
@@ -389,15 +389,13 @@ test('less, more and Max leave a ticket at one, even with the ₽ for many; a bu
   expect(act(p, { ...p.state, qty: 3 }, 'buy').post).toEqual({ buy: { id: 'ticket-johto', qty: 1 } })
 })
 
-test('the title starts with the region: the name whole from 60 columns, its first 3 letters below', () => {
-  const johto = { text: 'JOHTO', color: '#ffd75e' }
-  for (const [columns, label] of [
-    [40, ' ● JOH '],
-    [59, ' ● JOH '],
-    [60, ' ● JOHTO '],
-    [80, ' ● JOHTO '],
+test('the title starts with the region label as the hooks module gives it', () => {
+  for (const [columns, text] of [
+    [40, 'JOH'],
+    [80, 'JOHTO'],
   ] as const) {
-    const p = props({ columns, region: johto })
+    const label = ` ● ${text} `
+    const p = props({ columns, region: { text, color: '#ffd75e' } })
     const title = lines(p)[0]!
     expect(title.startsWith(`${label} POKé MART `)).toBe(true)
     expect(martRows(p).lines[0]?.find(r => r[0] === '●')?.[1]).toBe('#ffd75e')

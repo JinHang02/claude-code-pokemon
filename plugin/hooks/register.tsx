@@ -122,8 +122,8 @@ import { FULL_MOON, isFullMoonAt, MOON_PHASES, MOON_WORDS, moonAge, moonPhaseAt,
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, strips, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
-import { shopSize } from './shop'
-import type { ShopProps } from './shop'
+import { regionLabelText, shopSize, walletPill } from './shop'
+import type { PillProps } from './shop'
 import { stir, weatherAt, WEATHERS } from './weather'
 import type { Weather } from './weather'
 
@@ -2252,6 +2252,8 @@ const currentRegion = (): TravelRegion =>
   TRAVEL_REGIONS.find(r => r.id === save.journey.current) ?? (TRAVEL_REGIONS[0] as TravelRegion)
 
 // What the Mart shows: what's for sale, which party members each would evolve, and the selected item's picture.
+const MART_REGION_WHOLE_COLUMNS = 60
+
 function martProps(): MartProps {
   const party = view().party
   const items = forSale().map((i): MartItem => {
@@ -2275,6 +2277,7 @@ function martProps(): MartProps {
   const selected = items.filter(i => i.tab === MART_TABS[mart.view.tab])[mart.view.sel]
   const icon = selected && (selected.ticket ? TICKET_ICON : ICONS[selected.id])
   const region = currentRegion()
+  const columns = band?.total ?? 80
   return {
     items,
     tabs: MART_TABS,
@@ -2282,15 +2285,30 @@ function martProps(): MartProps {
     bag: save.bag ?? {},
     message: mart.message,
     isError: mart.isError,
-    columns: band?.total ?? 80,
+    columns,
     rows: band?.rows ?? 9,
     state: mart.view,
     ...(icon ? { icon: textRows(icon) } : {}),
-    region: { text: region.name.toUpperCase(), color: region.color },
+    region: { text: regionLabelText(region, columns, MART_REGION_WHOLE_COLUMNS), color: region.color },
   }
 }
 
-const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
+const walletProps = (): PillProps => walletPill({ balance: balanceOf(save, cash), plus })
+
+const regionProps = (columns: number): PillProps => {
+  const r = currentRegion()
+  return { rows: [{ text: regionLabelText(r, columns), dot: r.color }], act: 'tickets' }
+}
+
+const PILLS = ['shop', 'region']
+const TAB_OF: Record<PillProps['act'], number> = { mart: 0, tickets: TICKETS_TAB }
+
+// The Mart tab a pill's posted `{ open }` names, or null for anything else.
+function openedTab(element: string | undefined, data: unknown): number | null {
+  if (!PILLS.includes(String(element)) || typeof data !== 'object' || data === null) return null
+  const open = (data as { open?: unknown }).open
+  return open === 'mart' || open === 'tickets' ? TAB_OF[open] : null
+}
 
 // A click or key in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
 // next props while it stays open.
@@ -3102,8 +3120,8 @@ export const register: Register = on => {
     const click = /^aim\d*$/.test(String(e.element)) ? readClick(e.data) : null
     if (click) throwAt($, click)
     // A click on a button drawn before a visitor came opens nothing.
-    const open = e.element === 'shop' ? (e.data as { open?: unknown } | null)?.open : undefined
-    if ((open === true || open === 'tickets') && !martRefusal()) openMart($, open === 'tickets' ? TICKETS_TAB : 0)
+    const tab = openedTab(e.element, e.data)
+    if (tab !== null && !martRefusal()) openMart($, tab)
     const typed = e.element === 'mart' ? (e.data as { typed?: unknown } | null)?.typed : undefined
     // Typing that went on after the first key closed the Mart still goes to the prompt.
     if (typeof typed === 'string') {
@@ -3214,13 +3232,18 @@ export const register: Register = on => {
     const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />
     // No button while a wild Pokémon is out, aimable or not: the Mart would hold up the catch.
     if (!button || isButtonHidden) return scene
-    const p = buttonProps()
-    const size = shopSize(p)
+    const wallet = walletProps()
+    const walletSize = shopSize(wallet)
+    const region = regionProps(total)
+    const regionSize = shopSize(region)
     return (
       <Box>
         {scene}
+        <Box position="absolute" top={0} left={0}>
+          <Client key="region" module="./shop.tsx" width={regionSize.columns} height={regionSize.rows} props={region} />
+        </Box>
         <Box position="absolute" top={0} right={0}>
-          <Client key="shop" module="./shop.tsx" width={size.columns} height={size.rows} props={p} />
+          <Client key="shop" module="./shop.tsx" width={walletSize.columns} height={walletSize.rows} props={wallet} />
         </Box>
       </Box>
     )

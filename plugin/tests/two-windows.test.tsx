@@ -8,6 +8,7 @@ import { expect, test } from 'claude-code/testing'
 import { register } from '../hooks/register'
 import { emptySave } from '../hooks/save'
 import type { Save } from '../hooks/save'
+import { walletPill } from '../hooks/shop'
 import { ART, begin, cmd, KIT, LIST, member, mountBand } from './world'
 import type { Net } from './world'
 
@@ -276,7 +277,7 @@ test(
     const w = await begin($, on, saved(), ART, undefined, net)
     await cmd($, 'pokemon', 'party')
     const band = (await mountBand($)) as Band
-    expect(await shopOf(band)).toMatchObject({ balance: 13_000 })
+    expect(await shopOf(band)).toEqual(walletPill({ balance: 13_000, plus: 0 }))
     let isLocked = true
     net.beforeSet = key => {
       if (key !== 'save' || !isLocked) return
@@ -286,9 +287,9 @@ test(
     expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Couldn't reach the Pokémon/)
     await w.clock.settle()
     expect(w.saveNow().bag).toBeUndefined()
-    expect(await shopOf(band)).toMatchObject({ balance: 13_000 })
+    expect(await shopOf(band)).toEqual(walletPill({ balance: 13_000, plus: 0 }))
     // The next buy goes through.
     expect(await cmd($, 'pokemon', 'buy fire stone')).toMatch(/^Bought a Fire Stone!/)
-    expect(await shopOf(band)).toMatchObject({ balance: 10_000 })
+    expect(await shopOf(band)).toEqual(walletPill({ balance: 10_000, plus: 0 }))
   },
 )

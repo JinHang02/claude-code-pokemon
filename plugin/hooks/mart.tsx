@@ -68,8 +68,6 @@ export const KEYS: Record<string, Act> = {
 // band has its rows and the actions row still fits beside it; else a ◆.
 export const ICON_ROWS = 9
 const ICON_COLUMNS = 14
-const REGION_WHOLE_COLUMNS = 60
-const REGION_LETTERS = 3
 
 // The same as items.ts' MAX_BAG: this module imports types only, so it keeps its own copy.
 const MAX_BAG = 999
@@ -192,7 +190,7 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   // Title: the region, the name, the last message, the wallet and ✕.
   const title = row(0)
   const wallet = ` ₽ ${fmt(p.balance)} `
-  const region = ` ${p.columns >= REGION_WHOLE_COLUMNS ? p.region.text : [...p.region.text].slice(0, REGION_LETTERS).join('')} `
+  const region = ` ${p.region.text} `
   title.put(' ', WHITE, DARK_BLUE)
   title.put('●', p.region.color, DARK_BLUE)
   title.put(region, WHITE, DARK_BLUE)

@@ -5,6 +5,7 @@ import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 import { emptySave, level } from '../hooks/save'
+import { walletPill } from '../hooks/shop'
 import { answerTools, bash, begin, cmd, KIT, member, mountBand, until } from './world'
 
 type Band = {
@@ -103,9 +104,9 @@ test(
     await $.tool.call(bash('git commit -m x') as never)
     // The ₽ lands in the background: a command waits for it.
     await cmd($, 'pokemon', 'party')
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 100 }))
     await w.clock.advance(1500)
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 0 }))
   },
 )
 
