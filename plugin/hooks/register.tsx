@@ -25,12 +25,22 @@ import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } f
 import type { Region } from './region'
 import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
 import type { Work } from './friendship'
-import { buyTicket, chooseStarter, travelTo } from './journey'
+import {
+  ALREADY_CHOSEN,
+  buyTicket,
+  chooseStarter,
+  keepSave,
+  startFresh,
+  startFreshIfUndecided,
+  travelTo,
+} from './journey'
 import type { Change } from './journey'
 import {
   dueStarter,
   findRegion,
+  isObject,
   readTicketWords,
+  regionById,
   TRAVEL_REGIONS,
   regionOf,
   TICKET_PRICE,
@@ -98,7 +108,7 @@ import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
-import { dialogAct, dialogView, isDialogAct, STARTER_ROWS } from './dialogs'
+import { dialogAct, dialogView, isDialogAct, STARTER_ROWS, wipeWarning, WIPED } from './dialogs'
 import type { Dialog, DialogAct, DialogProps, StarterCard } from './dialogs'
 import {
   FERRY_MIN_COLUMNS,
@@ -315,19 +325,13 @@ type Screen = { key: string; from: Mon; to: Mon; style: EvolutionStyle; isPrevie
 let screen: (Screen & { rows: number }) | null = null
 // Screens waiting their turn: one at a time, and none while a wild Pokémon is out.
 let screensDue: Screen[] = []
-/** The ferry crossing over the band since tick `startTick`, with the party's sprites; `isShort`: the band was too small. */
 type Voyage = { from: TravelRegion; to: TravelRegion; party: Pixels[]; startTick: number; isShort: boolean }
 let voyage: Voyage | null = null
-/**
- * The band dialog open in this window, the starters it shows (sprites added as they download), and how much typed
- * into it has gone to the prompt.
- */
 let dialog: Dialog | null = null
 let dialogCards: StarterCard[] = []
 let dialogTyped = 0
-/** The terminal band's `maxRows` and width at its last render, drawn or not (0 before any). */
-let lastMaxRows = 0
-let lastColumns = 0
+let lastRenderedMaxRows = 0
+let lastRenderedColumns = 0
 // Evolutions this session made itself, by look: another session's are shown when the party is drawn with them.
 const evolvedHere = new Set<string>()
 // Another session's evolution older than this when this one first draws it is not played again.
@@ -360,8 +364,9 @@ let shown: { phase?: Phase; landscape?: Landscape; weather?: Weather; moon?: num
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
 let ready: Promise<void> = Promise.resolve()
-// Settles once start-up (sprites, a starter choice, evolutions) has run, however it went.
-let started: Promise<void> = Promise.resolve()
+let startupSettled: Promise<void> = Promise.resolve()
+let isSaveLoaded = false
+let isDueOffered = false
 // The party couldn't be drawn (offline, a missing sprite): the next sync after start-up tries again.
 let isPartyStale = false
 // Each party refresh's number: only the latest one publishes.
@@ -569,8 +574,7 @@ async function writeSave($: EngineInterface, change: (s: Save) => Save) {
   }
 }
 
-const hasLostJourney = (raw: unknown): boolean =>
-  typeof raw === 'object' && raw !== null && !Array.isArray(raw) && !Object.hasOwn(raw, 'journey')
+const hasLostJourney = (raw: unknown): boolean => isObject(raw) && !Object.hasOwn(raw, 'journey')
 
 /**
  * The save as stored, read with the journey copy only when the stored save has no `journey`.
@@ -716,15 +720,14 @@ async function foldLedgers($: EngineInterface) {
   }
 }
 
-// The periodic sync, which also retries what start-up couldn't do: the party's sprites, the starter choice's. That
-// retry runs one at a time: one still waiting on a slow download isn't started again, while the syncs go on.
 let retrying: Promise<unknown> | null = null
 async function retry($: EngineInterface) {
   await sync($)
+  if (!isDueOffered) offerDue($)
   if (++syncs % FOLD_EVERY === 0) await foldLedgers($)
   if (save.isOff || retrying) return
   if (isPartyStale) retrying = refreshParty($)
-  else if (dialogCards.some(c => !c.sprite)) retrying = fetchCardSprites($)
+  else if (dialogCards.some(c => !c.sprite)) retrying = loadCardSprites($)
   if (retrying) await retrying.finally(() => (retrying = null))
 }
 
@@ -1301,6 +1304,7 @@ async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
     return isOff ? { ...rest, isOff: true } : rest
   })
   $.ui.invalidate('ui.render')
+  if (!isOff) openDueDialog($)
   // Evolutions held back while they rested.
   if (!isOff) background($, learnEvolutions($))
   if (isOff)
@@ -1379,7 +1383,6 @@ async function setRegion($: EngineInterface, word: string): Promise<string> {
 
 const regionNames = (regions: readonly TravelRegion[]) => regions.map(r => r.name).join(', ')
 
-/** The party's sprites already downloaded, in party order; a member whose sprite isn't is left out. */
 const cachedParty = (): Pixels[] =>
   save.party.flatMap(m => {
     const art = arts.get(`${fileOf(m)}|${m.isShiny}`) ?? arts.get(`${fileOf(m)}|false`)
@@ -1387,7 +1390,7 @@ const cachedParty = (): Pixels[] =>
   })
 
 /**
- * `/pokemon travel <region>`: sails to `word`'s region, its crossing played over this window's band.
+ * @param word the region typed after `/pokemon travel`.
  * @returns the reply: where one can sail with none named, the region names for an unknown word, why not, or the sailing.
  */
 async function travelCommand($: EngineInterface, word: string): Promise<string> {
@@ -1399,7 +1402,7 @@ async function travelCommand($: EngineInterface, word: string): Promise<string> 
   let change: Change = { save, text: '', isError: true }
   let from = currentRegion()
   await mutate($, s => {
-    from = TRAVEL_REGIONS.find(r => r.id === s.journey.current) ?? from
+    from = regionById(s.journey.current)
     change = travelTo(s, to)
     return change.save
   })
@@ -1409,8 +1412,11 @@ async function travelCommand($: EngineInterface, word: string): Promise<string> 
   closeMart($)
   dropScreens($)
   closeDialog($)
-  const isShort = lastMaxRows < FERRY_MIN_ROWS || lastColumns < FERRY_MIN_COLUMNS
-  if (save.isOff || !lastMaxRows) return `Sailed to ${to.name}.`
+  if (save.isOff || !lastRenderedMaxRows) {
+    openDueDialog($, to.id)
+    return `Sailed to ${to.name}.`
+  }
+  const isShort = lastRenderedMaxRows < FERRY_MIN_ROWS || lastRenderedColumns < FERRY_MIN_COLUMNS
   voyage = { from, to, party: cachedParty(), startTick: tickNo, isShort }
   lastCells = ''
   wake()
@@ -2151,6 +2157,8 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
     if (!band || !fitted || status.wild || pitch) return null
+    if (isRandom) await sync($)
+    if (isRandom && regionOf(pick.species)?.id !== save.journey.current) return null
     if (screen || voyage) {
       if (isAsked) return voyage ? AT_SEA : 'No wild Pokémon comes by while an evolution is on screen.'
       // The timer's visitor isn't lost: the first tick after the screen brings it.
@@ -2275,7 +2283,7 @@ async function keepCatch($: EngineInterface) {
 const isStrayIn = (visitor: Visitor, current: RegionId): boolean =>
   visitor.isRandom && regionOf(visitor.pick.species)?.id !== current
 const ranOff = (visitor: Visitor, current: RegionId): string =>
-  `The wild ${visitor.mon.name} ran off: you're in ${TRAVEL_REGIONS.find(r => r.id === current)?.name ?? current} now.`
+  `The wild ${visitor.mon.name} ran off: you're in ${regionById(current).name} now.`
 
 function dismissStrayVisitor($: EngineInterface) {
   if (!wild || !status.wild || status.wild.isFleeing || pitch?.flees || !isStrayIn(wild, save.journey.current)) return
@@ -2321,8 +2329,6 @@ const ticketItems = (s: Save): MartItem[] =>
 const martLook = (s: Save): string =>
   JSON.stringify([s.bag, balanceOf(s, cash), s.journey, ticketItems(s).map(i => i.ticket?.state)])
 
-const regionById = (id: RegionId): TravelRegion =>
-  TRAVEL_REGIONS.find(r => r.id === id) ?? (TRAVEL_REGIONS[0] as TravelRegion)
 const currentRegion = (): TravelRegion => regionById(save.journey.current)
 
 // What the Mart shows: what's for sale, which party members each would evolve, and the selected item's picture.
@@ -2447,10 +2453,7 @@ async function typedInMart($: EngineInterface, typed: string) {
   await toPrompt($, more, 'the Mart')
 }
 
-/**
- * `more` added to the prompt.
- * @param place where it was typed, for the toast when the prompt can't take it.
- */
+/** @param place where it was typed, for the toast when the prompt can't take it. */
 async function toPrompt($: EngineInterface, more: string, place: string) {
   try {
     const filled = await $.prompt.fill({ text: more, mode: 'insert' })
@@ -2487,44 +2490,133 @@ function openMartCommand($: EngineInterface): string {
   )
 }
 
-// ── The band dialog ──
+type FreshDialog = Extract<Dialog, { kind: 'fresh' }>
+type StarterDialog = Extract<Dialog, { kind: 'starter' }>
 
-/** `r`'s starters in ball order: name and types from SPECIES, no sprite yet. */
-const starterCards = (r: TravelRegion): StarterCard[] =>
-  r.starters.map(species => ({ species, name: speciesName(species), types: SPECIES[species]?.types ?? [] }))
+const KEEP_OR_FRESH_FIRST = 'Choose to keep your save or start fresh first: /pokemon keep or /pokemon fresh.'
+const starterWords = (r: TravelRegion) => `${r.starters.slice(0, -1).join(', ')} or ${r.starters.at(-1) ?? ''}`
+const openConfirmation = (isRestart: boolean): FreshDialog | null =>
+  dialog?.kind === 'fresh' && dialog.isConfirming && dialog.isRestart === isRestart ? dialog : null
 
-/** Downloads the sprites the open starter choice lacks; a download that fails is reported, and its card stays bare. */
-async function fetchCardSprites($: EngineInterface) {
-  const opened = dialog
-  if (opened?.kind !== 'starter') return
-  for (const card of dialogCards) {
-    if (card.sprite || !isName(card.species)) continue
-    try {
-      const { art } = await fetchArt($, card.species, false)
-      if (dialog?.kind !== 'starter' || dialog.region !== opened.region) return
-      dialogCards = dialogCards.map(c => (c.species === card.species ? { ...c, sprite: parseAnsi(art) } : c))
-      $.ui.invalidate('ui.render')
-    } catch (err) {
-      await report($, err)
-    }
+/**
+ * @param answer the word after `/pokemon restart`: none asks, `yes` or `no` answers the confirmation open here.
+ * @returns the reply: the confirmation opened in the band over any dialog or the Mart, its outcome, or a refusal.
+ */
+async function restartCommand($: EngineInterface, answer: string): Promise<string> {
+  const word = answer.trim().toLowerCase()
+  const asked = openConfirmation(true)
+  const nothingAsked = 'No restart is waiting for an answer: /pokemon restart asks first.'
+  if (word === 'yes') return asked ? chooseSaveNow($, asked, 'fresh') : nothingAsked
+  if (word === 'no') {
+    if (!asked) return nothingAsked
+    closeDialog($)
+    return 'Nothing changed: your journey goes on.'
   }
+  if (word) return 'Answer with /pokemon restart yes or /pokemon restart no.'
+  if (!band || save.isOff)
+    return "/pokemon restart asks in the Pokémon band above the prompt, and it isn't showing here."
+  closeMart($)
+  showDialog($, { kind: 'fresh', isConfirming: true, isRestart: true })
+  return `The restart confirmation is open above the prompt. ${WIPED} /pokemon restart yes wipes it, /pokemon restart no keeps it.`
 }
 
 /**
- * Opens `region`'s starter choice when it is due in the save and no dialog is open.
- * @param region by default the current region's choice, else the first one due.
+ * @param answer the word after `/pokemon fresh`: none asks, `yes` or `no` answers the confirmation open here.
+ * @returns the reply: the confirmation opened in the band, its outcome, or a refusal.
  */
-function openDueDialog($: EngineInterface, region: RegionId | undefined = dueStarter(save.journey)) {
-  if (dialog || !region || save.journey.starters[region] !== 'due') return
-  dialog = { kind: 'starter', region, sel: 0, isAsking: false }
-  dialogCards = starterCards(regionById(region))
+async function freshCommand($: EngineInterface, answer: string): Promise<string> {
+  await sync($)
+  if (!save.journey.isUndecided) return ALREADY_CHOSEN
+  const word = answer.trim().toLowerCase()
+  const asked = openConfirmation(false)
+  const nothingAsked = 'No fresh start is waiting for an answer: /pokemon fresh asks first.'
+  if (word === 'yes') return asked ? chooseSaveNow($, asked, 'fresh') : nothingAsked
+  if (word === 'no') {
+    if (!asked) return nothingAsked
+    showDialog($, { kind: 'fresh', isConfirming: false, isRestart: false })
+    return 'Nothing changed: keep your save or start fresh.'
+  }
+  if (word) return 'Answer with /pokemon fresh yes or /pokemon fresh no.'
+  if (!band || save.isOff) return "/pokemon fresh asks in the Pokémon band above the prompt, and it isn't showing here."
+  closeMart($)
+  showDialog($, { kind: 'fresh', isConfirming: true, isRestart: false })
+  return `Start fresh? ${WIPED} /pokemon fresh yes wipes it, /pokemon fresh no goes back.`
+}
+
+async function keepCommand($: EngineInterface): Promise<string> {
+  await sync($)
+  if (!save.journey.isUndecided) return ALREADY_CHOSEN
+  const asked = dialog?.kind === 'fresh' && !dialog.isRestart ? dialog : null
+  return chooseSaveNow($, asked, 'keep')
+}
+
+/** @param word the starter named after `/pokemon choose`, in any case. */
+async function chooseCommand($: EngineInterface, word: string): Promise<string> {
+  await sync($)
+  const id = dueStarter(save.journey)
+  if (!id) return save.journey.isUndecided ? KEEP_OR_FRESH_FIRST : "There's no starter to choose right now."
+  const r = regionById(id)
+  const species = slug(word)
+  if (!species) return `Choose your ${r.name} starter: /pokemon choose ${starterWords(r)}`
+  if (!r.starters.includes(species))
+    return `${speciesName(species)} isn't one of ${r.name}'s starters: /pokemon choose ${starterWords(r)}`
+  const asked = dialog?.kind === 'starter' && dialog.region === id ? dialog : null
+  return chooseStarterNow($, asked, id, species)
+}
+
+const starterCards = (r: TravelRegion): StarterCard[] =>
+  r.starters.map(species => ({ species, name: speciesName(species), types: SPECIES[species]?.types ?? [] }))
+
+async function fetchCardSprites($: EngineInterface, region: RegionId) {
+  const missing = dialogCards.filter(card => !card.sprite && isName(card.species))
+  await Promise.all(
+    missing.map(async card => {
+      try {
+        const { art } = await fetchArt($, card.species, false)
+        if (dialog?.kind !== 'starter' || dialog.region !== region) return
+        dialogCards = dialogCards.map(c => (c.species === card.species ? { ...c, sprite: parseAnsi(art) } : c))
+        $.ui.invalidate('ui.render')
+      } catch (err) {
+        await report($, err)
+      }
+    }),
+  )
+}
+
+let cardSpritesLoading: { region: RegionId; run: Promise<void> } | null = null
+function loadCardSprites($: EngineInterface): Promise<void> {
+  if (dialog?.kind !== 'starter') return Promise.resolve()
+  const { region } = dialog
+  if (cardSpritesLoading?.region === region) return cardSpritesLoading.run
+  const run = fetchCardSprites($, region).finally(() => {
+    if (cardSpritesLoading?.run === run) cardSpritesLoading = null
+  })
+  cardSpritesLoading = { region, run }
+  return run
+}
+
+function showDialog($: EngineInterface, d: Dialog, cards: StarterCard[] = []) {
+  dialog = d
+  dialogCards = cards
   dialogTyped = 0
   lastCells = ''
   $.ui.invalidate('ui.render')
-  background($, fetchCardSprites($))
 }
 
-/** Closes the dialog; a starter choice it showed stays due in the save. */
+/** @param region by default the current region's choice, else the first one due. */
+function openDueDialog($: EngineInterface, region: RegionId | undefined = dueStarter(save.journey)) {
+  if (dialog) return
+  if (save.journey.isUndecided) return showDialog($, { kind: 'fresh', isConfirming: false, isRestart: false })
+  if (!region || save.journey.starters[region] !== 'due') return
+  showDialog($, { kind: 'starter', region, sel: 0, isAsking: false }, starterCards(regionById(region)))
+  background($, loadCardSprites($))
+}
+
+function offerDue($: EngineInterface) {
+  isDueOffered = true
+  openDueDialog($)
+}
+
 function closeDialog($: EngineInterface) {
   if (!dialog) return
   dialog = null
@@ -2533,8 +2625,14 @@ function closeDialog($: EngineInterface) {
   startScreen($)
 }
 
-/** Closes a starter choice no longer due in the save (made in another window), and says which starter was taken. */
 function reconcileDialog($: EngineInterface) {
+  if (dialog?.kind === 'fresh') {
+    if (dialog.isRestart || save.journey.isUndecided) return
+    const hasKantoStarter = 'kanto' in save.journey.starters
+    closeDialog($)
+    $.ui.toast(`Your save was ${hasKantoStarter ? 'started fresh' : 'kept'} in another window.`)
+    return
+  }
   if (dialog?.kind !== 'starter') return
   const r = regionById(dialog.region)
   const choice = save.journey.starters[r.id]
@@ -2543,65 +2641,119 @@ function reconcileDialog($: EngineInterface) {
   if (choice) $.ui.toast(`${speciesName(choice.species)} was chosen as your ${r.name} starter in another window.`)
 }
 
-/** What the dialog client draws for `d` in a band `columns` by `rows`. */
 const dialogProps = (d: Dialog, columns: number, rows: number): DialogProps =>
   dialogView(d, {
     columns,
     rows,
     region: d.kind === 'starter' ? regionById(d.region) : currentRegion(),
     cards: dialogCards,
+    summary: {
+      owned: save.party.length + (save.box?.length ?? 0),
+      seen: Object.keys(save.dex).length,
+      balance: balanceOf(save, cash),
+    },
   })
 
-/** A click or key posted by the dialog: the dialog moves on, closes, or makes its choice. */
 async function dialogActOn($: EngineInterface, a: DialogAct) {
   const was = dialog
   if (!was) return
   const { dialog: next, post } = dialogAct(was, a, was.kind === 'starter' ? regionById(was.region).starters : [])
   if (!next) return closeDialog($)
+  const isWipeUnseen =
+    a === 'yes' && was.kind === 'fresh' && was.isConfirming && band && !wipeWarning(band.total, band.rows)
+  if (isWipeUnseen) return
   dialog = next
-  $.ui.invalidate('ui.render')
-  if (post && 'choose' in post && next.kind === 'starter') await chooseStarterNow($, next, post.choose)
+  if (next !== was) $.ui.invalidate('ui.render')
+  if (post && 'choose' in post && next.kind === 'starter')
+    $.ui.toast(await chooseStarterNow($, next, next.region, post.choose))
+  if (post && !('choose' in post) && next.kind === 'fresh')
+    $.ui.toast(await chooseSaveNow($, next, 'keep' in post ? 'keep' : 'fresh'))
+}
+
+type Applied = { change: Change } | { failure: string }
+
+/**
+ * `change` made on the latest save, `asked` closed while it is written.
+ * @param asked the dialog the choice answers, open again when the store refuses the write; null for none.
+ * @returns the change made, or why the store refused it.
+ */
+async function applyChoice(
+  $: EngineInterface,
+  asked: Dialog | null,
+  change: (s: Save, ledgers: Record<string, Ledger>) => Change,
+  withLedgers = false,
+): Promise<Applied> {
+  if (asked && dialog === asked) {
+    dialog = null
+    lastCells = ''
+    $.ui.invalidate('ui.render')
+  }
+  let made: Change = { save, text: '', isError: true }
+  try {
+    await mutate(
+      $,
+      (s, ledgers) => {
+        made = change(s, ledgers)
+        return made.save
+      },
+      withLedgers,
+    )
+  } catch (err) {
+    if (asked) dialog ??= asked
+    $.ui.invalidate('ui.render')
+    return { failure: `Couldn't do that: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  return { change: made }
 }
 
 /**
- * `species` taken as `asked.region`'s starter: the dialog closes and a toast tells the outcome. A store that refuses
- * the write, or a choice still due after (no room), leaves `asked` open.
+ * @param asked the fresh-or-keep screen or a confirmation the answer came from; null for a typed keep.
+ * @returns the outcome to tell.
  */
-async function chooseStarterNow($: EngineInterface, asked: Extract<Dialog, { kind: 'starter' }>, species: string) {
-  dialog = null
-  lastCells = ''
-  $.ui.invalidate('ui.render')
-  const r = regionById(asked.region)
+async function chooseSaveNow($: EngineInterface, asked: FreshDialog | null, how: 'keep' | 'fresh'): Promise<string> {
+  const isRestart = asked?.isRestart ?? false
+  const applied = await applyChoice(
+    $,
+    asked,
+    (s, ledgers) =>
+      how === 'keep' ? keepSave(s) : isRestart ? startFresh(s, ledgers) : startFreshIfUndecided(s, ledgers),
+    how === 'fresh',
+  )
+  if ('failure' in applied) return applied.failure
+  openDueDialog($)
+  startScreen($)
+  return applied.change.text
+}
+
+/**
+ * @param asked the starter choice the answer came from, open again when the choice stays due; null for none open.
+ * @returns the outcome to tell.
+ */
+async function chooseStarterNow(
+  $: EngineInterface,
+  asked: StarterDialog | null,
+  region: RegionId,
+  species: string,
+): Promise<string> {
+  const r = regionById(region)
   const starter: Member = { id: newId(), species, form: 'regular', isShiny: false, xp: 0, evolutions: 0 }
-  let change: Change = { save, text: '', isError: true }
-  try {
-    await mutate($, s => {
-      change = chooseStarter(s, r, starter)
-      return change.save
-    })
-  } catch (err) {
-    dialog ??= asked
-    $.ui.toast(`Couldn't do that: ${err instanceof Error ? err.message : String(err)}`)
-    $.ui.invalidate('ui.render')
-    return
-  }
-  $.ui.toast(change.text)
+  const applied = await applyChoice($, asked, s => chooseStarter(s, r, starter))
+  if ('failure' in applied) return applied.failure
+  const { change } = applied
   if (change.isError && save.journey.starters[r.id] === 'due') {
-    dialog ??= asked
+    if (asked) dialog ??= asked
     $.ui.invalidate('ui.render')
-    return
+    return change.text
   }
   if (!change.isError) {
     background($, refreshParty($))
     background($, learnEvolutions($))
   }
   startScreen($)
+  return change.text
 }
 
-/**
- * Typing in the dialog (`typed`, all of it since it was drawn): it closes, still due, and the new part goes to the
- * prompt.
- */
+/** @param typed cumulative text since the dialog was drawn. */
 async function typedInDialog($: EngineInterface, typed: string) {
   const more = typed.slice(dialogTyped)
   if (!more) return
@@ -2766,7 +2918,6 @@ function voyageCells(v: Voyage, b: { columns: number; rows: number; total: numbe
   return toCells(img, [{ x: TEXT_COLUMN, y: b.rows - 2, text, fg: BOX.text, bg: BOX.fill }]).cells
 }
 
-/** The voyage is over: the band comes back, with its destination's starter choice when that is due. */
 function endVoyage($: EngineInterface) {
   const to = voyage?.to
   voyage = null
@@ -2866,7 +3017,6 @@ async function tick($: EngineInterface) {
     return
   }
   if (status.mood?.kind !== 'evolve') evolveFrom = null
-  // The scene keeps moving underneath; nothing is drawn over the Mart or a dialog.
   if (mart.isOpen || dialog) return
   const isDue = isStirred || tickNo % CALM_EVERY === 0
   isStirred = false
@@ -3013,7 +3163,23 @@ async function dexEntryOf($: EngineInterface, args: string): Promise<string | nu
 }
 
 // The `/pokemon` words that take no Pokémon's name.
-const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help', 'travel'])
+const UNNAMED = new Set([
+  'party',
+  'box',
+  'size',
+  'evolution',
+  'bag',
+  'mart',
+  'buy',
+  'off',
+  'on',
+  'help',
+  'travel',
+  'restart',
+  'choose',
+  'keep',
+  'fresh',
+])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
 
 async function pokemon($: EngineInterface, typed: string): Promise<string> {
@@ -3068,6 +3234,14 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return buyCommand($, tail)
     case 'travel':
       return travelCommand($, tail)
+    case 'restart':
+      return restartCommand($, tail)
+    case 'choose':
+      return chooseCommand($, tail)
+    case 'keep':
+      return keepCommand($)
+    case 'fresh':
+      return freshCommand($, tail)
     case 'off':
       return setOff($, true)
     case 'on':
@@ -3141,6 +3315,7 @@ async function load($: EngineInterface) {
       countLedgers(await readLedgers($))
       countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
     })
+    isSaveLoaded = true
   } catch (err) {
     await report($, err)
   }
@@ -3172,13 +3347,12 @@ async function promptly($: EngineInterface, line: string, work: () => Promise<st
 
 // Commands wait for start-up, but no longer than this: a stalled download never holds them up.
 const START_WAIT_MS = 5000
-const settled = ($: EngineInterface) => Promise.race([started, $.clock.sleep(START_WAIT_MS)])
+const settled = ($: EngineInterface) => Promise.race([startupSettled, $.clock.sleep(START_WAIT_MS)])
 
-// After the save: the time zone, the party's sprites, any starter choice due, then any evolution due.
 async function start($: EngineInterface) {
   tzOffsetMin = await readTimeZone($)
   if (save.party.length) await refreshParty($)
-  openDueDialog($)
+  if (isSaveLoaded) offerDue($)
   await learnEvolutions($)
 }
 
@@ -3193,7 +3367,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     for (const command of Object.values(COMMANDS)) await $.command.register(command)
     ready = load($)
-    started = ready
+    startupSettled = ready
       .then(() => start($))
       .catch(err => report($, err))
       .catch(() => {
@@ -3204,13 +3378,13 @@ export const register: Register = on => {
     $.clock.every(SYNC_MS, () =>
       background(
         $,
-        started.then(() => retry($)),
+        startupSettled.then(() => retry($)),
       ),
     )
     $.clock.every(TOGETHER_EVERY_MS, () =>
       background(
         $,
-        started.then(() => together($)),
+        startupSettled.then(() => together($)),
       ),
     )
 
@@ -3222,7 +3396,7 @@ export const register: Register = on => {
     if (e.source !== 'startup')
       background(
         $,
-        started.then(() => restore($)),
+        startupSettled.then(() => restore($)),
       )
     return next(e)
   })
@@ -3395,8 +3569,8 @@ export const register: Register = on => {
     await readClock($)
     // Another surface drawing at the same time leaves the terminal's band alone.
     if (e.surface !== 'terminal') return next(e)
-    lastMaxRows = e.props.maxRows
-    lastColumns = Math.min(512, e.props.bodyColumns)
+    lastRenderedMaxRows = e.props.maxRows
+    lastRenderedColumns = Math.min(512, e.props.bodyColumns)
     if (voyage && !voyage.isShort && e.props.maxRows < FERRY_MIN_ROWS) {
       const { to } = voyage
       voyage = null
@@ -3453,6 +3627,7 @@ export const register: Register = on => {
     // Too short a space for even the smallest band: Claude Code's own row instead of a scrolling one.
     if (rows > e.props.maxRows) {
       band = null
+      if (voyage) endVoyage($)
       return next(e)
     }
     status = {

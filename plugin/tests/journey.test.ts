@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { buyTicket, chooseStarter, keepSave, startFresh, travelTo } from '../hooks/journey'
+import { buyTicket, chooseStarter, keepSave, startFresh, startFreshIfUndecided, travelTo } from '../hooks/journey'
 import { keptJourney, newJourney, TRAVEL_REGIONS, speciesIn, unlockedOf } from '../hooks/travel-regions'
 import type { Journey, TravelRegion, RegionId } from '../hooks/travel-regions'
 import { balanceOf, emptySave, extraMoney, extraXp, loadSave, MAX_BOX, MAX_PARTY, STARTING_MONEY } from '../hooks/save'
@@ -282,6 +282,17 @@ const played = (): Save => ({
   foldedXp: { 'xp:old': { p1: 50 } },
   foldedMoney: { 'xp:old': 500 },
   journey: { current: 'johto', tickets: ['johto'], starters: { kanto: { species: 'bulbasaur' }, johto: 'due' } },
+})
+
+test('starting fresh from the fresh-or-keep screen wipes only an undecided save', () => {
+  const undecided = withJourney(played(), { isUndecided: true })
+  expect(startFreshIfUndecided(undecided, {})).toEqual(startFresh(undecided, {}))
+  const decided = played()
+  expect(startFreshIfUndecided(decided, {})).toEqual({
+    save: decided,
+    text: 'Your save was already chosen.',
+    isError: true,
+  })
 })
 
 test('starting fresh wipes the game, keeps the settings and opens Kanto’s choice (A104, A111, R39)', () => {

@@ -1,5 +1,5 @@
-// One change function per player action (buyTicket, travelTo, chooseStarter, keepSave, startFresh) and their result,
-// Change.
+// One change function per player action (buyTicket, travelTo, chooseStarter, keepSave, startFresh,
+// startFreshIfUndecided) and their result, Change; ALREADY_CHOSEN.
 import { newJourney, TICKET_PRICE, ticketState } from './travel-regions'
 import type { TravelRegion } from './travel-regions'
 import {
@@ -16,6 +16,8 @@ import {
 import type { Ledger, Member, Save } from './save'
 
 export type Change = { save: Save; text: string; isError: boolean }
+
+export const ALREADY_CHOSEN = 'Your save was already chosen.'
 
 const refuse = (save: Save, text: string): Change => ({ save, text, isError: true })
 
@@ -95,7 +97,7 @@ export function chooseStarter(save: Save, r: TravelRegion, m: Member, now: numbe
 /** The undecided save kept as it is; unchanged when already decided. */
 export function keepSave(save: Save): Change {
   const { isUndecided, ...journey } = save.journey
-  if (!isUndecided) return refuse(save, 'Your save was already chosen.')
+  if (!isUndecided) return refuse(save, ALREADY_CHOSEN)
   return { save: { ...save, journey }, text: 'Kept your save.', isError: false }
 }
 
@@ -129,3 +131,7 @@ export function startFresh(save: Save, ledgers: Record<string, Ledger>): Change 
     isError: false,
   }
 }
+
+/** @returns startFresh's change for an undecided pre-region save; else the save unchanged and ALREADY_CHOSEN. */
+export const startFreshIfUndecided = (save: Save, ledgers: Record<string, Ledger>): Change =>
+  save.journey.isUndecided ? startFresh(save, ledgers) : refuse(save, ALREADY_CHOSEN)

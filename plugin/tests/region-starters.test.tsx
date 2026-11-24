@@ -20,6 +20,8 @@ const PIKACHU = 0x0a0b0c
 const JOHTO = TRAVEL_REGIONS[1] as TravelRegion
 const ALL_STARTERS = TRAVEL_REGIONS.flatMap(r => r.starters)
 
+const CHARMANDER = 0x0d0e0f
+const ART_COLORS = ['#ff0000', '#0000ff', '#00ff00']
 const KANTO_CHOSEN = { kanto: { species: 'bulbasaur' } }
 const TO_JOHTO: Journey = { current: 'kanto', tickets: ['johto'], starters: KANTO_CHOSEN }
 const JOHTO_DUE: Journey = { current: 'johto', tickets: ['johto'], starters: { ...KANTO_CHOSEN, johto: 'due' } }
@@ -98,7 +100,7 @@ async function sceneText(band: Band): Promise<string> {
   for (let i = 0; i < words.length; i += 3) chars.push(words[i] ?? 0x20)
   return String.fromCodePoint(...chars)
 }
-/** Advances the clock 100 ms at a time until the dialog is drawn; what the band showed before it, in order. */
+/** @returns what the band showed before the dialog was drawn, in order, and how long that took. */
 async function untilDialog(w: World, band: Band, maxMs: number): Promise<{ before: string[]; ms: number }> {
   const before: string[] = []
   for (let ms = 0; ms <= maxMs; ms += 100) {
@@ -219,6 +221,79 @@ test(
   },
 )
 
+const spriteFetches = (w: World, species: string) =>
+  w.fetched.filter(url => url.endsWith(`/colorscripts/small/regular/${species}`)).length
+
+test(
+  'the first save read failing: the Kanto choice opens at the next sync once the store answers',
+  SLOW,
+  async ($, on) => {
+    let reads = 0
+    const n = net({ isStoreBroken: true })
+    n.beforeGet = key => void (key === 'save' && ++reads > 1 && (n.isStoreBroken = false))
+    const w = await play($, on, undefined, n)
+    const band = await mount($)
+    expect(await dialogOf(band)).toBeNull()
+    await w.clock.advance(11_000)
+    expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+  },
+)
+
+test('the first save read failing on a pre-region save: fresh-or-keep opens at the next sync', SLOW, async ($, on) => {
+  let reads = 0
+  const n = net({ isStoreBroken: true })
+  n.beforeGet = key => void (key === 'save' && ++reads > 1 && (n.isStoreBroken = false))
+  const { journey: _, ...preRegion } = player(TO_JOHTO)
+  const w = await play($, on, preRegion as Save, n)
+  const band = await mount($)
+  expect(await dialogOf(band)).toBeNull()
+  await w.clock.advance(11_000)
+  expect(textOf(await dialogOf(band))).toContain('Keep my save')
+})
+
+test('one stalled starter sprite holds back neither of the others', SLOW, async ($, on) => {
+  const w = await play(
+    $,
+    on,
+    undefined,
+    net({
+      sprites: { bulbasaur: solid(BULBASAUR, 6), charmander: solid(CHARMANDER, 6) },
+      artStall: file => (file === 'bulbasaur' ? new Promise<void>(() => {}) : undefined),
+    }),
+  )
+  await cmd($, 'pokemon', 'party')
+  const band = await mount($)
+  await act(band, 'right')
+  for (let i = 0; i < 20 && !colorsOf(await dialogOf(band)).has(hex(CHARMANDER)); i++) await w.clock.advance(100)
+  expect(colorsOf(await dialogOf(band)).has(hex(CHARMANDER))).toBe(true)
+})
+
+test('a periodic retry while the opening download stalls starts no second download', SLOW, async ($, on) => {
+  let release = () => {}
+  const stalled = new Promise<void>(resolve => (release = resolve))
+  const w = await play($, on, undefined, net({ artStall: file => (file === 'bulbasaur' ? stalled : undefined) }))
+  const band = await mount($)
+  await w.clock.advance(15_000)
+  expect(spriteFetches(w, 'bulbasaur')).toBe(1)
+  release()
+  for (let i = 0; i < 20 && !colorsOf(await dialogOf(band)).has(hex(BULBASAUR)); i++) await w.clock.advance(100)
+  expect(colorsOf(await dialogOf(band)).has(hex(BULBASAUR))).toBe(true)
+  expect(spriteFetches(w, 'bulbasaur')).toBe(1)
+})
+
+test('a hover on the ball already highlighted redraws nothing', SLOW, async ($, on) => {
+  const w = await play($, on, undefined, net())
+  const band = await mount($)
+  await w.clock.advance(1000)
+  expect(await dialogOf(band)).not.toBeNull()
+  const before = w.band.invalidated
+  await act(band, { hover: 0 })
+  await act(band, { hover: 0 })
+  expect(w.band.invalidated).toBe(before)
+  await act(band, { hover: 1 })
+  expect(w.band.invalidated).toBeGreaterThan(before)
+})
+
 test('the arrow right: the panel shows Charmander, Fire; ← back to Bulbasaur', SLOW, async ($, on) => {
   await play($, on, undefined, net())
   await cmd($, 'pokemon', 'party')
@@ -283,15 +358,21 @@ test(
   "Charmander's sprite can't be downloaded: its name and type still show, and it can be chosen",
   SLOW,
   async ($, on) => {
-    const w = await play($, on, undefined, net({ sprites: { charmander: 'not a sprite' } }))
+    const w = await play(
+      $,
+      on,
+      undefined,
+      net({ sprites: { bulbasaur: solid(BULBASAUR, 6), charmander: 'not a sprite' } }),
+    )
     await cmd($, 'pokemon', 'party')
     const band = await mount($)
-    await w.clock.advance(1000)
+    for (let i = 0; i < 50 && !colorsOf(await dialogOf(band)).has(hex(BULBASAUR)); i++) await w.clock.advance(100)
+    expect(colorsOf(await dialogOf(band)).has(hex(BULBASAUR))).toBe(true)
     await act(band, 'right')
     const shown = await dialogOf(band)
     expect(textOf(shown)).toContain('Charmander')
     expect(textOf(shown)).toContain('Fire')
-    expect(colorsOf(shown).has(hex(BULBASAUR))).toBe(false)
+    for (const color of [hex(BULBASAUR), ...ART_COLORS]) expect(colorsOf(shown).has(color)).toBe(false)
     await act(band, 'enter')
     await act(band, 'yes')
     expect(w.saveNow().party.map(m => m.species)).toEqual(['charmander'])
@@ -650,4 +731,65 @@ test('Chikorita here and Totodile there at once: one is added, and both windows 
   expect(other.toasts.some(t => t.includes('Chikorita'))).toBe(true)
   expect(other.toasts.some(t => t.includes('Totodile'))).toBe(false)
   expect(JOHTO.starters).toContain('chikorita')
+})
+
+// ── Typed answers ──
+
+test(
+  '/pokemon choose cyndaquil with the Johto choice pending: it joins as caught, the dialog closes (A117)',
+  SLOW,
+  async ($, on) => {
+    const w = await play($, on, player(JOHTO_DUE), net())
+    await cmd($, 'pokemon', 'party')
+    const band = await mount($)
+    expect(textOf(await dialogOf(band))).toContain('Johto')
+    expect(await cmd($, 'pokemon', 'choose Cyndaquil')).toBe('Cyndaquil joined your party!')
+    expect(w.saveNow().journey.starters.johto).toEqual({ species: 'cyndaquil' })
+    expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'cyndaquil'])
+    expect(w.saveNow().party[1]?.isCaught).toBe(true)
+    expect(w.saveNow().dex.cyndaquil?.caught).toBe(1)
+    expect(await dialogOf(band)).toBeNull()
+    expect(w.toasts.filter(t => t.includes('another window'))).toEqual([])
+  },
+)
+
+test('/pokemon choose with no choice pending: one line, nothing changes (A119)', SLOW, async ($, on) => {
+  const w = await play($, on, player(TO_JOHTO), net())
+  await cmd($, 'pokemon', 'party')
+  const before = w.saveNow()
+  const reply = await cmd($, 'pokemon', 'choose bulbasaur')
+  expect(reply.split('\n')).toHaveLength(1)
+  expect(reply).toMatch(/no starter to choose/i)
+  expect(w.saveNow()).toEqual(before)
+})
+
+test("/pokemon choose names only the pending region's starters; alone, it lists them", SLOW, async ($, on) => {
+  const w = await play($, on, player(JOHTO_DUE), net())
+  await cmd($, 'pokemon', 'party')
+  const band = await mount($)
+  const before = w.saveNow()
+  expect(await cmd($, 'pokemon', 'choose bulbasaur')).toBe(
+    "Bulbasaur isn't one of Johto's starters: /pokemon choose chikorita, cyndaquil or totodile",
+  )
+  expect(await cmd($, 'pokemon', 'choose')).toBe(
+    'Choose your Johto starter: /pokemon choose chikorita, cyndaquil or totodile',
+  )
+  expect(w.saveNow()).toEqual(before)
+  expect(await dialogOf(band)).not.toBeNull()
+})
+
+test('/pokemon choose works with no band drawn: a new player takes Squirtle', SLOW, async ($, on) => {
+  const w = await play($, on, undefined, net())
+  await cmd($, 'pokemon', 'party')
+  expect(await cmd($, 'pokemon', 'choose squirtle')).toBe('Squirtle joined your party!')
+  expect(w.saveNow().party.map(m => m.species)).toEqual(['squirtle'])
+  expect(await cmd($, 'pokemon', 'choose squirtle')).toBe("There's no starter to choose right now.")
+})
+
+test('the hint rows name the typed answers, not ctrl+x tab', SLOW, async ($, on) => {
+  await play($, on, undefined, net())
+  const band = await mount($)
+  const text = textOf(await dialogOf(band))
+  expect(text).toContain('/pokemon choose')
+  expect(text).not.toContain('ctrl+x')
 })

@@ -41,23 +41,20 @@ const IN_JOHTO: Journey = { current: 'johto', tickets: ['johto'], starters: { jo
 const solid = (rgb: string, size: number, width = size) =>
   Array.from({ length: size }, () => `\x1b[38;2;${rgb}m\x1b[48;2;${rgb}m▀\x1b[0m`.repeat(width)).join('\n')
 const TALL = solid('9;9;9', 12)
-// A wild visitor easy to find in the band: a solid cyan block.
-const BLOCK = solid('0;255;255', 8)
+const CYAN_VISITOR_SPRITE = solid('0;255;255', 8)
 const CYAN = '#00ffff'
 const CACHE = '/home/ash/.cache/claude-code-pokemon'
 
-// Four Kanto species and one Johto species, every one drawn as the cyan block.
 const MIXED = ['caterpie', 'weedle', 'pidgey', 'rattata', 'chikorita']
 const mixedNet = (): Net => ({
   isOnline: true,
   list: JSON.stringify(MIXED.map(name => ({ name, forms: ['regular'] }))),
-  sprites: Object.fromEntries(MIXED.map(n => [n, BLOCK])),
+  sprites: Object.fromEntries(MIXED.map(n => [n, CYAN_VISITOR_SPRITE])),
 })
-// Only these species in the downloaded list.
 const onlyNet = (list: { name: string; forms: string[] }[]): Net => ({
   isOnline: true,
   list: JSON.stringify(list),
-  sprites: Object.fromEntries(list.map(s => [s.name, BLOCK])),
+  sprites: Object.fromEntries(list.map(s => [s.name, CYAN_VISITOR_SPRITE])),
 })
 const pikachuAndChikorita = () =>
   onlyNet([
@@ -73,7 +70,7 @@ type Aim = {
 type Line = [string, string, string][]
 type World = Awaited<ReturnType<typeof begin>>
 
-// The band's text lines while the click layer draws it (null when it's pixel art).
+/** @returns the band's text lines while the click layer draws it; null when it is pixel art. */
 async function aimLines(aim: Aim): Promise<Line[] | null> {
   await aim.redraw()
   const find = (node: unknown): Line[] | null => {
@@ -88,7 +85,6 @@ async function aimLines(aim: Aim): Promise<Line[] | null> {
   }
   return find(await aim.drawn())
 }
-// The first cell the text band draws as a bare `hex` background.
 function cellIn(lines: Line[] | null, hex: string) {
   for (const [y, runs] of (lines ?? []).entries()) {
     let x = 0
@@ -99,7 +95,6 @@ function cellIn(lines: Line[] | null, hex: string) {
   }
   return null
 }
-// Moves the clock on until the visitor can be aimed at.
 async function aimable(w: World, aim: Aim) {
   for (let i = 0; i < 200; i++) {
     const cell = cellIn(await aimLines(aim), CYAN)
@@ -108,7 +103,6 @@ async function aimable(w: World, aim: Aim) {
   }
   throw new Error('never showed up')
 }
-// A party of one in daylight with the band up.
 async function banded($: Parameters<typeof cmd>[0]) {
   await cmd($, 'pokemon', 'party')
   const aim = (await mountBand($ as never)) as Aim
@@ -116,7 +110,6 @@ async function banded($: Parameters<typeof cmd>[0]) {
   return aim
 }
 const gotcha = (w: World) => w.toasts.filter(t => t.startsWith('Gotcha'))
-// Balls at `name` until it is caught, bringing it back by name whenever it has run off.
 async function catchByName($: Parameters<typeof cmd>[0], w: World, aim: Aim, name: string) {
   for (let i = 0; i < 60 && !gotcha(w).length; i++) {
     await cmd($, 'pokemon-play', `wild ${name}`)
@@ -126,7 +119,6 @@ async function catchByName($: Parameters<typeof cmd>[0], w: World, aim: Aim, nam
   }
   expect(gotcha(w)).toHaveLength(1)
 }
-// Another window travels: its save write and its copy write.
 function otherWindowTravels(w: World, journey: Journey) {
   w.store.set('save', { ...w.saveNow(), journey })
   w.store.set('journey', journey)
@@ -186,6 +178,29 @@ test(
     await banded($)
     otherWindowTravels(w, IN_JOHTO)
     expect(await cmd($, 'pokemon-play', 'wild')).toBe('A wild Chikorita wanders by.')
+  },
+)
+
+test(
+  'a random Kanto visitor whose sprite is still downloading when another window sails to Johto never shows up nor counts seen',
+  KIT,
+  async ($, on) => {
+    const kanto = MIXED.filter(n => n !== 'chikorita')
+    let release = () => {}
+    const stalled = new Promise<void>(resolve => (release = resolve))
+    const net = { ...mixedNet(), artStall: (file: string) => (kanto.includes(file) ? stalled : undefined) }
+    const w = await begin($, on, { ...emptySave(), party: [member('eevee')] }, TALL, undefined, net)
+    await banded($)
+    const said = cmd($, 'pokemon-play', 'wild')
+    await until($, () => w.fetched.some(url => kanto.some(n => url.endsWith(`/${n}`))))
+    otherWindowTravels(w, IN_JOHTO)
+    release()
+    expect(await said).toBe('No wild Pokémon showed up.')
+    expect(w.toasts.filter(t => /appeared!$/.test(t))).toEqual([])
+    expect(seenOf(w, KANTO)).toBe(0)
+    expect(await cmd($, 'pokemon-play', 'wild')).toBe('A wild Chikorita wanders by.')
+    expect(seenOf(w, KANTO)).toBe(0)
+    expect(seenOf(w, JOHTO)).toBe(1)
   },
 )
 

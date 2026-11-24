@@ -19,10 +19,13 @@ const texts = (text: string): string[] => {
 const columns = (help: string): number[] => help.split('\n').map(l => [...l].length)
 const HINT = 'Regions: ferry tickets in the PokéMart open new ones as you gain trainer experience.'
 
-test('/pokemon help and /pokemon-help list travel and restart, every line at most 60 columns', () => {
+test('/pokemon help and /pokemon-help list travel, restart and the typed answers, every line at most 60 columns', () => {
   for (const help of [POKEMON_HELP, ALL_HELP]) {
     expect(help).toMatch(/^ {2}travel <region> /m)
-    expect(help).toMatch(/^ {2}restart /m)
+    expect(help).toMatch(/^ {2}restart \[yes\|no\] /m)
+    expect(help).toMatch(/^ {2}choose <starter> /m)
+    expect(help).toMatch(/^ {2}keep /m)
+    expect(help).toMatch(/^ {2}fresh \[yes\|no\] /m)
     expect(Math.max(...columns(help))).toBeLessThanOrEqual(60)
   }
 })
@@ -38,8 +41,8 @@ test('/pokemon-help hints at what opens a region and never states the rule', () 
 
 test('the typeahead offers travel on t and restart on re', () => {
   expect(texts('/pokemon t')).toContain('travel ')
-  expect(texts('/pokemon re')).toContain('restart')
-  expect(texts('/pokemon')).toEqual(expect.arrayContaining(['/pokemon travel ', '/pokemon restart']))
+  expect(texts('/pokemon re')).toContain('restart ')
+  expect(texts('/pokemon')).toEqual(expect.arrayContaining(['/pokemon travel ', '/pokemon restart ']))
 })
 
 test("travel's word offers the region names in order, filtered by what's typed in any case", () => {
@@ -54,5 +57,15 @@ test('travel offers nothing for an unknown region, a second word, or restart any
   expect(texts('/pokemon travel zz')).toEqual([])
   expect(texts('/pokemon travel johtoo')).toEqual([])
   expect(texts('/pokemon travel johto ')).toEqual([])
-  expect(texts('/pokemon restart ')).toEqual([])
+})
+
+test('the typeahead offers choose, keep and fresh; choose takes a starter, restart and fresh yes or no', () => {
+  expect(texts('/pokemon ch')).toContain('choose ')
+  expect(texts('/pokemon ke')).toContain('keep')
+  expect(texts('/pokemon fr')).toContain('fresh ')
+  expect(texts('/pokemon choose cy')).toEqual(['cyndaquil'])
+  expect(texts('/pokemon choose ')).toHaveLength(MAX_ROWS)
+  expect(texts('/pokemon choose zz')).toEqual([])
+  expect(texts('/pokemon restart ')).toEqual(['yes', 'no'])
+  expect(texts('/pokemon fresh y')).toEqual(['yes'])
 })

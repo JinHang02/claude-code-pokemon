@@ -1,5 +1,5 @@
 // The band dialogs: Dialog, DialogAct, DialogPost, DialogHit, DialogProps, StarterCard, DialogData; STARTER_ROWS,
-// STARTER_MIN_ROWS; isDialogAct, dialogAct (the reducer), dialogView (the lines and hits), wipeWarning and
+// STARTER_MIN_ROWS, WIPED; isDialogAct, dialogAct (the reducer), dialogView (the lines and hits), wipeWarning and
 // starterPicture.
 import type { TravelRegion, RegionId } from './travel-regions'
 import { CLEAR, resample, textRows } from './sprite'
@@ -56,7 +56,8 @@ const BALL_CELL_ROWS = 4
 const BALL_ZONE_ROWS = ARROW_CELL_ROWS + BALL_CELL_ROWS
 const SPRITE_COLUMN = 3
 
-const KEYS_HINT = 'click or ctrl+x tab, ← → Enter'
+const CHOOSE_HINT = 'click, or /pokemon choose <name>'
+const KEEP_HINT = 'click, or /pokemon keep or fresh'
 const ANSWER_HINT = 'y Yes · n No'
 
 const width = (text: string) => [...text].length
@@ -307,7 +308,7 @@ function overlay(cells: TextRun[], x: number, text: string, fg: string, limit: n
 
 // The question or the keys, on the last row.
 function starterFooter(d: Extract<Dialog, { kind: 'starter' }>, data: DialogData): Line {
-  if (!d.isAsking) return [{ text: clip(` ${KEYS_HINT} · x later`, data.columns), fg: GREY, bg: PAPER }]
+  if (!d.isAsking) return [{ text: clip(` ${CHOOSE_HINT} · x later`, data.columns), fg: GREY, bg: PAPER }]
   const answers: Line = [
     { text: ' Yes ', fg: WHITE, bg: RED, act: 'yes' },
     { text: ' ', fg: INK, bg: PAPER },
@@ -402,7 +403,7 @@ const OPTIONS: [string, string][] = [
   ['Keep my save', 'Keeps everything, but you start in Kanto with later regions locked.'],
 ]
 const SHORT_LABELS = ['Fresh', 'Keep'] as const
-const WIPED = 'This wipes your party, box, Pokédex, ₽, items, XP, stats and ferry tickets.'
+export const WIPED = 'This wipes your party, box, Pokédex, ₽, items, XP, stats and ferry tickets.'
 const AFTER = 'You start again in Kanto with ₽3,000 and a new starter.'
 const COMPACT_WIPED = 'Wipes party, box, Pokédex, ₽, items, XP, stats, ferry tickets.'
 const TOO_SMALL = 'Too small to show what this wipes'
@@ -444,7 +445,7 @@ function choiceView(d: Extract<Dialog, { kind: 'fresh' }>, data: DialogData, col
     }
   }
   const hint: Block = {
-    first: [{ text: clip(` ${KEYS_HINT} · x later`, columns), fg: GREY, bg: PAPER }],
+    first: [{ text: clip(` ${KEEP_HINT} · x later`, columns), fg: GREY, bg: PAPER }],
     rest: [],
     isPinned: true,
   }
@@ -475,7 +476,7 @@ function confirmView(d: Extract<Dialog, { kind: 'fresh' }>, columns: number, row
   const isFull = lineWidth(warning ? fullButtons : fullButtons.slice(0, 2)) <= columns
   const buttons: Block = { first: isFull ? fullButtons : shortButtons, rest: [] }
   const hint: Block = {
-    first: [{ text: ` click or ctrl+x tab, ${ANSWER_HINT}`, fg: PINK, bg: RED }],
+    first: [{ text: ` click, or /pokemon ${d.isRestart ? 'restart' : 'fresh'} yes or no`, fg: PINK, bg: RED }],
     rest: [],
     isPinned: true,
   }

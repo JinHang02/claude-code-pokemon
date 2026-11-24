@@ -302,11 +302,18 @@ test('a Unicode name keeps the lines their width, composed or not', () => {
     }
 })
 
-test('the hint row names the ways in without a mouse (D5)', () => {
-  expect(all(dialogView(starter(), data()))).toContain('click or ctrl+x tab, ← → Enter')
-  expect(all(dialogView(fresh(), data({ summary: { owned: 1, seen: 1, balance: 0 } })))).toContain(
-    'click or ctrl+x tab, ← → Enter',
-  )
+test('the hint row names the typed answer for a terminal that passes no clicks (D5, R42)', () => {
+  const hints: [Dialog, string][] = [
+    [starter(), '/pokemon choose <name>'],
+    [fresh(), '/pokemon keep or fresh'],
+    [fresh({ isConfirming: true }), '/pokemon fresh yes or no'],
+    [fresh({ isConfirming: true, isRestart: true }), '/pokemon restart yes or no'],
+  ]
+  for (const [d, hint] of hints) {
+    const shown = all(dialogView(d, data({ columns: 100, summary: { owned: 1, seen: 1, balance: 0 } })))
+    expect(shown).toContain(hint)
+    expect(shown).not.toContain('ctrl+x')
+  }
 })
 
 test('asking names the starter and offers Yes and No hits, and no ball hits', () => {

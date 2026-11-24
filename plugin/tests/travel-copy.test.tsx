@@ -6,7 +6,7 @@ import { keptJourney, newJourney } from '../hooks/travel-regions'
 import type { Journey } from '../hooks/travel-regions'
 import { emptySave } from '../hooks/save'
 import type { Save } from '../hooks/save'
-import { answerTools, bash, begin, cmd, KIT, LIST, member, preFeature, until } from './world'
+import { answerTools, bash, begin, cmd, KIT, LIST, member, mountBand, preFeature, until } from './world'
 import type { Net } from './world'
 
 const JOHTO: Journey = { current: 'johto', tickets: ['johto'], starters: { johto: { species: 'chikorita' } } }
@@ -205,5 +205,27 @@ test(
     expect(await cmd($, 'pokemon', 'travel kanto')).toMatch(/Kanto/)
     expect(w.store.get('journey')).toEqual(w.saveNow().journey)
     expect(w.store.get('journey')).toEqual(OWNS_JOHTO)
+  },
+)
+
+test(
+  'restarted here, Johto bought there, restarted here again: the copy is the new journey, so a 1.7.x rewrite brings back no Johto',
+  KIT,
+  async ($, on) => {
+    on('ui.render', async () => ({ type: 'Text', children: ['engine'] }) as never)
+    const { net } = counted()
+    const w = await begin($, on, { ...seeded(), journey: IN_JOHTO }, undefined, undefined, net)
+    await cmd($, 'pokemon', 'party')
+    await mountBand($ as never)
+    for (const round of [1, 2]) {
+      if (round === 2) otherWindowWrites(w, IN_JOHTO)
+      expect(await cmd($, 'pokemon', 'restart')).toMatch(/confirmation is open/)
+      expect(await cmd($, 'pokemon', 'restart yes')).toBe('Started fresh with ₽3,000.')
+      expect(w.store.get('journey')).toEqual(newJourney())
+    }
+    w.store.set('save', preFeature(w.saveNow()))
+    await w.clock.advance(11_000)
+    expect((await cmd($, 'pokedex')).split('\n')[0]).toBe('In Kanto · 1 of 8 regions open')
+    expect(await cmd($, 'pokemon', 'travel johto')).toBe('You have no Johto ferry ticket.')
   },
 )

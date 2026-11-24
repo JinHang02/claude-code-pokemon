@@ -32,6 +32,8 @@ type Arg =
   | 'phase'
   | 'region'
   | 'travel'
+  | 'starter'
+  | 'answer'
 
 type Sub = {
   // The word typed after the command; `''` for one that is the whole command (`/pokemon` alone, `/pokemon <name>`).
@@ -70,7 +72,10 @@ export const POKEMON: Sub[] = [
   { word: 'on', usage: 'on', about: 'out of their Poké Balls', only: 'typeahead' },
   { word: 'off', usage: 'off', about: 'back in their Poké Balls', only: 'typeahead' },
   { word: 'travel', usage: 'travel <region>', about: 'sail to a region with a ticket', args: ['travel'] },
-  { word: 'restart', usage: 'restart', about: 'start a new journey from scratch' },
+  { word: 'restart', usage: 'restart [yes|no]', about: 'a new journey from scratch', args: ['answer'] },
+  { word: 'choose', usage: 'choose <starter>', about: 'take the starter offered', args: ['starter'] },
+  { word: 'keep', usage: 'keep', about: 'keep a save from before regions' },
+  { word: 'fresh', usage: 'fresh [yes|no]', about: 'wipe a save from before regions', args: ['answer'] },
   { word: 'help', usage: 'help', about: 'this list' },
 ]
 
@@ -353,6 +358,16 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
         lower,
         TRAVEL_REGIONS.map(r => [r.id, `sail to ${r.name}`]),
       )
+    case 'starter':
+      return fixed(
+        lower,
+        TRAVEL_REGIONS.flatMap(r => r.starters.map((s): [string, string] => [s, `a ${r.name} starter`])),
+      )
+    case 'answer':
+      return fixed(lower, [
+        ['yes', 'wipe it'],
+        ['no', 'keep it'],
+      ])
   }
 }
 

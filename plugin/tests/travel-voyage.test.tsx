@@ -535,6 +535,53 @@ test('travel with the party off: Sailed to Johto., Johto current, nothing drawn'
   expect(seen.every(l => l.kind === 'none')).toBe(true)
 })
 
+const JOHTO_NOT_REACHED: Journey = { current: 'kanto', tickets: ['johto'], starters: { kanto: { species: 'pikachu' } } }
+const dialogIn = async (band: Band) => {
+  await band.redraw()
+  return findNode(await band.drawn(), n => n.type === 'Client' && n.props?.key === 'dialog')
+}
+
+test(
+  'travel while the band is too short to draw: Sailed to Johto., and once it is back, the Johto choice and no ferry',
+  SLOW,
+  async ($, on) => {
+    const w = await sail($, on, player({ journey: JOHTO_NOT_REACHED }), net())
+    await waitForPikachu($ as never, await mount($))
+    const short = await mount($, 1)
+    expect(await cmd($, 'pokemon', 'travel johto')).toBe('Sailed to Johto.')
+    expect(w.saveNow().journey.starters.johto).toBe('due')
+    await short.redraw()
+    const back = await mount($)
+    expect(await dialogIn(back)).not.toBeNull()
+    expect(ferries(await watch(w, back, 1000))).toEqual([])
+  },
+)
+
+test('travel with the party off, then /pokemon on: the Johto choice opens', SLOW, async ($, on) => {
+  const w = await sail($, on, player({ journey: JOHTO_NOT_REACHED }), net())
+  const band = await mount($)
+  await waitForPikachu($ as never, band)
+  await cmd($, 'pokemon', 'off')
+  expect(await cmd($, 'pokemon', 'travel johto')).toBe('Sailed to Johto.')
+  expect(await dialogIn(band)).toBeNull()
+  await cmd($, 'pokemon', 'on')
+  expect(await dialogIn(band)).not.toBeNull()
+  expect(w.saveNow().journey.starters.johto).toBe('due')
+})
+
+test("another window's arrival while the party is off: /pokemon on here opens its choice", SLOW, async ($, on) => {
+  const w = await sail($, on, player({ journey: JOHTO_NOT_REACHED }), net())
+  const band = await mount($)
+  await waitForPikachu($ as never, band)
+  await cmd($, 'pokemon', 'off')
+  w.store.set('save', {
+    ...w.saveNow(),
+    journey: { ...JOHTO_NOT_REACHED, current: 'johto', starters: { ...JOHTO_NOT_REACHED.starters, johto: 'due' } },
+  })
+  await cmd($, 'pokemon', 'on')
+  expect(await dialogIn(band)).not.toBeNull()
+})
+
 test('travel with the Mart open: the Mart closes and the voyage plays', SLOW, async ($, on) => {
   const w = await sail($, on, player(), net())
   const band = await mount($)

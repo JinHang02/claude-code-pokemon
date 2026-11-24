@@ -343,11 +343,15 @@ test(
     let release = () => {}
     w.net.stall = new Promise<void>(resolve => (release = resolve))
     w.net.isOnline = true
+    const since = w.fetched.length
     await w.clock.advance(10_000)
     await w.clock.advance(10_000)
     release()
     w.net.stall = undefined
     await w.clock.advance(2_000)
+    const fetchedSince = w.fetched.slice(since)
+    for (const species of ['bulbasaur', 'charmander', 'squirtle'])
+      expect(fetchedSince.filter(url => url.endsWith(`/colorscripts/small/regular/${species}`))).toHaveLength(1)
     const saved = w.store.get('save') as Save | undefined
     expect(saved?.party ?? []).toEqual([])
     expect(saved?.box ?? []).toEqual([])
