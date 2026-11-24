@@ -1,5 +1,5 @@
 // The region catalog and the player's place in it: RegionId, TravelRegion, TRAVEL_REGIONS, StarterChoice, Journey, TicketState,
-// TICKET_PRICE, SEEN_SHARE; isObject; membership (regionOf, speciesIn, requiredSeen, seenIn); parsing (findRegion,
+// TICKET_PRICE, SEEN_SHARE; isObject; regionById; membership (regionOf, speciesIn, requiredSeen, seenIn); parsing (findRegion,
 // readTicketWords); factories (newJourney, keptJourney, loadJourney); queries (unlockedOf, newestOf, ticketState,
 // hasArrived, dueStarter).
 import type { DexEntry } from './save'
@@ -47,6 +47,8 @@ const REGION_BY_ID: Map<string, TravelRegion> = new Map(TRAVEL_REGIONS.map(r => 
 export const isObject = (o: unknown): o is Record<string, unknown> =>
   typeof o === 'object' && o !== null && !Array.isArray(o)
 const isRegionId = (id: unknown): id is RegionId => typeof id === 'string' && REGION_BY_ID.has(id)
+
+export const regionById = (id: RegionId): TravelRegion => REGION_BY_ID.get(id) ?? KANTO
 const firstOf = (r: TravelRegion): number => {
   const before = TRAVEL_REGIONS[TRAVEL_REGIONS.indexOf(r) - 1]
   return before ? before.last : 0

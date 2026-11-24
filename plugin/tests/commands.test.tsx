@@ -30,11 +30,29 @@ import {
 } from './world'
 import type { Net } from './world'
 
-test('a first session gets a random lead, saved for next time', KIT, async ($, on) => {
+/** The starter choice's text in the band as drawn now; '' with none drawn. */
+async function starterChoiceText($: Parameters<typeof mountBand>[0]): Promise<string> {
+  const band = (await mountBand($)) as { drawn: () => Promise<unknown> }
+  const find = (node: unknown): { props?: { lines?: [string, string, string][][] } } | null => {
+    if (typeof node !== 'object' || node === null) return null
+    const n = node as { type?: string; props?: { key?: string; props?: { lines?: [string, string, string][][] } } }
+    if (n.type === 'Client' && n.props?.key === 'dialog') return n.props
+    for (const child of Object.values(node)) {
+      const found = find(child)
+      if (found) return found
+    }
+    return null
+  }
+  const lines = find(await band.drawn())?.props?.lines ?? []
+  return lines.map(l => l.map(r => r[0]).join('')).join('\n')
+}
+const partyStored = (w: { store: Map<string, unknown> }) => (w.store.get('save') as Save | undefined)?.party ?? []
+
+test('a first session opens the Kanto starter choice and catches no random lead', KIT, async ($, on) => {
   const w = await begin($, on)
-  expect(await cmd($, 'pokemon', 'party')).toContain('Your party:\n  Lead ')
-  expect(w.saveNow().party.length).toBe(1)
-  expect(Object.keys(w.saveNow().dex).length).toBe(1)
+  expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
+  expect(await starterChoiceText($)).toContain('Kanto · choose your partner')
+  expect(partyStored(w)).toEqual([])
 })
 
 test('a saved party comes back next session, levels intact', KIT, async ($, on) => {
@@ -1063,16 +1081,21 @@ test('a tool call refused beneath the plugin earns nothing', KIT, async ($, on) 
   expect(w.partyNow()[0]?.xp).toBe(0)
 })
 
-test('offline at the first start: said once, and a first Pokémon arrives once back online', KIT, async ($, on) => {
-  const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
-  expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
-  await w.clock.advance(30_000)
-  // A failing download (here the test kit's own "no implementation" once the fake network refuses).
-  expect(w.toasts.filter(t => t.startsWith('Pokémon: ')).length).toBe(1)
-  w.net.isOnline = true
-  await w.clock.advance(11_000)
-  expect(w.saveNow().party.length).toBe(1)
-})
+test(
+  'offline at the first start: said once; back online, no Pokémon arrives and the Kanto choice is still open',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
+    expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
+    await w.clock.advance(30_000)
+    // A failing download (here the test kit's own "no implementation" once the fake network refuses).
+    expect(w.toasts.filter(t => t.startsWith('Pokémon: ')).length).toBe(1)
+    w.net.isOnline = true
+    await w.clock.advance(11_000)
+    expect(partyStored(w)).toEqual([])
+    expect(await starterChoiceText($)).toContain('Bulbasaur')
+  },
+)
 
 test('a saved party that could not be drawn offline is drawn once back online', KIT, async ($, on) => {
   engineLines(on)
@@ -1152,7 +1175,7 @@ test('names in the downloaded list that are not plain names never become files',
     { name: 'pikachu', forms: ['regular', '../../x'] },
   ]
   const w = await begin($, on, undefined, ART, undefined, { isOnline: true, list: JSON.stringify(list) })
-  await cmd($, 'pokemon', 'party')
+  await cmd($, 'pokemon')
   expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['pikachu:regular'])
   expect([...w.files.keys()].filter(f => f.includes('..'))).toEqual([])
 })

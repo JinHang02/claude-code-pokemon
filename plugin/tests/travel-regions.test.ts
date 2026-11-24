@@ -10,6 +10,7 @@ import {
   newestOf,
   newJourney,
   readTicketWords,
+  regionById,
   regionOf,
   TRAVEL_REGIONS,
   requiredSeen,
@@ -267,4 +268,8 @@ test('a plain object is an object that is neither null nor an array', () => {
   expect(isObject({})).toBe(true)
   expect(isObject({ a: 1 })).toBe(true)
   for (const o of [null, undefined, [], [1], 'x', 0, true]) expect(isObject(o)).toBe(false)
+})
+
+test('every region is found by its id', () => {
+  for (const r of TRAVEL_REGIONS) expect(regionById(r.id)).toBe(r)
 })

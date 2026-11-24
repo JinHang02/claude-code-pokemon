@@ -19,7 +19,11 @@ const VAPOREON = 0x070809
 const WILD = 0x00ffff
 const SAILING_TEXTS = ['Your party is boarding…', 'Sailing to ', 'Welcome to ']
 
-const KANTO_WITH_JOHTO: Journey = { current: 'kanto', tickets: ['johto'], starters: { kanto: { species: 'pikachu' } } }
+const KANTO_WITH_JOHTO: Journey = {
+  current: 'kanto',
+  tickets: ['johto'],
+  starters: { kanto: { species: 'pikachu' }, johto: { species: 'chikorita' } },
+}
 const IN_JOHTO: Journey = {
   ...KANTO_WITH_JOHTO,
   current: 'johto',

@@ -7,7 +7,16 @@ import type { Stage, Time, Way } from './evolution'
 import { isItemId, itemById, itemName, ITEMS, MAX_BAG, TABS, withArticle } from './items'
 import type { Item } from './items'
 import { loadFriendship } from './friendship'
-import { isObject, keptJourney, loadJourney, TRAVEL_REGIONS, seenIn, speciesIn, unlockedOf } from './travel-regions'
+import {
+  isObject,
+  keptJourney,
+  loadJourney,
+  regionById,
+  TRAVEL_REGIONS,
+  seenIn,
+  speciesIn,
+  unlockedOf,
+} from './travel-regions'
 import type { Journey } from './travel-regions'
 
 export type Size = 'auto' | 'normal' | 'small'
@@ -784,7 +793,7 @@ const REGION_NAME_WIDTH = Math.max(...TRAVEL_REGIONS.map(r => r.name.length))
 export function formatDex(save: Save): string {
   const { dex, journey } = save
   const open = unlockedOf(journey)
-  const current = TRAVEL_REGIONS.find(r => r.id === journey.current)
+  const current = regionById(journey.current)
   const all = TRAVEL_REGIONS.flatMap(speciesIn)
   const isShiny = (n: string): boolean => (dex[n]?.shiny ?? 0) > 0
   const isCaught = (n: string): boolean => (dex[n]?.caught ?? 0) > 0
