@@ -224,6 +224,8 @@ export type Net = {
   beforeSet?: (key: string) => void
   // Runs as a store key is read: another window's write landing just before this one reads.
   beforeGet?: (key: string) => void
+  // Holds back a store read, by its key, while it returns a promise.
+  getStall?: (key: string) => Promise<void> | undefined
   // Species PokeAPI answers 404 for: the sprite list ahead of it.
   missing?: string[]
 }
@@ -297,6 +299,7 @@ export function world(
   })
   on('store.get', async (_$, e) => {
     net.beforeGet?.(e.key)
+    await net.getStall?.(e.key)
     if (net.isStoreBroken) throw new Error('store unreadable')
     return { value: store.get(e.key) }
   })

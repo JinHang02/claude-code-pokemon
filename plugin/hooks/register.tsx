@@ -15,7 +15,7 @@ import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
-import type { Act, MartProps, MartState } from './mart'
+import type { Act, MartItem, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
 import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
@@ -25,8 +25,9 @@ import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } f
 import type { Region } from './region'
 import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
 import type { Work } from './friendship'
-import { TRAVEL_REGIONS, regionOf } from './travel-regions'
-import type { RegionId } from './travel-regions'
+import { buyTicket } from './journey'
+import { readTicketWords, TRAVEL_REGIONS, regionOf, TICKET_PRICE, ticketState } from './travel-regions'
+import type { TravelRegion, RegionId } from './travel-regions'
 import {
   addTogether,
   bagFull,
@@ -87,6 +88,7 @@ import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
+import { TICKET_ICON } from './ferry-screen'
 import {
   CALM_EVERY,
   carryActors,
@@ -605,15 +607,12 @@ async function sync($: EngineInterface) {
     const { latest } = await readSave($)
     isNewParty = isOtherParty(latest, save)
     isNewRegion = latest.journey.current !== save.journey.current
-    const was = JSON.stringify([save.bag, balanceOf(save, cash)])
+    const was = martLook(save)
     const [wasSize, wasOff] = [save.size, save.isOff]
     save = latest
     countLedgers(await readLedgers($))
     // The wallet is judged after the ledgers are counted: another window's earnings change only those.
-    isNewLook =
-      latest.size !== wasSize ||
-      latest.isOff !== wasOff ||
-      (mart.isOpen && JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== was)
+    isNewLook = latest.size !== wasSize || latest.isOff !== wasOff || (mart.isOpen && martLook(latest) !== was)
     countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
   })
   if (isNewParty) await refreshParty($)
@@ -1164,6 +1163,7 @@ export async function buyItem(
   id: unknown,
   qty: unknown,
 ): Promise<{ text: string; isError: boolean }> {
+  if (typeof id === 'string' && id.startsWith(TICKET_ID)) return buyTicketItem($, ticketRegion(id), qty)
   const item = typeof id === 'string' ? itemById(id) : undefined
   if (!item || !isForSale(item)) return { text: "That isn't for sale.", isError: true }
   if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_BAG)
@@ -1173,6 +1173,35 @@ export async function buyItem(
     $,
     (s, ledgers) => {
       const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
+      result = { text: bought.text, isError: bought.isError }
+      return bought.save
+    },
+    true,
+  )
+  return result
+}
+
+const TICKET_ID = 'ticket-'
+const TICKET_REGIONS: readonly TravelRegion[] = TRAVEL_REGIONS.slice(1)
+const ticketRegion = (id: string): TravelRegion | undefined => TICKET_REGIONS.find(r => `${TICKET_ID}${r.id}` === id)
+
+/**
+ * @param r undefined for an id that names no ticket.
+ * @param qty as posted or typed: anything but 1 buys nothing.
+ * @returns the reply, and whether it is a refusal.
+ */
+async function buyTicketItem(
+  $: EngineInterface,
+  r: TravelRegion | undefined,
+  qty: unknown,
+): Promise<{ text: string; isError: boolean }> {
+  if (!r) return { text: "That isn't for sale.", isError: true }
+  if (qty !== 1) return { text: "That isn't a quantity you can buy.", isError: true }
+  let result = { text: '', isError: true }
+  await mutate(
+    $,
+    (s, ledgers) => {
+      const bought = buyTicket(s, extraMoney(ledgers, s.folded, s.foldedMoney), r)
       result = { text: bought.text, isError: bought.isError }
       return bought.save
     },
@@ -1211,6 +1240,13 @@ async function buyCommand($: EngineInterface, args: string): Promise<string> {
   const words = slug(tokens.filter((_, i) => i !== countAt).join(' '))
     .split('-')
     .filter(Boolean)
+  const ticket = readTicketWords(words)
+  if (ticket) {
+    const bought = await buyTicketItem($, ticket, count)
+    if (bought.isError) return bought.text
+    await sync($)
+    return `${bought.text}\n${formatMoney(balanceOf(save, cash))} left.`
+  }
   const found = splitGive(words)
   if (!found || found.rest.length) {
     const guess = found ? null : guessItem(words, isForSale)
@@ -2182,8 +2218,8 @@ function afterThrow($: EngineInterface, event: ThrowEvent) {
   else background($, keepCatch($))
 }
 
-function openMart($: EngineInterface) {
-  mart = { ...shut(), isOpen: true }
+function openMart($: EngineInterface, tab = 0) {
+  mart = { ...shut(), isOpen: true, view: { ...START, tab } }
   $.ui.invalidate('ui.render')
 }
 
@@ -2193,10 +2229,32 @@ function closeMart($: EngineInterface) {
   $.ui.invalidate('ui.render')
 }
 
+const TICKETS = 'Tickets'
+const MART_TABS: string[] = [...TABS, TICKETS]
+const TICKETS_TAB = MART_TABS.indexOf(TICKETS)
+
+const ticketItems = (s: Save): MartItem[] =>
+  TICKET_REGIONS.map(r => ({
+    id: `${TICKET_ID}${r.id}`,
+    name: `${r.name} ferry ticket`,
+    tab: TICKETS,
+    price: TICKET_PRICE,
+    color: r.color,
+    text: `Sails you to ${r.name} and back, as often as you like.`,
+    ticket: { state: ticketState(s.journey, s.dex, r), hint: `/pokemon travel ${r.id}` },
+  }))
+
+/** The parts of the Mart's props another window's write may change, as one JSON string. */
+const martLook = (s: Save): string =>
+  JSON.stringify([s.bag, balanceOf(s, cash), s.journey, ticketItems(s).map(i => i.ticket?.state)])
+
+const currentRegion = (): TravelRegion =>
+  TRAVEL_REGIONS.find(r => r.id === save.journey.current) ?? (TRAVEL_REGIONS[0] as TravelRegion)
+
 // What the Mart shows: what's for sale, which party members each would evolve, and the selected item's picture.
 function martProps(): MartProps {
   const party = view().party
-  const items = forSale().map(i => {
+  const items = forSale().map((i): MartItem => {
     // How many members would become each species, by name: twins count as two.
     const uses = new Map<string, { name: string; into: string; n: number }>()
     for (const m of party) {
@@ -2213,11 +2271,13 @@ function martProps(): MartProps {
     const { id, name, tab, price, color, text } = i
     return { id, name, tab, price, color, text, ...(lines.length ? { party: lines.join(', ') } : {}) }
   })
-  const selected = items.filter(i => i.tab === TABS[mart.view.tab])[mart.view.sel]
-  const icon = selected && ICONS[selected.id]
+  items.push(...ticketItems(save))
+  const selected = items.filter(i => i.tab === MART_TABS[mart.view.tab])[mart.view.sel]
+  const icon = selected && (selected.ticket ? TICKET_ICON : ICONS[selected.id])
+  const region = currentRegion()
   return {
     items,
-    tabs: TABS,
+    tabs: MART_TABS,
     balance: balanceOf(save, cash),
     bag: save.bag ?? {},
     message: mart.message,
@@ -2226,6 +2286,7 @@ function martProps(): MartProps {
     rows: band?.rows ?? 9,
     state: mart.view,
     ...(icon ? { icon: textRows(icon) } : {}),
+    region: { text: region.name.toUpperCase(), color: region.color },
   }
 }
 
@@ -2239,7 +2300,7 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
   // Enter straight after a buy asks first: Enter ends every line typed, and the Mart keeps the keys after a click.
   if (a === 'enter' && mart.isBought && !mart.isAsked) {
     const item = p.items.filter(i => i.tab === p.tabs[was.tab])[was.sel]
-    if (item) {
+    if (item && !item.ticket) {
       mart = { ...mart, isAsked: true, message: `Press Enter again to buy another ${item.name}.`, isError: false }
       return { props: martProps() }
     }
@@ -3041,7 +3102,8 @@ export const register: Register = on => {
     const click = /^aim\d*$/.test(String(e.element)) ? readClick(e.data) : null
     if (click) throwAt($, click)
     // A click on a button drawn before a visitor came opens nothing.
-    if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
+    const open = e.element === 'shop' ? (e.data as { open?: unknown } | null)?.open : undefined
+    if ((open === true || open === 'tickets') && !martRefusal()) openMart($, open === 'tickets' ? TICKETS_TAB : 0)
     const typed = e.element === 'mart' ? (e.data as { typed?: unknown } | null)?.typed : undefined
     // Typing that went on after the first key closed the Mart still goes to the prompt.
     if (typeof typed === 'string') {
