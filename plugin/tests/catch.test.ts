@@ -74,7 +74,7 @@ test('the odds follow the capture rate; a miss rolls nothing', () => {
   expect(catchChance(-5)).toBe(0)
   expect(catchChance(999)).toBe(1)
   expect(startThrow(A, B, C, true, 255, () => 0.999)).toMatchObject({ isCaught: true, wobbles: 3, flees: false })
-  expect(startThrow(A, B, C, true, 3, seq(0.5, 0.99, 0.05))).toMatchObject({
+  expect(startThrow(A, B, C, true, 3, seq(0.5, 0.05))).toMatchObject({
     isCaught: false,
     wobbles: 0,
     flees: true,
@@ -87,11 +87,16 @@ test('the odds follow the capture rate; a miss rolls nothing', () => {
   })
 })
 
-test('a near miss wobbles more: up to twice, more often the higher the rate', () => {
-  expect(wobblesFor(255, () => 0.99)).toBe(2)
-  expect(wobblesFor(255, () => 0.5)).toBe(1)
-  expect(wobblesFor(150, () => 0.99)).toBe(1)
-  expect(wobblesFor(45, () => 0.99)).toBe(0)
+test('each wobble is a check passed at the cube root of the catch chance, and 3 in a row is a catch', () => {
+  // Rate 45: a catch chance of 45/255, so each check passes below about 0.56.
+  expect(wobblesFor(45, () => 0.9)).toBe(0)
+  expect(wobblesFor(45, seq(0.5, 0.9))).toBe(1)
+  expect(wobblesFor(45, seq(0.5, 0.5, 0.9))).toBe(2)
+  expect(wobblesFor(45, () => 0.5)).toBe(3)
+  expect(wobblesFor(255, () => 0.999)).toBe(3)
+  expect(wobblesFor(0, () => 0)).toBe(0)
+  expect(startThrow(A, B, C, true, 45, seq(0.5, 0.5, 0.9, 0.99))).toMatchObject({ isCaught: false, wobbles: 2 })
+  expect(startThrow(A, B, C, true, 45, () => 0.5)).toMatchObject({ isCaught: true, wobbles: 3, flees: false })
 })
 
 test('the phases in order: a catch, a break-free that walks on, one that flees, and a miss', () => {
@@ -99,11 +104,11 @@ test('the phases in order: a catch, a break-free that walks on, one that flees, 
     events: ['caught'],
     ran: FLY + SHRINK + DROP + 3 * WOBBLE + CAUGHT,
   })
-  expect(playOut(startThrow(A, B, C, true, 200, seq(0.9, 0.99, 0.5)))).toEqual({
+  expect(playOut(startThrow(A, B, C, true, 200, seq(0.9, 0.9, 0.99, 0.5)))).toEqual({
     events: ['broke-free', 'released'],
     ran: FLY + SHRINK + DROP + 2 * WOBBLE + BURST,
   })
-  expect(playOut(startThrow(A, B, C, true, 3, seq(0.5, 0, 0.05)))).toEqual({
+  expect(playOut(startThrow(A, B, C, true, 3, seq(0.5, 0)))).toEqual({
     events: ['broke-free', 'fled'],
     ran: FLY + SHRINK + DROP + BURST,
   })
@@ -137,7 +142,7 @@ test('caught: the ball rests where the Pokémon stood, its button dark, with spa
 })
 
 test('the Pokémon shrinks into the ball as a white shape, stays hidden in it, and flashes back out on a burst', () => {
-  const p = startThrow(A, B, C, true, 200, seq(0.9, 0.99, 0.5))
+  const p = startThrow(A, B, C, true, 200, seq(0.9, 0.9, 0.99, 0.5))
   const white = (img: { pixels: number[] } | null) => img?.pixels.filter(c => c === 0xffffff).length ?? 0
   expect(wildLook({ ...p, phase: 'fly' }, SPRITE)).toBe(SPRITE)
   const early = wildLook({ ...p, phase: 'shrink', t: 0 }, SPRITE)

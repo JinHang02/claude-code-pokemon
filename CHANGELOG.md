@@ -6,6 +6,12 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Changed
+
+- **A ball that breaks free wobbles more often first.** Each wobble is now a check, and three in a row is a catch, so
+  the odds of a catch stay the same. A starter that breaks free used to pop straight out every time; now it wobbles
+  once about 30% of the time and twice about 17%. Even a legendary wobbles now and then before it bursts out.
+
 ## [1.9.0] - 2026-11-23
 
 ### Added: five more small moments

@@ -74,8 +74,15 @@ export function clickPixels(c: Click): { x: number; ys: number[] } {
 
 export const catchChance = (rate: number) => Math.min(255, Math.max(0, rate)) / 255
 
-// Wobbles before a Pokémon breaks free: up to 2, more likely the easier it is to catch.
-export const wobblesFor = (rate: number, rand = Math.random) => Math.min(2, Math.floor(rand() * 3 * catchChance(rate)))
+// Wobbles before the ball settles: each is a check passed at the cube root of the catch chance, so 3 in a row (a
+// catch) lands at exactly that chance and a near miss often wobbles once or twice. Loosely after the main series'
+// shake checks, which run 4 at the fourth root; here 3 wobbles always mean a catch.
+export function wobblesFor(rate: number, rand = Math.random): number {
+  const pass = catchChance(rate) ** (1 / 3)
+  let n = 0
+  while (n < 3 && rand() < pass) n++
+  return n
+}
 
 // Where a ball that hit the visitor comes to rest: its bottom on the ground row, in front of the visitor's middle, but
 // kept inside the band (the ball is 4 wide) so the drop, wobbles and break-free stay in sight when the visitor
@@ -93,8 +100,8 @@ export function startThrow(
   rate: number,
   rand = Math.random,
 ): Throw {
-  const isCaught = isHit && rand() < catchChance(rate)
-  const wobbles = isCaught ? 3 : isHit ? wobblesFor(rate, rand) : 0
+  const wobbles = isHit ? wobblesFor(rate, rand) : 0
+  const isCaught = wobbles === 3
   const flees = isHit && !isCaught && rand() < FLEE_ODDS
   return { phase: 'fly', t: 0, from, to, rest, isHit, isCaught, wobbles, flees }
 }
