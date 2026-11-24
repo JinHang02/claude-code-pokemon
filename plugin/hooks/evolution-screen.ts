@@ -142,7 +142,7 @@ function background(out: number[], style: EvolutionStyle, columns: number, heigh
   }
 }
 
-function textBox(out: number[], columns: number, top: number, rows: number) {
+export function textBox(out: number[], columns: number, top: number, rows: number) {
   for (let r = 0; r < rows * 2; r++) {
     const edge = r === 1 || r === rows * 2 - 2
     const inner = r > 1 && r < rows * 2 - 2
