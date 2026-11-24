@@ -79,19 +79,29 @@ export const DUSK_SHARE = 1 / 4
 export const FULL_MOON_VISITOR = 'clefairy'
 export const FULL_MOON_SHARE = 1 / 10
 
-// A visitor only this hour brings, or null for the usual draw. `moon`: the shape the sky shows tonight. Only asks
-// `rand` at dusk or under a full moon, so other draws stay as they were.
-export function moonVisitor(list: Species[], phase: Phase, moon: number, rand: () => number): Pick | null {
+/**
+ * @param moon the shape the sky shows tonight.
+ * @param isHere whether a species may visit where the player is.
+ * @returns a visitor only this hour brings, or null for the usual draw.
+ */
+export function moonVisitor(
+  list: Species[],
+  phase: Phase,
+  moon: number,
+  rand: () => number,
+  isHere: (species: string) => boolean,
+): Pick | null {
   const pickOf = (name: string): Pick | null => {
     const dex = list.findIndex(s => s.name === name)
     return dex >= 0 ? { dex, species: name, form: 'regular' } : null
   }
   if (phase === 'dusk') {
     if (rand() >= DUSK_SHARE) return null
-    const there = DUSK_VISITORS.filter(name => list.some(s => s.name === name))
+    const there = DUSK_VISITORS.filter(name => isHere(name) && list.some(s => s.name === name))
     const name = there[Math.floor(rand() * there.length)]
     return name ? pickOf(name) : null
   }
-  if (phase === 'night' && moon === FULL_MOON) return rand() < FULL_MOON_SHARE ? pickOf(FULL_MOON_VISITOR) : null
+  if (phase === 'night' && moon === FULL_MOON)
+    return rand() < FULL_MOON_SHARE && isHere(FULL_MOON_VISITOR) ? pickOf(FULL_MOON_VISITOR) : null
   return null
 }

@@ -3034,18 +3034,13 @@ test('a summoned /pokemon-play wild <name> ignores the weights', KIT, async ($, 
   expect(await cmd($, 'pokemon-play', 'wild charizard mega x')).toBe('A wild Charizard (Mega X) wanders by.')
 })
 
-const WATER = 'psyduck poliwag seel shellder krabby horsea goldeen staryu magikarp remoraid corphish feebas'.split(' ')
-const GROUND = 'mankey machop cubone slugma makuhita nosepass numel trapinch pansear roggenrola timburr mienfoo'.split(
-  ' ',
-)
+const WATER = 'psyduck poliwag seel shellder krabby horsea goldeen staryu magikarp'.split(' ')
+const GROUND = 'mankey machop cubone sandshrew vulpix growlithe diglett geodude ponyta'.split(' ')
 
 test(
   'the place on screen shapes who comes: at the lake Water types win about 3 times in 4 over equally likely Fire, Ground, Rock and Fighting types',
   { timeoutMs: 300_000 },
   async ($, on) => {
-    // Odds: 4 * 2630 / (4 * 2630 + 2500) = 81% per visitor at first, about 73% overall once the boost for species not
-    // yet seen favours the Ground types left. At least 60 of 100 fails by chance about 1 run in 800 and, with the lake
-    // not counted (about 50%), passes about 1 in 30.
     const w = await begin(
       $,
       on,

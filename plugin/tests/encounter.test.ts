@@ -2,6 +2,8 @@ import { expect, test } from 'claude-code/testing'
 
 import { drawWild, isWildForm, weightOf } from '../hooks/encounter'
 import type { Where } from '../hooks/encounter'
+import { regionOf, TRAVEL_REGIONS } from '../hooks/travel-regions'
+import type { RegionId } from '../hooks/travel-regions'
 import { SPECIES } from '../hooks/species-data'
 import { LIST } from './fixtures/evolutions'
 
@@ -71,11 +73,12 @@ const seeded = (seed: number) => () => {
   seed = (seed * 1664525 + 1013904223) % 4294967296
   return seed / 4294967296
 }
-const at = (landscape: Where['landscape'], phase: Where['phase'], dex: Where['dex'] = {}): Where => ({
-  landscape,
-  phase,
-  dex,
-})
+const at = (
+  landscape: Where['landscape'],
+  phase: Where['phase'],
+  dex: Where['dex'] = {},
+  region: RegionId = 'kanto',
+): Where => ({ landscape, phase, dex, region })
 
 test('rarity, stage, place, time and novelty multiply', () => {
   const meadowDay = at('meadow', 'day')
@@ -131,7 +134,7 @@ test('about 1% of wild Pokémon are legendary, mythical or Ultra Beasts', { time
   let rare = 0
   for (let i = 0; i < 100_000; i++) {
     const p = drawWild(LIST, where, rand)
-    if (SPECIES[p.species]?.tier !== 'common') rare++
+    if (SPECIES[p?.species ?? '']?.tier !== 'common') rare++
   }
   expect(rare / 100_000).toBeGreaterThan(0.008)
   expect(rare / 100_000).toBeLessThan(0.012)
@@ -144,8 +147,8 @@ test('Water types come to the lake', { timeoutMs: 60_000 }, () => {
     let water = 0
     for (let i = 0; i < 100_000; i++) {
       const p = drawWild(LIST, where, rand)
-      const info = SPECIES[p.species]
-      const types = p.form === 'regular' ? info?.types : info?.forms[p.form]?.types
+      const info = SPECIES[p?.species ?? '']
+      const types = p?.form === 'regular' ? info?.types : info?.forms[p?.form ?? '']?.types
       if (types?.includes('water')) water++
     }
     return water / 100_000
@@ -158,21 +161,21 @@ test('no wild Pokémon is ever in a form that only exists in battle or as a cost
   const where = at('forest', 'night')
   for (let i = 0; i < 100_000; i++) {
     const p = drawWild(LIST, where, rand)
-    expect(p.form === 'regular' || isWildForm(p.species, p.form), `${p.species} ${p.form}`).toBe(true)
+    expect(p !== null && (p.form === 'regular' || isWildForm(p.species, p.form)), `${p?.species} ${p?.form}`).toBe(true)
   }
 })
 
-test('every species can be met somewhere, some time', { timeoutMs: 120_000 }, () => {
+test('every species can be met somewhere, some time, in its own region', { timeoutMs: 120_000 }, () => {
   const rand = seeded(4)
   const met = new Set<string>()
   const places = ['meadow', 'hills', 'mountains', 'lake', 'forest'] as const
   const times = ['dawn', 'day', 'dusk', 'night'] as const
-  // 20 place x time pairs, 50,000 draws each (one table per pair: the draw caches the last one).
-  for (const place of places)
-    for (const time of times) {
-      const where = at(place, time)
-      for (let i = 0; i < 50_000; i++) met.add(drawWild(LIST, where, rand).species)
-    }
+  for (const { id } of TRAVEL_REGIONS)
+    for (const place of places)
+      for (const time of times) {
+        const where = at(place, time, {}, id)
+        for (let i = 0; i < 7_000; i++) met.add(drawWild(LIST, where, rand)?.species ?? '')
+      }
   expect(LIST.filter(s => !met.has(s.name)).map(s => s.name)).toEqual([])
 })
 
@@ -183,7 +186,7 @@ test('unmet Pokémon come about 2.5x as often', { timeoutMs: 60_000 }, () => {
     const rand = seeded(5)
     const where = at('meadow', 'day', dex)
     let n = 0
-    for (let i = 0; i < 200_000; i++) if (drawWild(LIST, where, rand).species === 'pidgey') n++
+    for (let i = 0; i < 200_000; i++) if (drawWild(LIST, where, rand)?.species === 'pidgey') n++
     return n
   }
   expect(count(allButPidgey) / count(full)).toBeGreaterThan(2)
@@ -197,7 +200,7 @@ test("a species or form the table doesn't know still works", () => {
   expect(() => drawWild(list, at('meadow', 'day'), seeded(6))).not.toThrow()
 })
 
-test('on average over the 20 place and time pairs a Pidgey is 1 in 189, an Eevee 1 in 966, a Dratini 1 in 1,893', () => {
+test('in Kanto, on average over the 20 place and time pairs a Pidgey is 1 in 33, an Eevee 1 in 167, a Dratini 1 in 323', () => {
   // Exact chance per visit from the weights (nothing met yet, so the 2.5x cancels): the common pool gets 99% of visits.
   const places = ['meadow', 'hills', 'mountains', 'lake', 'forest'] as const
   const times = ['dawn', 'day', 'dusk', 'night'] as const
@@ -208,7 +211,7 @@ test('on average over the 20 place and time pairs a Pidgey is 1 in 189, an Eevee
       let total = 0
       const own: Record<string, number> = { pidgey: 0, eevee: 0, dratini: 0 }
       for (const { name, forms } of LIST) {
-        if (SPECIES[name]?.tier !== 'common') continue
+        if (SPECIES[name]?.tier !== 'common' || regionOf(name)?.id !== 'kanto') continue
         for (const form of forms) {
           const w = weightOf(name, form, where, forms)
           total += w
@@ -219,9 +222,9 @@ test('on average over the 20 place and time pairs a Pidgey is 1 in 189, an Eevee
     }
   const oneIn = (n: string) => 20 / (sum[n] ?? 0)
   for (const [n, want] of [
-    ['pidgey', 189],
-    ['eevee', 966],
-    ['dratini', 1893],
+    ['pidgey', 33],
+    ['eevee', 167],
+    ['dratini', 323],
   ] as const)
     expect(Math.abs(oneIn(n) / want - 1) < 0.15, `${n}: 1 in ${oneIn(n)}`).toBe(true)
 })
@@ -243,4 +246,81 @@ test('item and event dependent forms are not wild, Wormadam cloaks are', () => {
   // Never drawn, even if a newer sprite list offers them.
   expect(isWildForm('landorus', 'therian')).toBe(false)
   expect(isWildForm('newmon', 'origin')).toBe(false)
+})
+
+const alwaysRare = (seed: number) => {
+  const rand = seeded(seed)
+  let n = 0
+  return () => (n++ % 2 === 0 ? 0 : rand())
+}
+const draws = (list: typeof LIST, where: Where, n: number, rand: () => number) =>
+  Array.from({ length: n }, () => drawWild(list, where, rand))
+
+test(
+  'in Kanto every random visitor is #1-151, in any wild form, Alolan Rattata included',
+  { timeoutMs: 60_000 },
+  () => {
+    const rand = seeded(7)
+    const picks = draws(LIST, at('forest', 'night'), 50_000, rand)
+    const outside = new Set(picks.filter(p => p === null || regionOf(p.species)?.id !== 'kanto').map(p => p?.species))
+    expect([...outside].slice(0, 5)).toEqual([])
+    expect(picks.some(p => p?.species === 'rattata' && p.form === 'alola')).toBe(true)
+    expect(new Set(picks.map(p => p?.species)).size).toBeGreaterThan(140)
+  },
+)
+
+test(
+  'in Kanto an unseen Pikachu comes about 2.5x as often as when seen, against seen Kanto species',
+  { timeoutMs: 60_000 },
+  () => {
+    const kanto = Object.fromEntries(
+      LIST.filter(s => regionOf(s.name)?.id === 'kanto').map(s => [s.name, { seen: 1, shiny: 0, first: 0 }]),
+    )
+    const { pikachu: _, ...allButPikachu } = kanto
+    const count = (dex: Where['dex']) =>
+      draws(LIST, at('meadow', 'day', dex), 200_000, seeded(8)).filter(p => p?.species === 'pikachu').length
+    const ratio = count(allButPikachu) / count(kanto)
+    expect(ratio).toBeGreaterThan(2.2)
+    expect(ratio).toBeLessThan(2.8)
+  },
+)
+
+test('a rare visitor in Kanto is Articuno, Zapdos, Moltres, Mewtwo or Mew; in Johto one of its six', () => {
+  const rare = (region: RegionId) =>
+    new Set(draws(LIST, at('lake', 'night', {}, region), 3_000, alwaysRare(9)).map(p => p?.species))
+  expect([...rare('kanto')].sort()).toEqual(['articuno', 'mew', 'mewtwo', 'moltres', 'zapdos'])
+  expect([...rare('johto')].sort()).toEqual(['celebi', 'entei', 'ho-oh', 'lugia', 'raikou', 'suicune'])
+})
+
+test('a region with nothing in the list to draw gives no visitor, rare or common', () => {
+  const johto = [
+    { name: 'chikorita', forms: ['regular'] },
+    { name: 'lugia', forms: ['regular'] },
+  ]
+  expect(drawWild(johto, at('meadow', 'day'), seeded(10))).toBeNull()
+  expect(drawWild(johto, at('meadow', 'day'), alwaysRare(10))).toBeNull()
+  expect(drawWild([], at('meadow', 'day'), seeded(10))).toBeNull()
+  expect(drawWild([{ name: 'charizard', forms: ['mega-x', 'gmax'] }], at('meadow', 'day'), seeded(10))).toBeNull()
+  expect(drawWild(johto, at('meadow', 'day', {}, 'johto'), seeded(10))?.species).toBe('chikorita')
+})
+
+test('a species past #905 belongs to no region and is never drawn', () => {
+  const list = [
+    { name: 'sprigatito', forms: ['regular'] },
+    { name: 'koraidon', forms: ['regular'] },
+    { name: 'pidgey', forms: ['regular'] },
+  ]
+  expect(new Set(draws(list, at('meadow', 'day'), 2_000, seeded(11)).map(p => p?.species))).toEqual(new Set(['pidgey']))
+  expect(draws(list, at('meadow', 'day'), 200, alwaysRare(11)).every(p => p?.species === 'pidgey')).toBe(true)
+  for (const { id } of TRAVEL_REGIONS.slice(1))
+    expect([id, drawWild(list, at('meadow', 'day', {}, id), seeded(11))]).toEqual([id, null])
+})
+
+test('the same list, place, time and Pokédex in another region draws from that region', () => {
+  const dex: Where['dex'] = {}
+  const kanto = at('meadow', 'day', dex)
+  const johto: Where = { ...kanto, region: 'johto' }
+  expect(draws(LIST, kanto, 500, seeded(12)).every(p => regionOf(p?.species ?? '')?.id === 'kanto')).toBe(true)
+  expect(draws(LIST, johto, 500, seeded(12)).every(p => regionOf(p?.species ?? '')?.id === 'johto')).toBe(true)
+  expect(draws(LIST, kanto, 500, seeded(12)).every(p => regionOf(p?.species ?? '')?.id === 'kanto')).toBe(true)
 })

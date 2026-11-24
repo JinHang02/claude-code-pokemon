@@ -25,6 +25,8 @@ import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } f
 import type { Region } from './region'
 import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
 import type { Work } from './friendship'
+import { TRAVEL_REGIONS, regionOf } from './travel-regions'
+import type { RegionId } from './travel-regions'
 import {
   addTogether,
   bagFull,
@@ -238,7 +240,9 @@ let lastCells = ''
 // The band refused the last frame (hidden or collapsed): frames are offered again once in a while.
 let isHidden = false
 const RETRY_TICKS = ticks(1000)
-let wild: { mon: Mon; left: Pixels; pick: Pick } | null = null
+// `isRandom`: drawn for the current region, not named.
+type Visitor = { mon: Mon; left: Pixels; pick: Pick; isRandom: boolean }
+let wild: Visitor | null = null
 // The visitor's capture rate, once PokeAPI has said (null until then: no throws yet).
 let wildRate: number | null = DEFAULT_RATE
 // A Poké Ball in flight or playing out, at most one.
@@ -595,10 +599,12 @@ function mutate($: EngineInterface, change: (s: Save, ledgers: Record<string, Le
 async function sync($: EngineInterface) {
   let isNewParty = false
   let isNewLook = false
+  let isNewRegion = false
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
     const { latest } = await readSave($)
     isNewParty = isOtherParty(latest, save)
+    isNewRegion = latest.journey.current !== save.journey.current
     const was = JSON.stringify([save.bag, balanceOf(save, cash)])
     const [wasSize, wasOff] = [save.size, save.isOff]
     save = latest
@@ -611,7 +617,11 @@ async function sync($: EngineInterface) {
     countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
   })
   if (isNewParty) await refreshParty($)
-  if (isNewLook) $.ui.invalidate('ui.render')
+  if (isNewRegion) {
+    wildHeld = null
+    dismissStrayVisitor($)
+  }
+  if (isNewLook || isNewRegion) $.ui.invalidate('ui.render')
   recheck($)
 }
 
@@ -2017,12 +2027,17 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     const shiny = named.wantsShiny ? 'shiny ' : ''
     if ('guess' in named)
       return `Did you mean ${displayName(named.guess.species, named.guess.form)}? Run /pokemon-play wild ${shiny}${spell(named.guess)}`
-    const held = isAsked ? null : wildHeld
+    const isRandom = named.pick === null
+    if (isRandom) await sync($)
+    const region = save.journey.current
+    const kept = isAsked ? null : wildHeld
     wildHeld = null
+    const held = kept && regionOf(kept.pick.species)?.id === region ? kept : null
     const pick =
       named.pick ??
       held?.pick ??
-      drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex, moon: moonNow() })
+      drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex, region, moon: moonNow() })
+    if (!pick) return null
     const wantsShiny = named.wantsShiny || (held?.isShiny ?? Math.random() < SHINY_ODDS)
     const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
@@ -2035,7 +2050,7 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
       return null
     }
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
-    wild = { mon, left: fitWild(mon), pick }
+    wild = { mon, left: fitWild(mon), pick, isRandom }
     // The table has every listed species' rate; only one it doesn't know is downloaded.
     const known = SPECIES[pick.species]?.rate
     if (known === undefined) {
@@ -2109,7 +2124,10 @@ async function keepCatch($: EngineInterface) {
   }
   let isInParty = false
   let isStored = true
+  let isStray = false
   await mutate($, s => {
+    isStray = isStrayIn(visitor, s.journey.current)
+    if (isStray) return s
     isStored = !isNoRoom(s)
     if (!isStored) return s
     const kept = storeCaught(recordCaught(s, pick.species, Date.now()), caught)
@@ -2127,12 +2145,34 @@ async function keepCatch($: EngineInterface) {
     $.ui.toast(NO_ROOM_TO_CATCH)
     return
   }
+  if (isStray) {
+    if (scene && !status.wild && !wild) {
+      wild = visitor
+      status = { ...status, wild: scene }
+      if (pitch) pitch = { ...pitch, phase: 'burst', t: 0, isCaught: false, flees: true }
+      else status = fleeWild(status, band?.total ?? 0, visitor.left.width)
+    }
+    $.ui.toast(ranOff(visitor, save.journey.current))
+    return
+  }
   const where = isInParty ? 'It joined your party.' : 'It was sent to the PC box.'
   $.ui.toast(`Gotcha! ${mon.isShiny ? '✨ ' : ''}${mon.name} was caught! ${where}`)
   feel('cheer')
   if (!isInParty) return
   await refreshParty($)
   background($, learnEvolutions($))
+}
+
+const isStrayIn = (visitor: Visitor, current: RegionId): boolean =>
+  visitor.isRandom && regionOf(visitor.pick.species)?.id !== current
+const ranOff = (visitor: Visitor, current: RegionId): string =>
+  `The wild ${visitor.mon.name} ran off: you're in ${TRAVEL_REGIONS.find(r => r.id === current)?.name ?? current} now.`
+
+function dismissStrayVisitor($: EngineInterface) {
+  if (!wild || !status.wild || status.wild.isFleeing || pitch?.flees || !isStrayIn(wild, save.journey.current)) return
+  if (pitch?.isHit) pitch = { ...pitch, isCaught: false, flees: true }
+  else status = fleeWild(status, band?.total ?? 0, wild.left.width)
+  $.ui.toast(ranOff(wild, save.journey.current))
 }
 
 function afterThrow($: EngineInterface, event: ThrowEvent) {
