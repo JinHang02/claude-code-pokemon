@@ -25,8 +25,17 @@ import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } f
 import type { Region } from './region'
 import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
 import type { Work } from './friendship'
-import { buyTicket } from './journey'
-import { readTicketWords, TRAVEL_REGIONS, regionOf, TICKET_PRICE, ticketState } from './travel-regions'
+import { buyTicket, travelTo } from './journey'
+import type { Change } from './journey'
+import {
+  findRegion,
+  readTicketWords,
+  TRAVEL_REGIONS,
+  regionOf,
+  TICKET_PRICE,
+  ticketState,
+  unlockedOf,
+} from './travel-regions'
 import type { TravelRegion, RegionId } from './travel-regions'
 import {
   addTogether,
@@ -88,7 +97,15 @@ import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
-import { TICKET_ICON } from './ferry-screen'
+import {
+  FERRY_MIN_COLUMNS,
+  FERRY_MIN_ROWS,
+  FERRY_MS,
+  FERRY_ROWS,
+  ferryFrame,
+  SAILED_MS,
+  TICKET_ICON,
+} from './ferry-screen'
 import {
   CALM_EVERY,
   carryActors,
@@ -295,6 +312,12 @@ type Screen = { key: string; from: Mon; to: Mon; style: EvolutionStyle; isPrevie
 let screen: (Screen & { rows: number }) | null = null
 // Screens waiting their turn: one at a time, and none while a wild Pokémon is out.
 let screensDue: Screen[] = []
+/** The ferry crossing over the band since tick `startTick`, with the party's sprites; `isShort`: the band was too small. */
+type Voyage = { from: TravelRegion; to: TravelRegion; party: Pixels[]; startTick: number; isShort: boolean }
+let voyage: Voyage | null = null
+/** The terminal band's `maxRows` and width at its last render, drawn or not (0 before any). */
+let lastMaxRows = 0
+let lastColumns = 0
 // Evolutions this session made itself, by look: another session's are shown when the party is drawn with them.
 const evolvedHere = new Set<string>()
 // Another session's evolution older than this when this one first draws it is not played again.
@@ -1264,6 +1287,7 @@ async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
   if (isOff) {
     closeMart($)
     dropScreens($)
+    voyage = null
   }
   let was = false
   await mutate($, s => {
@@ -1346,6 +1370,46 @@ async function setRegion($: EngineInterface, word: string): Promise<string> {
   return region
     ? `Region: ${region}. Evolutions take ${REGIONAL[region]} forms unless you name one.`
     : 'Region: kanto. Evolving, each Pokémon keeps its own form.'
+}
+
+const regionNames = (regions: readonly TravelRegion[]) => regions.map(r => r.name).join(', ')
+
+/** The party's sprites already downloaded, in party order; a member whose sprite isn't is left out. */
+const cachedParty = (): Pixels[] =>
+  save.party.flatMap(m => {
+    const art = arts.get(`${fileOf(m)}|${m.isShiny}`) ?? arts.get(`${fileOf(m)}|false`)
+    return art ? [parseAnsi(art)] : []
+  })
+
+/**
+ * `/pokemon travel <region>`: sails to `word`'s region, its crossing played over this window's band.
+ * @returns the reply: where one can sail with none named, the region names for an unknown word, why not, or the sailing.
+ */
+async function travelCommand($: EngineInterface, word: string): Promise<string> {
+  await sync($)
+  const said = slug(word)
+  if (!said) return `Sail where? You can visit ${regionNames(unlockedOf(save.journey))}: /pokemon travel <region>`
+  const to = findRegion(word.trim())
+  if (!to) return `There's no region called ${said}. Regions: ${regionNames(TRAVEL_REGIONS)}.`
+  let change: Change = { save, text: '', isError: true }
+  let from = currentRegion()
+  await mutate($, s => {
+    from = TRAVEL_REGIONS.find(r => r.id === s.journey.current) ?? from
+    change = travelTo(s, to)
+    return change.save
+  })
+  if (change.isError) return change.text
+  wildHeld = null
+  dismissStrayVisitor($)
+  closeMart($)
+  dropScreens($)
+  const isShort = lastMaxRows < FERRY_MIN_ROWS || lastColumns < FERRY_MIN_COLUMNS
+  if (save.isOff || !lastMaxRows) return `Sailed to ${to.name}.`
+  voyage = { from, to, party: cachedParty(), startTick: tickNo, isShort }
+  lastCells = ''
+  wake()
+  $.ui.invalidate('ui.render')
+  return isShort ? `Sailed to ${to.name}.` : change.text
 }
 
 // What `member` can evolve into and how, as in the games (empty at a final stage), its species' gender ratio, and the
@@ -2051,10 +2115,13 @@ async function captureRateOf($: EngineInterface, name: string): Promise<number> 
   return typeof rate === 'number' && Number.isFinite(rate) ? rate : DEFAULT_RATE
 }
 
+const AT_SEA = 'No wild Pokémon comes by while the ferry sails.'
+
 // A wild Pokémon comes by: the one `query` names, or a random one. Answers why not when the name isn't one.
 async function spawnWild($: EngineInterface, query = ''): Promise<string | null> {
   if (!band || !fitted || status.wild || pitch) return null
   if (screen) return 'No wild Pokémon comes by while an evolution is on screen.'
+  if (voyage) return AT_SEA
   try {
     const list = await loadSpecies($)
     const isAsked = Boolean(query.trim())
@@ -2078,8 +2145,8 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
     if (!band || !fitted || status.wild || pitch) return null
-    if (screen) {
-      if (isAsked) return 'No wild Pokémon comes by while an evolution is on screen.'
+    if (screen || voyage) {
+      if (isAsked) return voyage ? AT_SEA : 'No wild Pokémon comes by while an evolution is on screen.'
       // The timer's visitor isn't lost: the first tick after the screen brings it.
       wildHeld = { pick, isShiny }
       wildAt = 0
@@ -2448,6 +2515,7 @@ const heldBack = (m: Mon) => [screen, ...screensDue].find(d => d && !d.isPreview
 // is told and the party drawn evolved.
 function startScreen($: EngineInterface) {
   while (!screen && screensDue.length) {
+    if (voyage) return
     if (band && (isVisited() || status.mood?.kind === 'evolve')) return
     const next = screensDue.shift()
     if (!next) return
@@ -2540,6 +2608,32 @@ function screenCells(s: Screen, columns: number, rows: number): string {
   return toCells(img, [{ x: TEXT_COLUMN, y: rows - 2, text, fg: BOX.text, bg: BOX.fill }]).cells
 }
 
+const voyageMs = (v: Voyage) => (tickNo - v.startTick) * TICK_MS
+
+/**
+ * The voyage's cells at its moment now.
+ * @param b the band: `columns` for the party, `total` wide, `rows` tall.
+ * @returns the crossing with its message as real characters; a short voyage is the band's scene under one label.
+ */
+function voyageCells(v: Voyage, b: { columns: number; rows: number; total: number }): string {
+  if (v.isShort) {
+    const text = `Sailed to ${v.to.name}.`
+    const img = frame(status, fitted?.lefts ?? [], b.columns, b.rows, lookNow(), b.total)
+    const x = Math.max(0, Math.floor((b.total - text.length) / 2))
+    return toCells(img, [{ x, y: Math.floor(b.rows / 2), text, fg: BOX.text, bg: BOX.fill }]).cells
+  }
+  const { from, to, party } = v
+  const { img, text } = ferryFrame({ ms: voyageMs(v), from, to, party, columns: b.total, rows: b.rows })
+  return toCells(img, [{ x: TEXT_COLUMN, y: b.rows - 2, text, fg: BOX.text, bg: BOX.fill }]).cells
+}
+
+function endVoyage($: EngineInterface) {
+  voyage = null
+  lastCells = ''
+  $.ui.invalidate('ui.render')
+  startScreen($)
+}
+
 // The frame loop, one tick at a time, so a slow blit holds back the ticks behind it instead of piling frames up.
 // Asleep, the band draws one tick in CALM_EVERY: the loop then wakes once per drawn tick and runs the ticks before it
 // together, the same frames at the same moments, without waking the plugin 20 times a second for hours. Anything
@@ -2549,7 +2643,14 @@ let pending: { cancel: () => void; rearm: () => void; isLong: boolean } | null =
 // Something stirred the party since the last tick: the next one draws, calm or not, so it shows at once.
 let isStirred = false
 const isBatched = () =>
-  Boolean(band && fitted) && !save.isOff && isAsleep(status) && isCalm(status) && !pitch && !screen && !mart.isOpen
+  Boolean(band && fitted) &&
+  !save.isOff &&
+  isAsleep(status) &&
+  isCalm(status) &&
+  !pitch &&
+  !screen &&
+  !voyage &&
+  !mart.isOpen
 
 function loopTicks($: EngineInterface) {
   const due = isBatched() ? CALM_EVERY - (tickNo % CALM_EVERY) : 1
@@ -2591,7 +2692,7 @@ async function tick($: EngineInterface) {
   }
   wildAt ??= now + WILD_EVERY[0]
   // A visitor due while a screen plays comes once it has ended.
-  if (now >= wildAt && !status.wild && !isAsleep(status) && !screen) {
+  if (now >= wildAt && !status.wild && !isAsleep(status) && !screen && !voyage) {
     wildAt = now + between(...WILD_EVERY)
     background($, spawnWild($))
   }
@@ -2611,6 +2712,7 @@ async function tick($: EngineInterface) {
   }
   if (!status.wild) wild = null
   if (screen && !isScreenPlaying()) await endScreen($)
+  if (voyage && voyageMs(voyage) >= (voyage.isShort ? SAILED_MS : FERRY_MS)) endVoyage($)
   startScreen($)
   if (isVisited() !== isButtonHidden) {
     isButtonHidden = !isButtonHidden
@@ -2626,13 +2728,15 @@ async function tick($: EngineInterface) {
   if (mart.isOpen) return
   const isDue = isStirred || tickNo % CALM_EVERY === 0
   isStirred = false
-  if (!pitch && isCalm(status) && !isDue) return
+  if (!voyage && !pitch && isCalm(status) && !isDue) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return
-  const cells = screen
-    ? screenCells(screen, band.total, band.rows)
-    : toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total)).cells
+  const cells = voyage
+    ? voyageCells(voyage, band)
+    : screen
+      ? screenCells(screen, band.total, band.rows)
+      : toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total)).cells
   if (cells === lastCells && !isHidden) return
   if (isAiming) {
     // The redraw makes this frame again and records it as drawn.
@@ -2767,7 +2871,7 @@ async function dexEntryOf($: EngineInterface, args: string): Promise<string | nu
 }
 
 // The `/pokemon` words that take no Pokémon's name.
-const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
+const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help', 'travel'])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
 
 async function pokemon($: EngineInterface, typed: string): Promise<string> {
@@ -2820,6 +2924,8 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return openMartCommand($)
     case 'buy':
       return buyCommand($, tail)
+    case 'travel':
+      return travelCommand($, tail)
     case 'off':
       return setOff($, true)
     case 'on':
@@ -3141,7 +3247,13 @@ export const register: Register = on => {
     await readClock($)
     // Another surface drawing at the same time leaves the terminal's band alone.
     if (e.surface !== 'terminal') return next(e)
-    if (!mons.length || save.isOff || e.props.hasSurvey) {
+    lastMaxRows = e.props.maxRows
+    lastColumns = Math.min(512, e.props.bodyColumns)
+    if (voyage && !voyage.isShort && e.props.maxRows < FERRY_MIN_ROWS) {
+      voyage = null
+      lastCells = ''
+    }
+    if ((!mons.length && !voyage) || save.isOff || e.props.hasSurvey) {
       band = null
       // Off, maybe from another session: the Mart doesn't come back with the party, nor an evolution's screen.
       if (save.isOff) {
@@ -3178,9 +3290,14 @@ export const register: Register = on => {
     }
     // Too short now for the screen playing (the terminal shrank): it ends here, with its toast, and the band goes on.
     if (screen && e.props.maxRows < SCREEN_MIN_ROWS) cutScreen($)
-    const fits = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)
+    const fits = Math.ceil((Math.max(0, ...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)
     // A screen keeps the band's height while it plays, however the party changes under it.
-    const rows = screen ? Math.min(e.props.maxRows, Math.max(fits, screen.rows)) : fits
+    const rows =
+      voyage && !voyage.isShort
+        ? Math.min(e.props.maxRows, FERRY_ROWS)
+        : screen
+          ? Math.min(e.props.maxRows, Math.max(fits, screen.rows))
+          : fits
     // Too short a space for even the smallest band: Claude Code's own row instead of a scrolling one.
     if (rows > e.props.maxRows) {
       band = null
@@ -3202,6 +3319,10 @@ export const register: Register = on => {
     if (mart.isOpen) {
       lastCells = ''
       return <Client key="mart" module="./mart.tsx" width={total} height={rows} props={martProps()} />
+    }
+    if (voyage) {
+      lastCells = voyageCells(voyage, band)
+      return <Raster key="scene" columns={total} rows={rows} cells={lastCells} />
     }
     // An evolution's screen covers the band: one picture, its text real characters, nothing to click.
     if (screen) {
