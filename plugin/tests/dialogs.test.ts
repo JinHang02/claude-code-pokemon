@@ -362,6 +362,12 @@ test('below STARTER_MIN_ROWS the starters are a text list that still has 3 pick 
   expect(p.lines.map(text).find(l => l.includes('Bulbasaur'))).toContain('▶')
 })
 
+test("the text list's question names the keys that answer it: Enter and n, not y", () => {
+  const p = dialogView(starter({ sel: 1, isAsking: true }), data({ rows: STARTER_MIN_ROWS - 1 }))
+  expect(all(p)).toContain('Enter Yes · n No')
+  expect(all(p)).not.toContain('y Yes')
+})
+
 test('a Unicode name keeps the lines their width, composed or not', () => {
   for (const name of ['Flabébé', 'Flabébé', 'Nidoran♀'])
     for (const rows of [STARTER_ROWS, STARTER_MIN_ROWS - 1]) {

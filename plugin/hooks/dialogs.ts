@@ -113,7 +113,7 @@ const SHORT_LOOK_HINT = '  click or Enter on a ball'
 const LOOK_MESSAGE = 'Three Poké Balls! Look at each, then choose one.'
 const CHOOSE_HINT = 'click, or /pokemon choose <name>'
 const KEEP_HINT = 'click, or /pokemon keep or fresh'
-const ANSWER_HINT = 'y Yes · n No'
+const ANSWER_HINT = 'Enter Yes · n No'
 
 const width = (text: string) => [...text].length
 const fmt = (n: number) => n.toLocaleString('en-US')
