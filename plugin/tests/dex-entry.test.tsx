@@ -4,7 +4,7 @@ import { ALL_HELP, COMMANDS, suggest } from '../hooks/commands'
 import type { Owned } from '../hooks/commands'
 import { emptySave, formatDex, level, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
-import { begin, cmd, KIT, LIST, member } from './world'
+import { begin, cmd, KIT, member } from './world'
 
 // Two Eevee (the lead and one in the PC box), a Pikachu, and a Pokédex that has caught Eevee.
 const saved = (): Save => ({
@@ -112,12 +112,7 @@ test('bare /pokedex keeps the whole Pokédex and the party', KIT, async ($, on) 
   const w = await begin($, on, saved())
   const all = await cmd($, 'pokedex')
   const [dex, party] = all.split('\n\n')
-  expect(dex).toBe(
-    formatDex(
-      w.saveNow(),
-      LIST.map(s => s.name),
-    ),
-  )
+  expect(dex).toBe(formatDex(w.saveNow()))
   expect(party).toMatch(/^Your party:\n {2}Lead {2}Eevee {4}Lv 12 /)
   expect(await cmd($, 'pokedex', '   ')).toBe(all)
   expect(await cmd($, 'pokedex', 'shiny')).toBe(all)

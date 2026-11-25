@@ -190,6 +190,11 @@ export const member = (species: string, extra: Partial<Member> = {}): Member => 
   ...extra,
 })
 export const lv = (species: string, level: number): Stage => ({ species, way: { kind: 'level', level } })
+export type PreFeatureSave = Omit<Save, 'journey'>
+export const preFeature = (save: Save): PreFeatureSave => {
+  const { journey: _, ...rest } = save
+  return rest
+}
 // The plugin's hour at clock 0 is its own UTC offset, or the +0800 the fake `date` answers when it claims UTC.
 const offsetHours = (-new Date().getTimezoneOffset() || 480) / 60
 // The clock time (from 0) at which the plugin's local hour is `hour`.
@@ -219,6 +224,8 @@ export type Net = {
   beforeSet?: (key: string) => void
   // Runs as a store key is read: another window's write landing just before this one reads.
   beforeGet?: (key: string) => void
+  // Holds back a store read, by its key, while it returns a promise.
+  getStall?: (key: string) => Promise<void> | undefined
   // Species PokeAPI answers 404 for: the sprite list ahead of it.
   missing?: string[]
 }
@@ -226,7 +233,7 @@ export type Net = {
 // The engine around the plugin: a fake network, store, clock zone and UI calls; resolves the store and toasts.
 export function world(
   on: On,
-  saved?: Save,
+  saved?: Save | PreFeatureSave,
   art = ART,
   files = new Map<string, string>(),
   net: Net = { isOnline: true, list: JSON.stringify(LIST) },
@@ -292,6 +299,7 @@ export function world(
   })
   on('store.get', async (_$, e) => {
     net.beforeGet?.(e.key)
+    await net.getStall?.(e.key)
     if (net.isStoreBroken) throw new Error('store unreadable')
     return { value: store.get(e.key) }
   })
@@ -339,7 +347,7 @@ export function world(
 export async function begin(
   $: { session: { start: (e: never) => Promise<unknown> } },
   on: On,
-  saved?: Save,
+  saved?: Save | PreFeatureSave,
   art = ART,
   files?: Map<string, string>,
   net?: Net,

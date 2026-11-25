@@ -1,11 +1,19 @@
 import type { Landscape, Phase } from './backdrop'
 import type { Pick, Species } from './lookup'
 import { moonVisitor } from './moon'
+import { regionOf } from './travel-regions'
+import type { RegionId } from './travel-regions'
 import type { DexEntry } from './save'
 import { SPECIES } from './species-data'
 
 // `moon`: the moon's shape tonight (moon.ts), for the full moon's own visitor.
-export type Where = { landscape: Landscape; phase: Phase; dex: Record<string, DexEntry>; moon?: number }
+export type Where = {
+  landscape: Landscape
+  phase: Phase
+  dex: Record<string, DexEntry>
+  region: RegionId
+  moon?: number
+}
 
 const RARE_SHARE = 0.01
 const FORM_SHARE = 1 / 8
@@ -87,14 +95,14 @@ type Table = { picks: Pick[]; total: number; cumulative: number[] }
 let cached: { key: unknown[]; rare: Table; common: Table } | null = null
 
 function tables(list: Species[], where: Where) {
-  const key = [list, where.landscape, where.phase, where.dex]
+  const key = [list, where.landscape, where.phase, where.dex, where.region]
   if (cached && cached.key.every((k, i) => k === key[i])) return cached
   const build = (rare: boolean): Table => {
     const picks: Pick[] = []
     const cumulative: number[] = []
     let total = 0
     list.forEach(({ name, forms }, dex) => {
-      if (isRare(name) !== rare) return
+      if (isRare(name) !== rare || regionOf(name)?.id !== where.region) return
       for (const form of forms) {
         const w = weightOf(name, form, where, forms)
         if (w <= 0) continue
@@ -121,13 +129,13 @@ function drawFrom(t: Table, rand: () => number): Pick | undefined {
   return t.picks[lo]
 }
 
-// One wild Pokémon for this place and time: now and then one only dusk or a full moon brings (moon.ts), else the
-// rare pool 1% of the time, else the common one.
-export function drawWild(list: Species[], where: Where, rand = Math.random): Pick {
-  const special = moonVisitor(list, where.phase, where.moon ?? -1, rand)
+/** @returns a wild pick from `where.region`, or null when none is drawable. */
+export function drawWild(list: Species[], where: Where, rand = Math.random): Pick | null {
+  const isHere = (name: string): boolean => regionOf(name)?.id === where.region
+  const special = moonVisitor(list, where.phase, where.moon ?? -1, rand, isHere)
   if (special) return special
   const { rare, common } = tables(list, where)
   const first = rand() < RARE_SHARE ? rare : common
   const pool = first.total > 0 ? first : first === rare ? common : rare
-  return drawFrom(pool, rand) ?? { dex: 0, species: list[0]?.name ?? '', form: 'regular' }
+  return drawFrom(pool, rand) ?? null
 }

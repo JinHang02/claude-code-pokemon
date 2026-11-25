@@ -15,7 +15,7 @@ import { ICONS } from './item-icons'
 import { forSale, isForSale, itemById, itemName, MAX_BAG, splitGive, TABS, withArticle } from './items'
 import type { Item } from './items'
 import { act, isAct, START } from './mart'
-import type { Act, MartProps, MartState } from './mart'
+import type { Act, MartItem, MartProps, MartState } from './mart'
 import { didYouMean, findMembers, formatChoices, inBox, isList, readLevel } from './members'
 import type { Found, Place, Spot } from './members'
 import { distance, guessItem, lookup, randomPick, readName, slug, spell, typedRest } from './lookup'
@@ -25,6 +25,29 @@ import { isFrom, readRegion, REGION_TEXT, REGIONAL, REGION_WORDS, regionPool } f
 import type { Region } from './region'
 import { befriend, foldWork, loadWork, pruneWork, timesOf, WORK, WORK_MS } from './friendship'
 import type { Work } from './friendship'
+import {
+  ALREADY_CHOSEN,
+  buyTicket,
+  chooseStarter,
+  keepSave,
+  startFresh,
+  startFreshIfUndecided,
+  travelTo,
+} from './journey'
+import type { Change } from './journey'
+import {
+  dueStarter,
+  findRegion,
+  isObject,
+  readTicketWords,
+  regionById,
+  TRAVEL_REGIONS,
+  regionOf,
+  TICKET_PRICE,
+  ticketState,
+  unlockedOf,
+} from './travel-regions'
+import type { TravelRegion, RegionId } from './travel-regions'
 import {
   addTogether,
   bagFull,
@@ -85,6 +108,17 @@ import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
+import { dialogAct, dialogView, isDialogAct, STARTER_ROWS, STARTER_SCENE_ROWS, wipeWarning, WIPED } from './dialogs'
+import type { Dialog, DialogAct, DialogProps, StarterCard } from './dialogs'
+import {
+  FERRY_MIN_COLUMNS,
+  FERRY_MIN_ROWS,
+  FERRY_MS,
+  FERRY_ROWS,
+  ferryFrame,
+  SAILED_MS,
+  TICKET_ICON,
+} from './ferry-screen'
 import {
   CALM_EVERY,
   carryActors,
@@ -118,8 +152,8 @@ import { FULL_MOON, isFullMoonAt, MOON_PHASES, MOON_WORDS, moonAge, moonPhaseAt,
 import { BALL, COLORS, DONE, formatDuration, pickFor, WORKING } from './spinner'
 import { fit, parseAnsi, strips, textRows, toCells } from './sprite'
 import type { Pixels } from './sprite'
-import { shopSize } from './shop'
-import type { ShopProps } from './shop'
+import { regionLabelText, shopSize, walletPill } from './shop'
+import type { PillProps } from './shop'
 import { stir, weatherAt, WEATHERS } from './weather'
 import type { Weather } from './weather'
 
@@ -175,6 +209,9 @@ const ledger = atom({ plugin: 'pokemon', key: 'ledger' } as const, null)
 
 let species: Species[] | null = null
 let save: Save = emptySave()
+// Store key of the recovery copy of `save.journey`: 1.7.0's loadSave drops save fields it doesn't know.
+const JOURNEY_COPY = 'journey'
+let lastCopiedJourneyJson: string | null = null
 // This session's XP ledger key, and the ledgers' XP not yet folded into the save, by member id.
 let ledgerKey = ''
 let extra: Record<string, number> = {}
@@ -235,7 +272,9 @@ let lastCells = ''
 // The band refused the last frame (hidden or collapsed): frames are offered again once in a while.
 let isHidden = false
 const RETRY_TICKS = ticks(1000)
-let wild: { mon: Mon; left: Pixels; pick: Pick } | null = null
+// `isRandom`: drawn for the current region, not named.
+type Visitor = { mon: Mon; left: Pixels; pick: Pick; isRandom: boolean }
+let wild: Visitor | null = null
 // The visitor's capture rate, once PokeAPI has said (null until then: no throws yet).
 let wildRate: number | null = DEFAULT_RATE
 // A Poké Ball in flight or playing out, at most one.
@@ -286,6 +325,13 @@ type Screen = { key: string; from: Mon; to: Mon; style: EvolutionStyle; isPrevie
 let screen: (Screen & { rows: number }) | null = null
 // Screens waiting their turn: one at a time, and none while a wild Pokémon is out.
 let screensDue: Screen[] = []
+type Voyage = { from: TravelRegion; to: TravelRegion; party: Pixels[]; startTick: number; isShort: boolean }
+let voyage: Voyage | null = null
+let dialog: Dialog | null = null
+let dialogCards: StarterCard[] = []
+let dialogTyped = 0
+let lastRenderedMaxRows = 0
+let lastRenderedColumns = 0
 // Evolutions this session made itself, by look: another session's are shown when the party is drawn with them.
 const evolvedHere = new Set<string>()
 // Another session's evolution older than this when this one first draws it is not played again.
@@ -318,8 +364,9 @@ let shown: { phase?: Phase; landscape?: Landscape; weather?: Weather; moon?: num
 let tzOffsetMin: number | null = null
 // Settles once the session's save has loaded (or failed to); commands wait for it, never for a download.
 let ready: Promise<void> = Promise.resolve()
-// Settles once start-up (sprites, a first Pokémon, evolutions) has run, however it went.
-let started: Promise<void> = Promise.resolve()
+let startupSettled: Promise<void> = Promise.resolve()
+let isSaveLoaded = false
+let isDueOffered = false
 // The party couldn't be drawn (offline, a missing sprite): the next sync after start-up tries again.
 let isPartyStale = false
 // Each party refresh's number: only the latest one publishes.
@@ -515,15 +562,44 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
 // ever made twice. Nothing is written when nothing changes. Resolves the save read and the save as it now stands.
 async function writeSave($: EngineInterface, change: (s: Save) => Save) {
   for (let tries = 1; ; tries++) {
-    const raw = await $.store.get('save')
+    const { raw, latest } = await readSave($)
     if (versionOf(raw) > SAVE_VERSION) throw new Error(TOO_NEW)
     await seedTogether($, raw)
-    const latest = loadSave(raw)
     const next = change(latest)
     if (next === latest || JSON.stringify(next) === JSON.stringify(latest)) return { latest, next: latest }
     if (tries < 3 && JSON.stringify(await $.store.get('save')) !== JSON.stringify(raw)) continue
     await $.store.set('save', { ...next, version: SAVE_VERSION })
+    await copyJourney($, next.journey, latest.journey)
     return { latest, next }
+  }
+}
+
+const hasLostJourney = (raw: unknown): boolean => isObject(raw) && !Object.hasOwn(raw, 'journey')
+
+/**
+ * The save as stored, read with the journey copy only when the stored save has no `journey`.
+ * @returns `raw`: the stored value (undefined for none); `latest`: it loaded.
+ */
+async function readSave($: EngineInterface): Promise<{ raw: unknown; latest: Save }> {
+  const raw: unknown = await $.store.get('save')
+  if (!hasLostJourney(raw)) return { raw, latest: loadSave(raw) }
+  const copy: unknown = await $.store.get(JOURNEY_COPY)
+  if (copy !== undefined) lastCopiedJourneyJson = JSON.stringify(copy)
+  return { raw, latest: loadSave(raw, copy) }
+}
+
+/**
+ * @param journey the journey just written to the save.
+ * @param stored the save's journey as read just before that write.
+ */
+async function copyJourney($: EngineInterface, journey: Save['journey'], stored: Save['journey']) {
+  const json = JSON.stringify(journey)
+  if (json === lastCopiedJourneyJson && json === JSON.stringify(stored)) return
+  try {
+    await $.store.set(JOURNEY_COPY, journey)
+    lastCopiedJourneyJson = json
+  } catch (err) {
+    await report($, err)
   }
 }
 
@@ -553,6 +629,7 @@ function mutate($: EngineInterface, change: (s: Save, ledgers: Record<string, Le
     if (isRedrawn) background($, refreshParty($))
     // The open Mart shows the Bag, the wallet and the party's evolutions: any change to the save may move them.
     if (mart.isOpen) $.ui.invalidate('ui.render')
+    reconcileDialog($)
     // A held item taken, a partner deposited or released: who is ready may have changed.
     recheck($)
   })
@@ -562,23 +639,27 @@ function mutate($: EngineInterface, change: (s: Save, ledgers: Record<string, Le
 async function sync($: EngineInterface) {
   let isNewParty = false
   let isNewLook = false
+  let isNewRegion = false
   // Adopted inside the queue, so no change made meanwhile is undone.
   await queued(async () => {
-    const latest = loadSave(await $.store.get('save'))
+    const { latest } = await readSave($)
     isNewParty = isOtherParty(latest, save)
-    const was = JSON.stringify([save.bag, balanceOf(save, cash)])
+    isNewRegion = latest.journey.current !== save.journey.current
+    const was = martLook(save)
     const [wasSize, wasOff] = [save.size, save.isOff]
     save = latest
     countLedgers(await readLedgers($))
     // The wallet is judged after the ledgers are counted: another window's earnings change only those.
-    isNewLook =
-      latest.size !== wasSize ||
-      latest.isOff !== wasOff ||
-      (mart.isOpen && JSON.stringify([latest.bag, balanceOf(latest, cash)]) !== was)
+    isNewLook = latest.size !== wasSize || latest.isOff !== wasOff || (mart.isOpen && martLook(latest) !== was)
     countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
   })
   if (isNewParty) await refreshParty($)
-  if (isNewLook) $.ui.invalidate('ui.render')
+  if (isNewRegion) {
+    wildHeld = null
+    dismissStrayVisitor($)
+  }
+  if (isNewLook || isNewRegion) $.ui.invalidate('ui.render')
+  reconcileDialog($)
   recheck($)
 }
 
@@ -639,16 +720,14 @@ async function foldLedgers($: EngineInterface) {
   }
 }
 
-// The periodic sync, which also retries what start-up couldn't do: a first Pokémon, the party's sprites. That retry
-// runs one at a time: one still waiting on a slow download isn't started again (two at once would catch two first
-// Pokémon, the first going to the PC box), while the syncs go on.
 let retrying: Promise<unknown> | null = null
 async function retry($: EngineInterface) {
   await sync($)
+  if (!isDueOffered) offerDue($)
   if (++syncs % FOLD_EVERY === 0) await foldLedgers($)
   if (save.isOff || retrying) return
-  if (!save.party.length) retrying = setLead($, '', true)
-  else if (isPartyStale) retrying = refreshParty($)
+  if (isPartyStale) retrying = refreshParty($)
+  else if (dialogCards.some(c => !c.sprite)) retrying = loadCardSprites($)
   if (retrying) await retrying.finally(() => (retrying = null))
 }
 
@@ -754,9 +833,7 @@ const isLevelled = (query: string) => readLevel(query).level !== undefined
 // `/pokemon [name]`: makes that Pokémon the lead. One already in the party moves up with its level, one in the PC
 // box comes out; a new one leads, and the old lead goes into the PC box with its level and what it holds. `shiny`
 // names a shiny one: with none of it shiny owned, a new shiny one is caught, however many plain ones there are.
-// `isFirst`: a session's first Pokémon, caught because its save looked empty. A save that only looked empty (a read the
-// store refused) has its party when written: then nothing is caught, and the lead stays.
-async function setLead($: EngineInterface, query: string, isFirst = false): Promise<string> {
+async function setLead($: EngineInterface, query: string): Promise<string> {
   const owned = query.trim() ? await leadOwned($, query) : null
   if (owned) return owned
   // A misspelt name gets its suggestion first, a full box its refusal before the sprite's download; the save write
@@ -771,10 +848,6 @@ async function setLead($: EngineInterface, query: string, isFirst = false): Prom
   await mutate($, latest => {
     isCaught = false
     const gone = latest.party[0]
-    if (isFirst && gone) {
-      text = ''
-      return latest
-    }
     if (gone && isBoxFull(latest)) {
       text = noRoomForLead(gone)
       return latest
@@ -1121,6 +1194,7 @@ export async function buyItem(
   id: unknown,
   qty: unknown,
 ): Promise<{ text: string; isError: boolean }> {
+  if (typeof id === 'string' && id.startsWith(TICKET_ID)) return buyTicketItem($, ticketRegion(id), qty)
   const item = typeof id === 'string' ? itemById(id) : undefined
   if (!item || !isForSale(item)) return { text: "That isn't for sale.", isError: true }
   if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_BAG)
@@ -1130,6 +1204,34 @@ export async function buyItem(
     $,
     (s, ledgers) => {
       const bought = buy(s, extraMoney(ledgers, s.folded, s.foldedMoney), item, qty)
+      result = { text: bought.text, isError: bought.isError }
+      return bought.save
+    },
+    true,
+  )
+  return result
+}
+
+const TICKET_ID = 'ticket-'
+const ticketRegion = (id: string): TravelRegion | undefined => TRAVEL_REGIONS.find(r => `${TICKET_ID}${r.id}` === id)
+
+/**
+ * @param r undefined for an id that names no ticket.
+ * @param qty as posted or typed: anything but 1 buys nothing.
+ * @returns the reply, and whether it is a refusal.
+ */
+async function buyTicketItem(
+  $: EngineInterface,
+  r: TravelRegion | undefined,
+  qty: unknown,
+): Promise<{ text: string; isError: boolean }> {
+  if (!r) return { text: "That isn't for sale.", isError: true }
+  if (qty !== 1) return { text: "That isn't a quantity you can buy.", isError: true }
+  let result = { text: '', isError: true }
+  await mutate(
+    $,
+    (s, ledgers) => {
+      const bought = buyTicket(s, extraMoney(ledgers, s.folded, s.foldedMoney), r)
       result = { text: bought.text, isError: bought.isError }
       return bought.save
     },
@@ -1168,6 +1270,13 @@ async function buyCommand($: EngineInterface, args: string): Promise<string> {
   const words = slug(tokens.filter((_, i) => i !== countAt).join(' '))
     .split('-')
     .filter(Boolean)
+  const ticket = readTicketWords(words)
+  if (ticket) {
+    const bought = await buyTicketItem($, ticket, count)
+    if (bought.isError) return bought.text
+    await sync($)
+    return `${bought.text}\n${formatMoney(balanceOf(save, cash))} left.`
+  }
   const found = splitGive(words)
   if (!found || found.rest.length) {
     const guess = found ? null : guessItem(words, isForSale)
@@ -1185,6 +1294,7 @@ async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
   if (isOff) {
     closeMart($)
     dropScreens($)
+    voyage = null
   }
   let was = false
   await mutate($, s => {
@@ -1193,6 +1303,7 @@ async function setOff($: EngineInterface, isOff: boolean): Promise<string> {
     return isOff ? { ...rest, isOff: true } : rest
   })
   $.ui.invalidate('ui.render')
+  if (!isOff) openDueDialog($)
   // Evolutions held back while they rested.
   if (!isOff) background($, learnEvolutions($))
   if (isOff)
@@ -1267,6 +1378,49 @@ async function setRegion($: EngineInterface, word: string): Promise<string> {
   return region
     ? `Region: ${region}. Evolutions take ${REGIONAL[region]} forms unless you name one.`
     : 'Region: kanto. Evolving, each Pokémon keeps its own form.'
+}
+
+const regionNames = (regions: readonly TravelRegion[]) => regions.map(r => r.name).join(', ')
+
+const cachedParty = (): Pixels[] =>
+  save.party.flatMap(m => {
+    const art = arts.get(`${fileOf(m)}|${m.isShiny}`) ?? arts.get(`${fileOf(m)}|false`)
+    return art ? [parseAnsi(art)] : []
+  })
+
+/**
+ * @param word the region typed after `/pokemon travel`.
+ * @returns the reply: where one can sail with none named, the region names for an unknown word, why not, or the sailing.
+ */
+async function travelCommand($: EngineInterface, word: string): Promise<string> {
+  await sync($)
+  const said = slug(word)
+  if (!said) return `Sail where? You can visit ${regionNames(unlockedOf(save.journey))}: /pokemon travel <region>`
+  const to = findRegion(word.trim())
+  if (!to) return `There's no region called ${said}. Regions: ${regionNames(TRAVEL_REGIONS)}.`
+  let change: Change = { save, text: '', isError: true }
+  let from = currentRegion()
+  await mutate($, s => {
+    from = regionById(s.journey.current)
+    change = travelTo(s, to)
+    return change.save
+  })
+  if (change.isError) return change.text
+  wildHeld = null
+  dismissStrayVisitor($)
+  closeMart($)
+  dropScreens($)
+  closeDialog($)
+  if (save.isOff || !lastRenderedMaxRows) {
+    openDueDialog($, to.id)
+    return `Sailed to ${to.name}.`
+  }
+  const isShort = lastRenderedMaxRows < FERRY_MIN_ROWS || lastRenderedColumns < FERRY_MIN_COLUMNS
+  voyage = { from, to, party: cachedParty(), startTick: tickNo, isShort }
+  lastCells = ''
+  wake()
+  $.ui.invalidate('ui.render')
+  return isShort ? `Sailed to ${to.name}.` : change.text
 }
 
 // What `member` can evolve into and how, as in the games (empty at a final stage), its species' gender ratio, and the
@@ -1972,10 +2126,13 @@ async function captureRateOf($: EngineInterface, name: string): Promise<number> 
   return typeof rate === 'number' && Number.isFinite(rate) ? rate : DEFAULT_RATE
 }
 
+const AT_SEA = 'No wild Pokémon comes by while the ferry sails.'
+
 // A wild Pokémon comes by: the one `query` names, or a random one. Answers why not when the name isn't one.
 async function spawnWild($: EngineInterface, query = ''): Promise<string | null> {
   if (!band || !fitted || status.wild || pitch) return null
   if (screen) return 'No wild Pokémon comes by while an evolution is on screen.'
+  if (voyage) return AT_SEA
   try {
     const list = await loadSpecies($)
     const isAsked = Boolean(query.trim())
@@ -1984,25 +2141,32 @@ async function spawnWild($: EngineInterface, query = ''): Promise<string | null>
     const shiny = named.wantsShiny ? 'shiny ' : ''
     if ('guess' in named)
       return `Did you mean ${displayName(named.guess.species, named.guess.form)}? Run /pokemon-play wild ${shiny}${spell(named.guess)}`
-    const held = isAsked ? null : wildHeld
+    const isRandom = named.pick === null
+    if (isRandom) await sync($)
+    const region = save.journey.current
+    const kept = isAsked ? null : wildHeld
     wildHeld = null
+    const held = kept && regionOf(kept.pick.species)?.id === region ? kept : null
     const pick =
       named.pick ??
       held?.pick ??
-      drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex, moon: moonNow() })
+      drawWild(list, { landscape: landscapeNow(), phase: phaseNow(), dex: save.dex, region, moon: moonNow() })
+    if (!pick) return null
     const wantsShiny = named.wantsShiny || (held?.isShiny ?? Math.random() < SHINY_ODDS)
     const { art, isShiny } = await fetchArt($, fileOf(pick), wantsShiny)
     // Another visitor may have stepped out, or an evolution's screen begun, during the downloads.
     if (!band || !fitted || status.wild || pitch) return null
-    if (screen) {
-      if (isAsked) return 'No wild Pokémon comes by while an evolution is on screen.'
+    if (isRandom) await sync($)
+    if (isRandom && regionOf(pick.species)?.id !== save.journey.current) return null
+    if (screen || voyage) {
+      if (isAsked) return voyage ? AT_SEA : 'No wild Pokémon comes by while an evolution is on screen.'
       // The timer's visitor isn't lost: the first tick after the screen brings it.
       wildHeld = { pick, isShiny }
       wildAt = 0
       return null
     }
     const mon: Mon = { key: 'wild', name: displayName(pick.species, pick.form), isShiny, ...parseAnsi(art) }
-    wild = { mon, left: fitWild(mon), pick }
+    wild = { mon, left: fitWild(mon), pick, isRandom }
     // The table has every listed species' rate; only one it doesn't know is downloaded.
     const known = SPECIES[pick.species]?.rate
     if (known === undefined) {
@@ -2076,7 +2240,10 @@ async function keepCatch($: EngineInterface) {
   }
   let isInParty = false
   let isStored = true
+  let isStray = false
   await mutate($, s => {
+    isStray = isStrayIn(visitor, s.journey.current)
+    if (isStray) return s
     isStored = !isNoRoom(s)
     if (!isStored) return s
     const kept = storeCaught(recordCaught(s, pick.species, Date.now()), caught)
@@ -2094,12 +2261,34 @@ async function keepCatch($: EngineInterface) {
     $.ui.toast(NO_ROOM_TO_CATCH)
     return
   }
+  if (isStray) {
+    if (scene && !status.wild && !wild) {
+      wild = visitor
+      status = { ...status, wild: scene }
+      if (pitch) pitch = { ...pitch, phase: 'burst', t: 0, isCaught: false, flees: true }
+      else status = fleeWild(status, band?.total ?? 0, visitor.left.width)
+    }
+    $.ui.toast(ranOff(visitor, save.journey.current))
+    return
+  }
   const where = isInParty ? 'It joined your party.' : 'It was sent to the PC box.'
   $.ui.toast(`Gotcha! ${mon.isShiny ? '✨ ' : ''}${mon.name} was caught! ${where}`)
   feel('cheer')
   if (!isInParty) return
   await refreshParty($)
   background($, learnEvolutions($))
+}
+
+const isStrayIn = (visitor: Visitor, current: RegionId): boolean =>
+  visitor.isRandom && regionOf(visitor.pick.species)?.id !== current
+const ranOff = (visitor: Visitor, current: RegionId): string =>
+  `The wild ${visitor.mon.name} ran off: you're in ${regionById(current).name} now.`
+
+function dismissStrayVisitor($: EngineInterface) {
+  if (!wild || !status.wild || status.wild.isFleeing || pitch?.flees || !isStrayIn(wild, save.journey.current)) return
+  if (pitch?.isHit) pitch = { ...pitch, isCaught: false, flees: true }
+  else status = fleeWild(status, band?.total ?? 0, wild.left.width)
+  $.ui.toast(ranOff(wild, save.journey.current))
 }
 
 function afterThrow($: EngineInterface, event: ThrowEvent) {
@@ -2109,8 +2298,8 @@ function afterThrow($: EngineInterface, event: ThrowEvent) {
   else background($, keepCatch($))
 }
 
-function openMart($: EngineInterface) {
-  mart = { ...shut(), isOpen: true }
+function openMart($: EngineInterface, tab = 0) {
+  mart = { ...shut(), isOpen: true, view: { ...START, tab } }
   $.ui.invalidate('ui.render')
 }
 
@@ -2120,10 +2309,33 @@ function closeMart($: EngineInterface) {
   $.ui.invalidate('ui.render')
 }
 
+const TICKETS = 'Tickets'
+const MART_TABS: string[] = [...TABS, TICKETS]
+const TICKETS_TAB = MART_TABS.indexOf(TICKETS)
+
+const ticketItems = (s: Save): MartItem[] =>
+  TRAVEL_REGIONS.map(r => ({
+    id: `${TICKET_ID}${r.id}`,
+    name: `${r.name} ferry ticket`,
+    tab: TICKETS,
+    price: TICKET_PRICE,
+    color: r.color,
+    text: `Sails you to ${r.name} and back, as often as you like.`,
+    ticket: { state: ticketState(s.journey, s.dex, r), hint: `/pokemon travel ${r.id}` },
+  }))
+
+/** The parts of the Mart's props another window's write may change, as one JSON string. */
+const martLook = (s: Save): string =>
+  JSON.stringify([s.bag, balanceOf(s, cash), s.journey, ticketItems(s).map(i => i.ticket?.state)])
+
+const currentRegion = (): TravelRegion => regionById(save.journey.current)
+
 // What the Mart shows: what's for sale, which party members each would evolve, and the selected item's picture.
+const MART_REGION_WHOLE_COLUMNS = 60
+
 function martProps(): MartProps {
   const party = view().party
-  const items = forSale().map(i => {
+  const items = forSale().map((i): MartItem => {
     // How many members would become each species, by name: twins count as two.
     const uses = new Map<string, { name: string; into: string; n: number }>()
     for (const m of party) {
@@ -2140,23 +2352,42 @@ function martProps(): MartProps {
     const { id, name, tab, price, color, text } = i
     return { id, name, tab, price, color, text, ...(lines.length ? { party: lines.join(', ') } : {}) }
   })
-  const selected = items.filter(i => i.tab === TABS[mart.view.tab])[mart.view.sel]
-  const icon = selected && ICONS[selected.id]
+  items.push(...ticketItems(save))
+  const selected = items.filter(i => i.tab === MART_TABS[mart.view.tab])[mart.view.sel]
+  const icon = selected && (selected.ticket ? TICKET_ICON : ICONS[selected.id])
+  const region = currentRegion()
+  const columns = band?.total ?? 80
   return {
     items,
-    tabs: TABS,
+    tabs: MART_TABS,
     balance: balanceOf(save, cash),
     bag: save.bag ?? {},
     message: mart.message,
     isError: mart.isError,
-    columns: band?.total ?? 80,
+    columns,
     rows: band?.rows ?? 9,
     state: mart.view,
     ...(icon ? { icon: textRows(icon) } : {}),
+    region: { text: regionLabelText(region, columns, MART_REGION_WHOLE_COLUMNS), color: region.color },
   }
 }
 
-const buttonProps = (): ShopProps => ({ balance: balanceOf(save, cash), plus })
+const walletProps = (): PillProps => walletPill({ balance: balanceOf(save, cash), plus })
+
+const regionProps = (columns: number): PillProps => {
+  const r = currentRegion()
+  return { rows: [{ text: regionLabelText(r, columns), dot: r.color }], act: 'tickets' }
+}
+
+const PILLS = ['shop', 'region']
+const TAB_OF: Record<PillProps['act'], number> = { mart: 0, tickets: TICKETS_TAB }
+
+// The Mart tab a pill's posted `{ open }` names, or null for anything else.
+function openedTab(element: string | undefined, data: unknown): number | null {
+  if (!PILLS.includes(String(element)) || typeof data !== 'object' || data === null) return null
+  const open = (data as { open?: unknown }).open
+  return open === 'mart' || open === 'tickets' ? TAB_OF[open] : null
+}
 
 // A click or key in the Mart: the selection moves, a buy goes through, ✕ closes it. Answers the Mart's
 // next props while it stays open.
@@ -2166,7 +2397,7 @@ async function martAct($: EngineInterface, a: Act): Promise<{ props: MartProps }
   // Enter straight after a buy asks first: Enter ends every line typed, and the Mart keeps the keys after a click.
   if (a === 'enter' && mart.isBought && !mart.isAsked) {
     const item = p.items.filter(i => i.tab === p.tabs[was.tab])[was.sel]
-    if (item) {
+    if (item && !item.ticket) {
       mart = { ...mart, isAsked: true, message: `Press Enter again to buy another ${item.name}.`, isError: false }
       return { props: martProps() }
     }
@@ -2218,11 +2449,16 @@ async function typedInMart($: EngineInterface, typed: string) {
   if (!more) return
   mart = { ...mart, typed: typed.length }
   closeMart($)
+  await toPrompt($, more, 'the Mart')
+}
+
+/** @param place where it was typed, for the toast when the prompt can't take it. */
+async function toPrompt($: EngineInterface, more: string, place: string) {
   try {
     const filled = await $.prompt.fill({ text: more, mode: 'insert' })
     // A dialog holds the prompt: the text is shown, so it isn't lost without a word.
     if (!filled.isFilled)
-      $.ui.toast(`Pokémon: the prompt couldn't take what you typed in the Mart: "${more}"`, { timeoutMs: 6000 })
+      $.ui.toast(`Pokémon: the prompt couldn't take what you typed in ${place}: "${more}"`, { timeoutMs: 6000 })
   } catch (err) {
     await report($, err)
   }
@@ -2233,6 +2469,7 @@ function martRefusal(): string | null {
   if (!band || save.isOff) return "The PokéMart opens in the Pokémon band above the prompt, and it isn't showing here."
   // The visitor would go on walking under the Mart, out of reach: no Mart while it's out (the button hides then too).
   if (isVisited()) return `A wild ${wild?.mon.name ?? 'Pokémon'} is out: catch it or let it go first.`
+  if (dialog) return 'A dialog is open in the band: answer it or close it (x) first.'
   if (screen) return 'An evolution is on screen: the PokéMart opens once it ends.'
   return null
 }
@@ -2250,6 +2487,278 @@ function openMartCommand($: EngineInterface): string {
     'The PokéMart is open above the prompt. Click it to use the keys: ↑ ↓ choose, ← → change tabs, - + set how many, Enter buys, x closes.' +
     NO_MOUSE
   )
+}
+
+type FreshDialog = Extract<Dialog, { kind: 'fresh' }>
+type StarterDialog = Extract<Dialog, { kind: 'starter' }>
+
+const KEEP_OR_FRESH_FIRST = 'Choose to keep your save or start fresh first: /pokemon keep or /pokemon fresh.'
+const starterWords = (r: TravelRegion) => `${r.starters.slice(0, -1).join(', ')} or ${r.starters.at(-1) ?? ''}`
+const openConfirmation = (isRestart: boolean): FreshDialog | null =>
+  dialog?.kind === 'fresh' && dialog.isConfirming && dialog.isRestart === isRestart ? dialog : null
+
+/**
+ * @param answer the word after `/pokemon restart`: none asks, `yes` or `no` answers the confirmation open here.
+ * @returns the reply: the confirmation opened in the band over any dialog or the Mart, its outcome, or a refusal.
+ */
+async function restartCommand($: EngineInterface, answer: string): Promise<string> {
+  const word = answer.trim().toLowerCase()
+  const asked = openConfirmation(true)
+  const nothingAsked = 'No restart is waiting for an answer: /pokemon restart asks first.'
+  if (word === 'yes') return asked ? chooseSaveNow($, asked, 'fresh') : nothingAsked
+  if (word === 'no') {
+    if (!asked) return nothingAsked
+    closeDialog($)
+    return 'Nothing changed: your journey goes on.'
+  }
+  if (word) return 'Answer with /pokemon restart yes or /pokemon restart no.'
+  if (!band || save.isOff)
+    return "/pokemon restart asks in the Pokémon band above the prompt, and it isn't showing here."
+  closeMart($)
+  showDialog($, { kind: 'fresh', isConfirming: true, isRestart: true })
+  return `The restart confirmation is open above the prompt. ${WIPED} /pokemon restart yes wipes it, /pokemon restart no keeps it.`
+}
+
+/**
+ * @param answer the word after `/pokemon fresh`: none asks, `yes` or `no` answers the confirmation open here.
+ * @returns the reply: the confirmation opened in the band, its outcome, or a refusal.
+ */
+async function freshCommand($: EngineInterface, answer: string): Promise<string> {
+  await sync($)
+  if (!save.journey.isUndecided) return ALREADY_CHOSEN
+  const word = answer.trim().toLowerCase()
+  const asked = openConfirmation(false)
+  const nothingAsked = 'No fresh start is waiting for an answer: /pokemon fresh asks first.'
+  if (word === 'yes') return asked ? chooseSaveNow($, asked, 'fresh') : nothingAsked
+  if (word === 'no') {
+    if (!asked) return nothingAsked
+    showDialog($, { kind: 'fresh', isConfirming: false, isRestart: false })
+    return 'Nothing changed: keep your save or start fresh.'
+  }
+  if (word) return 'Answer with /pokemon fresh yes or /pokemon fresh no.'
+  if (!band || save.isOff) return "/pokemon fresh asks in the Pokémon band above the prompt, and it isn't showing here."
+  closeMart($)
+  showDialog($, { kind: 'fresh', isConfirming: true, isRestart: false })
+  return `Start fresh? ${WIPED} /pokemon fresh yes wipes it, /pokemon fresh no goes back.`
+}
+
+async function keepCommand($: EngineInterface): Promise<string> {
+  await sync($)
+  if (!save.journey.isUndecided) return ALREADY_CHOSEN
+  const asked = dialog?.kind === 'fresh' && !dialog.isRestart ? dialog : null
+  return chooseSaveNow($, asked, 'keep')
+}
+
+/** @param word the starter named after `/pokemon choose`, in any case. */
+async function chooseCommand($: EngineInterface, word: string): Promise<string> {
+  await sync($)
+  const id = dueStarter(save.journey)
+  if (!id) return save.journey.isUndecided ? KEEP_OR_FRESH_FIRST : "There's no starter to choose right now."
+  const r = regionById(id)
+  const species = slug(word)
+  if (!species) return `Choose your ${r.name} starter: /pokemon choose ${starterWords(r)}`
+  if (!r.starters.includes(species))
+    return `${speciesName(species)} isn't one of ${r.name}'s starters: /pokemon choose ${starterWords(r)}`
+  const asked = dialog?.kind === 'starter' && dialog.region === id ? dialog : null
+  return chooseStarterNow($, asked, id, species)
+}
+
+const starterCards = (r: TravelRegion): StarterCard[] =>
+  r.starters.map(species => ({ species, name: speciesName(species), types: SPECIES[species]?.types ?? [] }))
+
+async function fetchCardSprites($: EngineInterface, region: RegionId) {
+  const missing = dialogCards.filter(card => !card.sprite && isName(card.species))
+  await Promise.all(
+    missing.map(async card => {
+      try {
+        const { art } = await fetchArt($, card.species, false)
+        if (dialog?.kind !== 'starter' || dialog.region !== region) return
+        dialogCards = dialogCards.map(c => (c.species === card.species ? { ...c, sprite: parseAnsi(art) } : c))
+        $.ui.invalidate('ui.render')
+      } catch (err) {
+        await report($, err)
+      }
+    }),
+  )
+}
+
+let cardSpritesLoading: { region: RegionId; run: Promise<void> } | null = null
+function loadCardSprites($: EngineInterface): Promise<void> {
+  if (dialog?.kind !== 'starter') return Promise.resolve()
+  const { region } = dialog
+  if (cardSpritesLoading?.region === region) return cardSpritesLoading.run
+  const run = fetchCardSprites($, region).finally(() => {
+    if (cardSpritesLoading?.run === run) cardSpritesLoading = null
+  })
+  cardSpritesLoading = { region, run }
+  return run
+}
+
+function showDialog($: EngineInterface, d: Dialog, cards: StarterCard[] = []) {
+  dialog = d
+  dialogCards = cards
+  dialogTyped = 0
+  lastCells = ''
+  $.ui.invalidate('ui.render')
+}
+
+/** @param region by default the current region's choice, else the first one due. */
+function openDueDialog($: EngineInterface, region: RegionId | undefined = dueStarter(save.journey)) {
+  if (dialog) return
+  if (save.journey.isUndecided) return showDialog($, { kind: 'fresh', isConfirming: false, isRestart: false })
+  if (!region || save.journey.starters[region] !== 'due') return
+  showDialog($, { kind: 'starter', region, sel: 0, isAsking: false }, starterCards(regionById(region)))
+  background($, loadCardSprites($))
+}
+
+function offerDue($: EngineInterface) {
+  isDueOffered = true
+  openDueDialog($)
+}
+
+function closeDialog($: EngineInterface) {
+  if (!dialog) return
+  dialog = null
+  lastCells = ''
+  $.ui.invalidate('ui.render')
+  startScreen($)
+}
+
+function reconcileDialog($: EngineInterface) {
+  if (dialog?.kind === 'fresh') {
+    if (dialog.isRestart || save.journey.isUndecided) return
+    const hasKantoStarter = 'kanto' in save.journey.starters
+    closeDialog($)
+    $.ui.toast(`Your save was ${hasKantoStarter ? 'started fresh' : 'kept'} in another window.`)
+    return
+  }
+  if (dialog?.kind !== 'starter') return
+  const r = regionById(dialog.region)
+  const choice = save.journey.starters[r.id]
+  if (choice === 'due') return
+  closeDialog($)
+  if (choice) $.ui.toast(`${speciesName(choice.species)} was chosen as your ${r.name} starter in another window.`)
+}
+
+const dialogProps = (d: Dialog, columns: number, rows: number): DialogProps =>
+  dialogView(d, {
+    columns,
+    rows,
+    region: d.kind === 'starter' ? regionById(d.region) : currentRegion(),
+    cards: dialogCards,
+    summary: {
+      owned: save.party.length + (save.box?.length ?? 0),
+      seen: Object.keys(save.dex).length,
+      balance: balanceOf(save, cash),
+    },
+  })
+
+async function dialogActOn($: EngineInterface, a: DialogAct) {
+  const was = dialog
+  if (!was) return
+  const { dialog: next, post } = dialogAct(was, a, was.kind === 'starter' ? regionById(was.region).starters : [])
+  if (!next) return closeDialog($)
+  const isWipeUnseen =
+    a === 'yes' && was.kind === 'fresh' && was.isConfirming && band && !wipeWarning(band.total, band.rows)
+  if (isWipeUnseen) return
+  dialog = next
+  if (next !== was) $.ui.invalidate('ui.render')
+  if (post && 'choose' in post && next.kind === 'starter')
+    $.ui.toast(await chooseStarterNow($, next, next.region, post.choose))
+  if (post && !('choose' in post) && next.kind === 'fresh')
+    $.ui.toast(await chooseSaveNow($, next, 'keep' in post ? 'keep' : 'fresh'))
+}
+
+type Applied = { change: Change } | { failure: string }
+
+/**
+ * `change` made on the latest save, `asked` closed while it is written.
+ * @param asked the dialog the choice answers, open again when the store refuses the write; null for none.
+ * @returns the change made, or why the store refused it.
+ */
+async function applyChoice(
+  $: EngineInterface,
+  asked: Dialog | null,
+  change: (s: Save, ledgers: Record<string, Ledger>) => Change,
+  withLedgers = false,
+): Promise<Applied> {
+  if (asked && dialog === asked) {
+    dialog = null
+    lastCells = ''
+    $.ui.invalidate('ui.render')
+  }
+  let made: Change = { save, text: '', isError: true }
+  try {
+    await mutate(
+      $,
+      (s, ledgers) => {
+        made = change(s, ledgers)
+        return made.save
+      },
+      withLedgers,
+    )
+  } catch (err) {
+    if (asked) dialog ??= asked
+    $.ui.invalidate('ui.render')
+    return { failure: `Couldn't do that: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  return { change: made }
+}
+
+/**
+ * @param asked the fresh-or-keep screen or a confirmation the answer came from; null for a typed keep.
+ * @returns the outcome to tell.
+ */
+async function chooseSaveNow($: EngineInterface, asked: FreshDialog | null, how: 'keep' | 'fresh'): Promise<string> {
+  const isRestart = asked?.isRestart ?? false
+  const applied = await applyChoice(
+    $,
+    asked,
+    (s, ledgers) =>
+      how === 'keep' ? keepSave(s) : isRestart ? startFresh(s, ledgers) : startFreshIfUndecided(s, ledgers),
+    how === 'fresh',
+  )
+  if ('failure' in applied) return applied.failure
+  openDueDialog($)
+  startScreen($)
+  return applied.change.text
+}
+
+/**
+ * @param asked the starter choice the answer came from, open again when the choice stays due; null for none open.
+ * @returns the outcome to tell.
+ */
+async function chooseStarterNow(
+  $: EngineInterface,
+  asked: StarterDialog | null,
+  region: RegionId,
+  species: string,
+): Promise<string> {
+  const r = regionById(region)
+  const starter: Member = { id: newId(), species, form: 'regular', isShiny: false, xp: 0, evolutions: 0 }
+  const applied = await applyChoice($, asked, s => chooseStarter(s, r, starter))
+  if ('failure' in applied) return applied.failure
+  const { change } = applied
+  if (change.isError && save.journey.starters[r.id] === 'due') {
+    if (asked) dialog ??= asked
+    $.ui.invalidate('ui.render')
+    return change.text
+  }
+  if (!change.isError) {
+    background($, refreshParty($))
+    background($, learnEvolutions($))
+  }
+  startScreen($)
+  return change.text
+}
+
+/** @param typed cumulative text since the dialog was drawn. */
+async function typedInDialog($: EngineInterface, typed: string) {
+  const more = typed.slice(dialogTyped)
+  if (!more) return
+  dialogTyped = typed.length
+  closeDialog($)
+  await toPrompt($, more, 'the dialog')
 }
 
 // The band's look besides the party: time and place, the visitor as a throw shows it, and the ball.
@@ -2296,6 +2805,7 @@ const heldBack = (m: Mon) => [screen, ...screensDue].find(d => d && !d.isPreview
 // is told and the party drawn evolved.
 function startScreen($: EngineInterface) {
   while (!screen && screensDue.length) {
+    if (voyage || dialog) return
     if (band && (isVisited() || status.mood?.kind === 'evolve')) return
     const next = screensDue.shift()
     if (!next) return
@@ -2388,6 +2898,34 @@ function screenCells(s: Screen, columns: number, rows: number): string {
   return toCells(img, [{ x: TEXT_COLUMN, y: rows - 2, text, fg: BOX.text, bg: BOX.fill }]).cells
 }
 
+const voyageMs = (v: Voyage) => (tickNo - v.startTick) * TICK_MS
+
+/**
+ * The voyage's cells at its moment now.
+ * @param b the band: `columns` for the party, `total` wide, `rows` tall.
+ * @returns the crossing with its message as real characters; a short voyage is the band's scene under one label.
+ */
+function voyageCells(v: Voyage, b: { columns: number; rows: number; total: number }): string {
+  if (v.isShort) {
+    const text = `Sailed to ${v.to.name}.`
+    const img = frame(status, fitted?.lefts ?? [], b.columns, b.rows, lookNow(), b.total)
+    const x = Math.max(0, Math.floor((b.total - text.length) / 2))
+    return toCells(img, [{ x, y: Math.floor(b.rows / 2), text, fg: BOX.text, bg: BOX.fill }]).cells
+  }
+  const { from, to, party } = v
+  const { img, text } = ferryFrame({ ms: voyageMs(v), from, to, party, columns: b.total, rows: b.rows })
+  return toCells(img, [{ x: TEXT_COLUMN, y: b.rows - 2, text, fg: BOX.text, bg: BOX.fill }]).cells
+}
+
+function endVoyage($: EngineInterface) {
+  const to = voyage?.to
+  voyage = null
+  lastCells = ''
+  $.ui.invalidate('ui.render')
+  if (to) openDueDialog($, to.id)
+  startScreen($)
+}
+
 // The frame loop, one tick at a time, so a slow blit holds back the ticks behind it instead of piling frames up.
 // Asleep, the band draws one tick in CALM_EVERY: the loop then wakes once per drawn tick and runs the ticks before it
 // together, the same frames at the same moments, without waking the plugin 20 times a second for hours. Anything
@@ -2397,7 +2935,14 @@ let pending: { cancel: () => void; rearm: () => void; isLong: boolean } | null =
 // Something stirred the party since the last tick: the next one draws, calm or not, so it shows at once.
 let isStirred = false
 const isBatched = () =>
-  Boolean(band && fitted) && !save.isOff && isAsleep(status) && isCalm(status) && !pitch && !screen && !mart.isOpen
+  Boolean(band && fitted) &&
+  !save.isOff &&
+  isAsleep(status) &&
+  isCalm(status) &&
+  !pitch &&
+  !screen &&
+  !voyage &&
+  !mart.isOpen
 
 function loopTicks($: EngineInterface) {
   const due = isBatched() ? CALM_EVERY - (tickNo % CALM_EVERY) : 1
@@ -2439,7 +2984,7 @@ async function tick($: EngineInterface) {
   }
   wildAt ??= now + WILD_EVERY[0]
   // A visitor due while a screen plays comes once it has ended.
-  if (now >= wildAt && !status.wild && !isAsleep(status) && !screen) {
+  if (now >= wildAt && !status.wild && !isAsleep(status) && !screen && !voyage && !dialog) {
     wildAt = now + between(...WILD_EVERY)
     background($, spawnWild($))
   }
@@ -2459,6 +3004,7 @@ async function tick($: EngineInterface) {
   }
   if (!status.wild) wild = null
   if (screen && !isScreenPlaying()) await endScreen($)
+  if (voyage && voyageMs(voyage) >= (voyage.isShort ? SAILED_MS : FERRY_MS)) endVoyage($)
   startScreen($)
   if (isVisited() !== isButtonHidden) {
     isButtonHidden = !isButtonHidden
@@ -2470,17 +3016,18 @@ async function tick($: EngineInterface) {
     return
   }
   if (status.mood?.kind !== 'evolve') evolveFrom = null
-  // The scene keeps moving underneath; nothing is drawn over the Mart.
-  if (mart.isOpen) return
+  if (mart.isOpen || dialog) return
   const isDue = isStirred || tickNo % CALM_EVERY === 0
   isStirred = false
-  if (!pitch && isCalm(status) && !isDue) return
+  if (!voyage && !pitch && isCalm(status) && !isDue) return
   if (isHidden && tickNo % RETRY_TICKS !== 0) return
   // Aiming, frames are only made on redraw ticks: each one rewrites the map clicks are judged on.
   if (isAiming && tickNo % AIM_EVERY !== 0) return
-  const cells = screen
-    ? screenCells(screen, band.total, band.rows)
-    : toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total)).cells
+  const cells = voyage
+    ? voyageCells(voyage, band)
+    : screen
+      ? screenCells(screen, band.total, band.rows)
+      : toCells(frame(status, fitted.lefts, band.columns, band.rows, lookNow(), band.total)).cells
   if (cells === lastCells && !isHidden) return
   if (isAiming) {
     // The redraw makes this frame again and records it as drawn.
@@ -2615,7 +3162,23 @@ async function dexEntryOf($: EngineInterface, args: string): Promise<string | nu
 }
 
 // The `/pokemon` words that take no Pokémon's name.
-const UNNAMED = new Set(['party', 'box', 'size', 'evolution', 'bag', 'mart', 'buy', 'off', 'on', 'help'])
+const UNNAMED = new Set([
+  'party',
+  'box',
+  'size',
+  'evolution',
+  'bag',
+  'mart',
+  'buy',
+  'off',
+  'on',
+  'help',
+  'travel',
+  'restart',
+  'choose',
+  'keep',
+  'fresh',
+])
 const HELP_WORDS = new Set(['help', '--help', '-h', '?'])
 
 async function pokemon($: EngineInterface, typed: string): Promise<string> {
@@ -2668,6 +3231,16 @@ async function pokemon($: EngineInterface, typed: string): Promise<string> {
       return openMartCommand($)
     case 'buy':
       return buyCommand($, tail)
+    case 'travel':
+      return travelCommand($, tail)
+    case 'restart':
+      return restartCommand($, tail)
+    case 'choose':
+      return chooseCommand($, tail)
+    case 'keep':
+      return keepCommand($)
+    case 'fresh':
+      return freshCommand($, tail)
     case 'off':
       return setOff($, true)
     case 'on':
@@ -2735,12 +3308,13 @@ async function load($: EngineInterface) {
     const fresh = `${LEDGER}${newId()}${newId()}`
     ledgerKey = (await update($, ledger, key => key ?? fresh)) ?? fresh
     await queued(async () => {
-      const raw = await $.store.get('save')
+      const { raw, latest } = await readSave($)
       await seedTogether($, raw)
-      save = loadSave(raw)
+      save = latest
       countLedgers(await readLedgers($))
       countTimes({ together: loadTogether(await $.store.get(TOGETHER)), work: loadWork(await $.store.get(WORK)) })
     })
+    isSaveLoaded = true
   } catch (err) {
     await report($, err)
   }
@@ -2772,13 +3346,12 @@ async function promptly($: EngineInterface, line: string, work: () => Promise<st
 
 // Commands wait for start-up, but no longer than this: a stalled download never holds them up.
 const START_WAIT_MS = 5000
-const settled = ($: EngineInterface) => Promise.race([started, $.clock.sleep(START_WAIT_MS)])
+const settled = ($: EngineInterface) => Promise.race([startupSettled, $.clock.sleep(START_WAIT_MS)])
 
-// After the save: the time zone, the party's sprites (or a first Pokémon), then any evolution due.
 async function start($: EngineInterface) {
   tzOffsetMin = await readTimeZone($)
   if (save.party.length) await refreshParty($)
-  else if (!save.isOff) await setLead($, '', true)
+  if (isSaveLoaded) offerDue($)
   await learnEvolutions($)
 }
 
@@ -2793,7 +3366,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     for (const command of Object.values(COMMANDS)) await $.command.register(command)
     ready = load($)
-    started = ready
+    startupSettled = ready
       .then(() => start($))
       .catch(err => report($, err))
       .catch(() => {
@@ -2804,13 +3377,13 @@ export const register: Register = on => {
     $.clock.every(SYNC_MS, () =>
       background(
         $,
-        started.then(() => retry($)),
+        startupSettled.then(() => retry($)),
       ),
     )
     $.clock.every(TOGETHER_EVERY_MS, () =>
       background(
         $,
-        started.then(() => together($)),
+        startupSettled.then(() => together($)),
       ),
     )
 
@@ -2822,7 +3395,7 @@ export const register: Register = on => {
     if (e.source !== 'startup')
       background(
         $,
-        started.then(() => restore($)),
+        startupSettled.then(() => restore($)),
       )
     return next(e)
   })
@@ -2849,10 +3422,7 @@ export const register: Register = on => {
         await loadSpecies($)
         const entry = await dexEntryOf($, e.args)
         if (entry) return entry
-        return `${formatDex(
-          save,
-          (species ?? []).map(s => s.name),
-        )}\n\n${formatParty(view(), replyColumns, readyNow())}`
+        return `${formatDex(save)}\n\n${formatParty(view(), replyColumns, readyNow())}`
       } catch (err) {
         return `Couldn't open the Pokédex: ${err instanceof Error ? err.message : String(err)}`
       }
@@ -2971,7 +3541,14 @@ export const register: Register = on => {
     const click = /^aim\d*$/.test(String(e.element)) ? readClick(e.data) : null
     if (click) throwAt($, click)
     // A click on a button drawn before a visitor came opens nothing.
-    if (e.element === 'shop' && (e.data as { open?: unknown } | null)?.open === true && !martRefusal()) openMart($)
+    const tab = openedTab(e.element, e.data)
+    if (tab !== null && !martRefusal()) openMart($, tab)
+    if (e.element === 'dialog') {
+      const data = e.data as { typed?: unknown; act?: unknown } | null
+      if (typeof data?.typed === 'string') await typedInDialog($, data.typed)
+      else if (isDialogAct(data?.act)) await dialogActOn($, data.act)
+      return {}
+    }
     const typed = e.element === 'mart' ? (e.data as { typed?: unknown } | null)?.typed : undefined
     // Typing that went on after the first key closed the Mart still goes to the prompt.
     if (typeof typed === 'string') {
@@ -2991,7 +3568,15 @@ export const register: Register = on => {
     await readClock($)
     // Another surface drawing at the same time leaves the terminal's band alone.
     if (e.surface !== 'terminal') return next(e)
-    if (!mons.length || save.isOff || e.props.hasSurvey) {
+    lastRenderedMaxRows = e.props.maxRows
+    lastRenderedColumns = Math.min(512, e.props.bodyColumns)
+    if (voyage && !voyage.isShort && e.props.maxRows < FERRY_MIN_ROWS) {
+      const { to } = voyage
+      voyage = null
+      lastCells = ''
+      openDueDialog($, to.id)
+    }
+    if ((!mons.length && !voyage && !dialog) || save.isOff || e.props.hasSurvey) {
       band = null
       // Off, maybe from another session: the Mart doesn't come back with the party, nor an evolution's screen.
       if (save.isOff) {
@@ -3028,12 +3613,20 @@ export const register: Register = on => {
     }
     // Too short now for the screen playing (the terminal shrank): it ends here, with its toast, and the band goes on.
     if (screen && e.props.maxRows < SCREEN_MIN_ROWS) cutScreen($)
-    const fits = Math.ceil((Math.max(...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)
+    const fits = Math.ceil((Math.max(0, ...fitted.lefts.map(l => l.height)) + 1 + HEADROOM) / 2)
     // A screen keeps the band's height while it plays, however the party changes under it.
-    const rows = screen ? Math.min(e.props.maxRows, Math.max(fits, screen.rows)) : fits
+    const rows =
+      voyage && !voyage.isShort
+        ? Math.min(e.props.maxRows, FERRY_ROWS)
+        : dialog && !voyage
+          ? Math.min(e.props.maxRows, dialog.kind === 'starter' ? STARTER_SCENE_ROWS : STARTER_ROWS)
+          : screen
+            ? Math.min(e.props.maxRows, Math.max(fits, screen.rows))
+            : fits
     // Too short a space for even the smallest band: Claude Code's own row instead of a scrolling one.
     if (rows > e.props.maxRows) {
       band = null
+      if (voyage) endVoyage($)
       return next(e)
     }
     status = {
@@ -3052,6 +3645,22 @@ export const register: Register = on => {
     if (mart.isOpen) {
       lastCells = ''
       return <Client key="mart" module="./mart.tsx" width={total} height={rows} props={martProps()} />
+    }
+    if (voyage) {
+      lastCells = voyageCells(voyage, band)
+      return <Raster key="scene" columns={total} rows={rows} cells={lastCells} />
+    }
+    if (dialog) {
+      lastCells = ''
+      return (
+        <Client
+          key="dialog"
+          module="./dialog.tsx"
+          width={total}
+          height={rows}
+          props={dialogProps(dialog, total, rows)}
+        />
+      )
     }
     // An evolution's screen covers the band: one picture, its text real characters, nothing to click.
     if (screen) {
@@ -3082,13 +3691,18 @@ export const register: Register = on => {
     const scene = <Raster key="scene" columns={total} rows={rows} cells={cells} />
     // No button while a wild Pokémon is out, aimable or not: the Mart would hold up the catch.
     if (!button || isButtonHidden) return scene
-    const p = buttonProps()
-    const size = shopSize(p)
+    const wallet = walletProps()
+    const walletSize = shopSize(wallet)
+    const region = regionProps(total)
+    const regionSize = shopSize(region)
     return (
       <Box>
         {scene}
+        <Box position="absolute" top={0} left={0}>
+          <Client key="region" module="./shop.tsx" width={regionSize.columns} height={regionSize.rows} props={region} />
+        </Box>
         <Box position="absolute" top={0} right={0}>
-          <Client key="shop" module="./shop.tsx" width={size.columns} height={size.rows} props={p} />
+          <Client key="shop" module="./shop.tsx" width={walletSize.columns} height={walletSize.rows} props={wallet} />
         </Box>
       </Box>
     )

@@ -1,6 +1,8 @@
 import type { ClientModule } from 'claude-code'
 
+import type { TicketState } from './travel-regions'
 import type { TextRun } from './sprite'
+import { isShifted, typedBy } from './typing'
 
 // The PokéMart, drawn in the band while it's open. The hooks module keeps what is selected (`state`) and does the
 // buying; this draws the props it gets and posts `{ act }` for a click or a key, and `{ typed }` for typing.
@@ -12,6 +14,7 @@ export type MartItem = {
   color: string
   text: string
   party?: string
+  ticket?: { state: TicketState; hint: string }
 }
 // `top`: the first list row shown.
 export type MartState = { tab: number; sel: number; top: number; qty: number }
@@ -27,6 +30,7 @@ export type MartProps = {
   state: MartState
   // The selected item's picture, as `textRows` draws it.
   icon?: TextRun[][]
+  region: { text: string; color: string }
 }
 // `enter` is the Enter key's buy, which the hooks module may turn into a question; `buy` is the button's.
 export type Act =
@@ -74,6 +78,7 @@ const PICKED = '#ffe28a'
 const RED = '#e3350d'
 const GREY = '#888888'
 const WHITE = '#ffffff'
+const DARK_BLUE = '#2a4f78'
 const NAMES = ['up', 'down', 'left', 'right', 'less', 'more', 'max', 'buy', 'enter', 'close']
 
 const fmt = (n: number) => n.toLocaleString('en-US')
@@ -121,9 +126,14 @@ export function act(p: MartProps, s: MartState, a: Act): { state: MartState; pos
   if (typeof a === 'object') return 'tab' in a ? tab(a.tab) : select(a.pick)
   if (a === 'up' || a === 'down') return select(s.sel + (a === 'up' ? -1 : 1))
   if (a === 'left' || a === 'right') return tab(s.tab + (a === 'left' ? -1 : 1))
+  if (a === 'close') return { state: s, post: { close: true } }
+  const item = picked(p, s)
+  if (item?.ticket) {
+    const isBuy = a === 'buy' || a === 'enter'
+    return isBuy && item.ticket.state !== 'owned' ? { state: s, post: { buy: { id: item.id, qty: 1 } } } : { state: s }
+  }
   if (a === 'less') return { state: { ...s, qty: Math.max(1, s.qty - 1) } }
   if (a === 'more') return { state: { ...s, qty: Math.min(room(p, s), s.qty + 1) } }
-  const item = picked(p, s)
   if (a === 'max') {
     if (item && p.balance < item.price)
       return {
@@ -132,7 +142,6 @@ export function act(p: MartProps, s: MartState, a: Act): { state: MartState; pos
       }
     return { state: { ...s, qty: most(p, s) } }
   }
-  if (a === 'close') return { state: s, post: { close: true } }
   // A buy, by the button or Enter. The quantity stays: the hooks module sets it back to 1 once the buy has gone through.
   return item ? { state: s, post: { buy: { id: item.id, qty: s.qty } } } : { state: s }
 }
@@ -178,12 +187,16 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
     return { runs, put, pad, at: () => x }
   }
 
-  // Title: the name, the last message, the wallet and ✕.
+  // Title: the region, the name, the last message, the wallet and ✕.
   const title = row(0)
   const wallet = ` ₽ ${fmt(p.balance)} `
+  const region = ` ${p.region.text} `
+  title.put(' ', WHITE, DARK_BLUE)
+  title.put('●', p.region.color, DARK_BLUE)
+  title.put(region, WHITE, DARK_BLUE)
   title.put(' POKé MART ', WHITE, BLUE)
   title.put(
-    fit(` ${p.message}`, Math.max(0, p.columns - width(' POKé MART ') - width(wallet) - 2)),
+    fit(` ${p.message}`, Math.max(0, p.columns - 2 - width(region) - width(' POKé MART ') - width(wallet) - 2)),
     p.isError ? '#ffd0c8' : '#d8ffd8',
     BLUE,
   )
@@ -219,9 +232,10 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   const list = listRows(p)
   // The details column: the picture (when it fits) or a ◆, then name, description, party line; actions last.
   const have = item ? (p.bag[item.id] ?? 0) : 0
-  const canBuy = !!item && p.balance >= item.price * s.qty && have + s.qty <= MAX_BAG
+  const qty = item?.ticket ? 1 : s.qty
+  const canBuy = !!item && p.balance >= item.price * qty && have + qty <= MAX_BAG
   // The actions row: spaced out, or closer, or with the button as just its price, until it fits beside the list.
-  const price = `₽${fmt((item?.price ?? 0) * s.qty)}`
+  const price = `₽${fmt((item?.price ?? 0) * qty)}`
   type Action = [string, string, string, Act?]
   const row3 = (lead: string, qty: string, gap: string, buy: string): Action[] => [
     [lead, INK, PAPER],
@@ -233,14 +247,37 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
     [gap.slice(1), INK, PAPER],
     [buy, WHITE, canBuy ? RED : GREY, 'buy'],
   ]
-  const tiers: Action[][] = item
-    ? [
-        row3('  ', ` ×${s.qty} `, '   ', `Buy ${price}`),
-        row3('', ` ×${s.qty} `, '  ', `Buy ${price}`),
-        row3('', `×${s.qty}`, '  ', `Buy ${price}`),
-        row3('', `×${s.qty}`, '  ', price),
-      ]
-    : [[]]
+  const ticketTiers = (ticket: NonNullable<MartItem['ticket']>): Action[][] => {
+    if (ticket.state === 'owned') {
+      const hint: Action = [`> ${ticket.hint}`, BLUE, PAPER]
+      return [[['  ', INK, PAPER], hint], [hint]]
+    }
+    const buy = (label: string): Action => [label, WHITE, canBuy && ticket.state === 'buyable' ? RED : GREY, 'buy']
+    const lead: Action[] =
+      ticket.state === 'unavailable'
+        ? [
+            ['Unavailable', GREY, PAPER],
+            ['  ', INK, PAPER],
+          ]
+        : []
+    return [
+      [['  ', INK, PAPER], ...lead, buy(`Buy ${price}`)],
+      [...lead, buy(`Buy ${price}`)],
+      [['  ', INK, PAPER], buy(`Buy ${price}`)],
+      [buy(`Buy ${price}`)],
+      [buy(price)],
+    ]
+  }
+  const tiers: Action[][] = item?.ticket
+    ? ticketTiers(item.ticket)
+    : item
+      ? [
+          row3('  ', ` ×${s.qty} `, '   ', `Buy ${price}`),
+          row3('', ` ×${s.qty} `, '  ', `Buy ${price}`),
+          row3('', `×${s.qty}`, '  ', `Buy ${price}`),
+          row3('', `×${s.qty}`, '  ', price),
+        ]
+      : [[]]
   const width3 = (a: Action[]) => a.reduce((n, [t]) => n + width(t), 0)
   const actionsWidth = width3(tiers[0] ?? [])
   const actions = tiers.find(a => left + 1 + width3(a) <= p.columns) ?? tiers[tiers.length - 1] ?? []
@@ -248,13 +285,14 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
   const textWidth = Math.max(1, p.columns - left - 1 - (icon ? ICON_COLUMNS + 2 : 0) - 2)
   const party = item?.party ? fit(`Your party: ${item.party}`, textWidth) : null
   const textRows = Math.max(1, Math.min(3, body - 2 - (party ? 1 : 0)))
+  const heading = item?.ticket ? item.name : `${item?.name} · in bag: ${have}`
   const details: TextRun[][] = item
     ? [
         icon
-          ? [[`  ${fit(`${item.name} · in bag: ${have}`, textWidth)}`, INK, PAPER]]
+          ? [[`  ${fit(heading, textWidth)}`, INK, PAPER]]
           : [
               [' ◆ ', item.color, PAPER],
-              [fit(`${item.name} · in bag: ${have}`, textWidth - 1), INK, PAPER],
+              [fit(heading, textWidth - 1), INK, PAPER],
             ],
         ...describe(item.text, textWidth, textRows).map((l): TextRun[] => [[`  ${l}`, INK, PAPER]]),
         ...(party ? [[[`  ${party}`, BLUE, PAPER]] as TextRun[]] : []),
@@ -270,7 +308,7 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
       const it = i < list ? items[at] : undefined
       if (it) {
         const bg = at === s.sel ? PICKED : PAPER
-        const cost = `₽${fmt(it.price)} `
+        const cost = `${it.ticket?.state === 'owned' ? 'Owned' : it.ticket?.state === 'unavailable' ? 'Unavailable' : `₽${fmt(it.price)}`} `
         const owned = p.bag[it.id] ? ` ×${p.bag[it.id]}` : ''
         r.put(fit(`${at === s.sel ? '▶' : ' '} ${it.name}${owned}`, left - width(cost) - 1), INK, bg, { pick: at })
         r.put(` ${cost}`, INK, bg)
@@ -296,25 +334,6 @@ export function martRows(p: MartProps, s: MartState = p.state): { lines: TextRun
     lines.push(r.runs)
   }
   return { lines, hits }
-}
-
-// The names Claude Code gives keys that type nothing.
-const SPECIAL = new Set([
-  ...['up', 'down', 'left', 'right', 'return', 'enter', 'tab', 'backspace', 'delete', 'escape'],
-  ...['pageup', 'pagedown', 'home', 'end', 'insert', 'clear'],
-])
-// A letter with shift held, should the engine report it so rather than as the capital it types.
-const isShifted = (e: { key: string; shift?: true }) => Boolean(e.shift) && /^[a-z]$/.test(e.key)
-
-// What a key types, or null for a special key or a chord. Characters that arrive together (typed faster than the
-// terminal reads them, or pasted) come as one key; control characters in them are left out.
-export function typedBy(e: { key: string; ctrl?: true; shift?: true; meta?: true }): string | null {
-  if (e.ctrl || e.meta) return null
-  if (e.key === 'space') return ' '
-  if (SPECIAL.has(e.key) || /^f\d{1,2}$/.test(e.key)) return null
-  if (isShifted(e)) return e.key.toUpperCase()
-  const text = e.key.replace(/[\u0000-\u001f\u007f]/g, '')
-  return text || null
 }
 
 // `typed`: everything typed since the Mart was drawn, posted whole each time: a post in the frame after another

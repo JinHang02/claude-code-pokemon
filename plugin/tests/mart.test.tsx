@@ -1,10 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
-import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START, typedBy } from '../hooks/mart'
-import type { Act, MartProps, MartState } from '../hooks/mart'
+import { TICKET_ICON } from '../hooks/ferry-screen'
+import { act, ICON_ROWS, isAct, KEYS, listRows, martRows, most, START } from '../hooks/mart'
+import type { Act, MartItem, MartProps, MartState } from '../hooks/mart'
 import { BAG, ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
-import { shopRows, shopSize, walletLabel } from '../hooks/shop'
+import { TRAVEL_REGIONS, TICKET_PRICE } from '../hooks/travel-regions'
+import type { TicketState, TravelRegion } from '../hooks/travel-regions'
+import { shopRows, shopSize, walletLabel, walletPill } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
 
 const props = (extra: Partial<MartProps> = {}): MartProps => ({
@@ -17,6 +20,7 @@ const props = (extra: Partial<MartProps> = {}): MartProps => ({
   columns: 80,
   rows: 7,
   state: START,
+  region: { text: 'KANTO', color: '#e3350d' },
   ...extra,
 })
 const text = (runs: [string, string, string][]) => runs.map(r => r[0]).join('')
@@ -53,7 +57,7 @@ test('every line is exactly the band wide, one per row; title, tabs, list, detai
   const drawn = lines(p)
   expect(drawn).toHaveLength(7)
   for (const line of drawn) expect([...line].length).toBe(80)
-  expect(drawn[0]).toMatch(/^ POKé MART .* ₽ 12,400 ✕ $/)
+  expect(drawn[0]).toMatch(/^ ● KANTO  POKé MART .* ₽ 12,400 ✕ $/)
   for (const tab of [' Stones 10 ', ' Hold items 18 ', ' Special 11 ', ' Other 3 ']) expect(drawn[1]).toContain(tab)
   // The list: 44% of the width, the price on the right; the details beside it.
   expect(drawn[2]?.slice(0, left)).toMatch(/^▶ Fire Stone +₽3,000 $/)
@@ -268,21 +272,6 @@ test('acting: Buy and ✕ say what to do; every control is a hit at its place; o
     expect(isAct(bad)).toBe(false)
 })
 
-test('typing: a character, a space or a run of them is typed; special keys and chords are not', () => {
-  expect(typedBy({ key: '/' })).toBe('/')
-  expect(typedBy({ key: 'P' })).toBe('P')
-  expect(typedBy({ key: 'x', shift: true })).toBe('X')
-  expect(typedBy({ key: 'P', shift: true })).toBe('P')
-  expect(typedBy({ key: 'é' })).toBe('é')
-  expect(typedBy({ key: 'space' })).toBe(' ')
-  expect(typedBy({ key: '/pokemon bag' })).toBe('/pokemon bag')
-  expect(typedBy({ key: '/pokemon bag\r' })).toBe('/pokemon bag')
-  for (const key of ['up', 'return', 'tab', 'backspace', 'delete', 'pageup', 'home', 'end', 'f5', '\r'])
-    expect(typedBy({ key })).toBeNull()
-  expect(typedBy({ key: 'a', ctrl: true })).toBeNull()
-  expect(typedBy({ key: 'v', meta: true })).toBeNull()
-})
-
 test('a short band (small sprites) still fits: fewer list rows, the actions on the last row', () => {
   const p = props({ rows: 6, columns: 60 })
   const drawn = lines(p)
@@ -306,10 +295,128 @@ test('the button fits its 13 columns: the full wallet up to ₽99,999, a short o
 
 test('the button is just its pill: the wallet, and +₽ right-aligned under it while it shows', () => {
   expect(shopRows({ balance: 3020, plus: 0 })).toEqual([' 🛒 ₽ 3,020 '])
-  expect(shopSize({ balance: 3020, plus: 0 })).toEqual({ columns: 12, rows: 1 })
+  expect(shopSize(walletPill({ balance: 3020, plus: 0 }))).toEqual({ columns: 12, rows: 1 })
   // 🛒 takes two columns: both rows are the wallet's 12 wide.
   expect(shopRows({ balance: 3020, plus: 20 })).toEqual([' 🛒 ₽ 3,020 ', '       +₽20 '])
-  expect(shopSize({ balance: 3020, plus: 20 })).toEqual({ columns: 12, rows: 2 })
+  expect(shopSize(walletPill({ balance: 3020, plus: 20 }))).toEqual({ columns: 12, rows: 2 })
   // Never past the 13 columns kept clear for it.
-  expect(shopSize({ balance: 99_999, plus: 99_999 }).columns).toBe(13)
+  expect(shopSize(walletPill({ balance: 99_999, plus: 99_999 })).columns).toBe(13)
+})
+
+// ── Tickets tab ──
+
+const TICKETS = 4
+const ticketItems = (states: TicketState[], regions: readonly TravelRegion[] = TRAVEL_REGIONS.slice(1)): MartItem[] =>
+  regions.map((r, i) => ({
+    id: `ticket-${r.id}`,
+    name: `${r.name} ferry ticket`,
+    tab: 'Tickets',
+    price: TICKET_PRICE,
+    color: r.color,
+    text: `Sails you to ${r.name} and back, as often as you like.`,
+    ticket: { state: states[i] ?? 'unavailable', hint: `/pokemon travel ${r.id}` },
+  }))
+// The Mart open on the Tickets tab, Johto selected, its ticket `johto` and every later one unavailable.
+const ticketProps = (johto: TicketState, extra: Partial<MartProps> = {}): MartProps =>
+  props({
+    items: [...props().items, ...ticketItems([johto])],
+    tabs: [...TABS, 'Tickets'],
+    balance: 160_000,
+    rows: 11,
+    state: { ...START, tab: TICKETS },
+    ...extra,
+  })
+const body = (p: MartProps) => lines(p).slice(2, -1)
+
+test('the Tickets tab lists Kanto, Owned, then Johto to Galar, and the tab says it sells 8', () => {
+  const p = ticketProps('unavailable', {
+    items: [...props().items, ...ticketItems(['owned'], TRAVEL_REGIONS)],
+    rows: 13,
+  })
+  const drawn = lines(p)
+  expect(drawn[1]).toContain(' Tickets 8 ')
+  const listed = body(p).map(l => l.slice(0, left).trim())
+  expect(listed.slice(0, 8).map(l => /^▶? ?(\w+) ferry ticket/.exec(l)?.[1])).toEqual(TRAVEL_REGIONS.map(r => r.name))
+  expect(listed[0]).toMatch(/^▶ Kanto ferry ticket +Owned$/)
+})
+
+test('unavailable tickets say so, with no count or progress: the only digits are the price; Buy stays a grey hit', () => {
+  const p = ticketProps('unavailable')
+  for (const l of body(p).slice(0, 7)) expect(l.slice(0, left)).toMatch(/ Unavailable $/)
+  const actions = lines(p)[10]!
+  expect(actions.slice(left)).toMatch(/^│ {2}Unavailable {2}Buy ₽150,000 +$/)
+  expect(lines(p).slice(2).join('\n').replaceAll('₽150,000', '')).not.toMatch(/\d/)
+  const buy = hitAt(p, p.state, 'buy')!
+  expect(buy).toBeDefined()
+  expect(martRows(p).lines[buy.y]?.find(r => r[0] === 'Buy ₽150,000')?.[2]).toBe('#888888')
+})
+
+test('a buyable ticket shows its price; Buy is red with the ₽ to pay for it, grey without', () => {
+  const p = ticketProps('buyable')
+  expect(body(p)[0]?.slice(0, left)).toMatch(/^▶ Johto ferry ticket +₽150,000 $/)
+  expect(body(p)[1]?.slice(0, left)).toMatch(/^ {2}Hoenn ferry ticket +Unavailable $/)
+  expect(lines(p)[10]?.slice(left)).toMatch(/^│ {2}Buy ₽150,000 +$/)
+  const colour = (q: MartProps) => martRows(q).lines[10]?.find(r => r[0] === 'Buy ₽150,000')?.[2]
+  expect(colour(p)).toBe('#e3350d')
+  expect(colour(ticketProps('buyable', { balance: TICKET_PRICE }))).toBe('#e3350d')
+  expect(colour(ticketProps('buyable', { balance: TICKET_PRICE - 1 }))).toBe('#888888')
+  expect(act(p, p.state, 'buy').post).toEqual({ buy: { id: 'ticket-johto', qty: 1 } })
+})
+
+test('an owned ticket says Owned and how to sail, and has no Buy', () => {
+  const p = ticketProps('owned')
+  expect(body(p)[0]?.slice(0, left)).toMatch(/^▶ Johto ferry ticket +Owned $/)
+  expect(lines(p)[10]?.slice(left)).toMatch(/^│ {2}> \/pokemon travel johto +$/)
+  expect(hitAt(p, p.state, 'buy')).toBeUndefined()
+  expect(act(p, p.state, 'buy')).toEqual({ state: p.state })
+  expect(act(p, p.state, 'enter')).toEqual({ state: p.state })
+})
+
+test("a ticket's details name it and say what it does, with no count in the bag", () => {
+  for (const state of ['unavailable', 'buyable', 'owned'] as const) {
+    const drawn = lines(ticketProps(state))
+    expect(drawn[2]?.slice(left)).toMatch(/^│ ◆ Johto ferry ticket +$/)
+    expect(drawn[3]?.slice(left)).toMatch(/^│ {2}Sails you to Johto/)
+    expect(drawn.join('\n')).not.toContain('in bag')
+  }
+})
+
+test('less, more and Max leave a ticket at one, even with the ₽ for many; a buy posts one', () => {
+  for (const state of ['unavailable', 'buyable', 'owned'] as const) {
+    const p = ticketProps(state, { balance: 10_000_000 })
+    for (const a of ['less', 'more', 'max'] as const) expect(act(p, p.state, a)).toEqual({ state: p.state })
+  }
+  const p = ticketProps('buyable')
+  expect(act(p, { ...p.state, qty: 3 }, 'buy').post).toEqual({ buy: { id: 'ticket-johto', qty: 1 } })
+})
+
+test('the title starts with the region label as the hooks module gives it', () => {
+  for (const [columns, text] of [
+    [40, 'JOH'],
+    [80, 'JOHTO'],
+  ] as const) {
+    const label = ` ● ${text} `
+    const p = props({ columns, region: { text, color: '#ffd75e' } })
+    const title = lines(p)[0]!
+    expect(title.startsWith(`${label} POKé MART `)).toBe(true)
+    expect(martRows(p).lines[0]?.find(r => r[0] === '●')?.[1]).toBe('#ffd75e')
+    expect(hitAt(p, p.state, 'close')).toBeDefined()
+  }
+})
+
+test('the Tickets tab fits every band from 40 columns: each line exactly as wide, Buy whole where there is one', () => {
+  const icon = textRows(TICKET_ICON)
+  for (const rows of [6, 7, 9, 11])
+    for (let columns = 40; columns <= 100; columns += columns < 62 ? 1 : 19)
+      for (const state of ['unavailable', 'buyable', 'owned'] as const)
+        for (const sel of [0, 6]) {
+          const p = ticketProps(state, { columns, rows, icon, region: { text: 'GALAR', color: '#f28cc0' } })
+          const s = { ...p.state, sel, top: Math.max(0, sel - listRows(p) + 1) }
+          const { hits, lines: drawn } = martRows(p, s)
+          expect(drawn).toHaveLength(rows)
+          for (const l of drawn) expect([...text(l)]).toHaveLength(columns)
+          const buy = hits.find(h => h.act === 'buy')
+          if (state === 'owned' && sel === 0) expect(buy).toBeUndefined()
+          else expect(text(drawn[buy!.y]!).slice(buy!.x0, buy!.x1)).toContain('₽150,000')
+        }
 })

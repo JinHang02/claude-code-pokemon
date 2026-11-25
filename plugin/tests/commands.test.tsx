@@ -8,6 +8,7 @@ import type { MartProps } from '../hooks/mart'
 import { buyItem } from '../hooks/register'
 import { CAUGHT_GREEN, displayName, emptySave, evolveLevel, level, xpForLevel } from '../hooks/save'
 import type { Save } from '../hooks/save'
+import { walletPill } from '../hooks/shop'
 import { BALL, COLORS, DONE, pickFor, WORKING } from '../hooks/spinner'
 import {
   answerTools,
@@ -29,11 +30,29 @@ import {
 } from './world'
 import type { Net } from './world'
 
-test('a first session gets a random lead, saved for next time', KIT, async ($, on) => {
+/** The starter choice's text in the band as drawn now; '' with none drawn. */
+async function starterChoiceText($: Parameters<typeof mountBand>[0]): Promise<string> {
+  const band = (await mountBand($)) as { drawn: () => Promise<unknown> }
+  const find = (node: unknown): { props?: { lines?: [string, string, string][][] } } | null => {
+    if (typeof node !== 'object' || node === null) return null
+    const n = node as { type?: string; props?: { key?: string; props?: { lines?: [string, string, string][][] } } }
+    if (n.type === 'Client' && n.props?.key === 'dialog') return n.props
+    for (const child of Object.values(node)) {
+      const found = find(child)
+      if (found) return found
+    }
+    return null
+  }
+  const lines = find(await band.drawn())?.props?.lines ?? []
+  return lines.map(l => l.map(r => r[0]).join('')).join('\n')
+}
+const partyStored = (w: { store: Map<string, unknown> }) => (w.store.get('save') as Save | undefined)?.party ?? []
+
+test('a first session opens the Kanto starter choice and catches no random lead', KIT, async ($, on) => {
   const w = await begin($, on)
-  expect(await cmd($, 'pokemon', 'party')).toContain('Your party:\n  Lead ')
-  expect(w.saveNow().party.length).toBe(1)
-  expect(Object.keys(w.saveNow().dex).length).toBe(1)
+  expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
+  expect(await starterChoiceText($)).toContain('KANTO · NEW PARTNER')
+  expect(partyStored(w)).toEqual([])
 })
 
 test('a saved party comes back next session, levels intact', KIT, async ($, on) => {
@@ -181,7 +200,7 @@ test('/pokedex shows sightings and the party', KIT, async ($, on) => {
   await cmd($, 'pokemon', 'add shiny vaporeon')
   const dex = await cmd($, 'pokedex')
   // Eevee may be a lucky shiny (1 in 32); the asked-for Vaporeon always is.
-  expect(dex).toMatch(new RegExp(`Pokédex: 2 / ${LIST.length} seen · 0 caught · [12] shiny`))
+  expect(dex).toMatch(/Pokédex: 2 \/ 905 seen · 0 caught · [12] shiny/)
   expect(dex).toMatch(/Shinies: (Eevee, )?Vaporeon/)
   expect(dex).toMatch(/Lead {2}Pikachu +Lv 1 /)
 })
@@ -234,7 +253,7 @@ test('a warm cache means no downloads at all', KIT, async ($, on) => {
   // Its evolution level and gender already known, so there's nothing to look up either.
   const party = [member('pikachu', { next: [lv('raichu', 30)], gender: 'male' })]
   const w = await begin($, on, { ...emptySave(), party }, ART, files)
-  expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
+  expect(await cmd($, 'pokedex')).toContain('/ 905 seen')
   expect(w.fetched).toEqual([])
 })
 
@@ -1062,16 +1081,21 @@ test('a tool call refused beneath the plugin earns nothing', KIT, async ($, on) 
   expect(w.partyNow()[0]?.xp).toBe(0)
 })
 
-test('offline at the first start: said once, and a first Pokémon arrives once back online', KIT, async ($, on) => {
-  const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
-  expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
-  await w.clock.advance(30_000)
-  // A failing download (here the test kit's own "no implementation" once the fake network refuses).
-  expect(w.toasts.filter(t => t.startsWith('Pokémon: ')).length).toBe(1)
-  w.net.isOnline = true
-  await w.clock.advance(11_000)
-  expect(w.saveNow().party.length).toBe(1)
-})
+test(
+  'offline at the first start: said once; back online, no Pokémon arrives and the Kanto choice is still open',
+  KIT,
+  async ($, on) => {
+    const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
+    expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
+    await w.clock.advance(30_000)
+    // A failing download (here the test kit's own "no implementation" once the fake network refuses).
+    expect(w.toasts.filter(t => t.startsWith('Pokémon: ')).length).toBe(1)
+    w.net.isOnline = true
+    await w.clock.advance(11_000)
+    expect(partyStored(w)).toEqual([])
+    expect(await starterChoiceText($)).toContain('BULBASAUR')
+  },
+)
 
 test('a saved party that could not be drawn offline is drawn once back online', KIT, async ($, on) => {
   engineLines(on)
@@ -1124,7 +1148,7 @@ test('an old species list still serves when its refresh fails', KIT, async ($, o
     list: JSON.stringify(LIST),
     cacheAgeMs: 40 * 24 * 60 * 60_000,
   })
-  expect(await cmd($, 'pokedex')).toContain(`/ ${LIST.length} seen`)
+  expect(await cmd($, 'pokedex')).toContain('/ 905 seen')
 })
 
 test('a stalled download never holds up a command', KIT, async ($, on) => {
@@ -1151,7 +1175,7 @@ test('names in the downloaded list that are not plain names never become files',
     { name: 'pikachu', forms: ['regular', '../../x'] },
   ]
   const w = await begin($, on, undefined, ART, undefined, { isOnline: true, list: JSON.stringify(list) })
-  await cmd($, 'pokemon', 'party')
+  await cmd($, 'pokemon')
   expect(w.saveNow().party.map(m => `${m.species}:${m.form}`)).toEqual(['pikachu:regular'])
   expect([...w.files.keys()].filter(f => f.includes('..'))).toEqual([])
 })
@@ -2549,7 +2573,7 @@ test(
     const w = await begin($, on, { ...emptySave(), party: [member('pikachu')] })
     await cmd($, 'pokemon', 'party')
     const band = (await mountBand($)) as Band
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3000, plus: 0 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3000, plus: 0 }))
     expect(await martOf(band)).toBeNull()
     await band.pointer({ type: 'down', x: 3, y: 0, button: 'left', in: 'shop' })
     expect(await martOf(band)).toMatchObject({ balance: 3000, state: { tab: 0, sel: 0, top: 0, qty: 1 } })
@@ -2566,7 +2590,7 @@ test(
     expect((await martOf(band))?.state).toEqual({ tab: 0, sel: 1, top: 0, qty: 2 })
     await band.key({ key: 'x', in: 'mart' })
     expect(await martOf(band)).toBeNull()
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 0, plus: 0 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 0, plus: 0 }))
   },
 )
 
@@ -2771,7 +2795,7 @@ test(
     net.speciesStall = new Promise<void>(resolve => (open = resolve))
     await cmd($, 'pokemon-play', 'wild newmon')
     // A click on the button as last drawn, before the band is drawn again without it.
-    await band.post({ open: true }, { in: 'shop' })
+    await band.post({ open: 'mart' }, { in: 'shop' })
     expect(await martOf(band)).toBeNull()
     expect(await clientProps(band, 'shop')).toBeNull()
     // Through the rustle and after: still no button, and still not aimable.
@@ -2842,10 +2866,10 @@ test('earning shows +₽ under the button for a moment, the button a row taller 
   await $.tool.call(bash('git commit -m x') as never)
   // The ₽ lands in the background: a command waits for it.
   await cmd($, 'pokemon', 'party')
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
+  expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 100 }))
   expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 2 })
   await w.clock.advance(1500)
-  expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
+  expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 0 }))
   expect((await nodeIn(band, isShop))?.props).toMatchObject({ width: 12, height: 1 })
 })
 
@@ -3034,18 +3058,13 @@ test('a summoned /pokemon-play wild <name> ignores the weights', KIT, async ($, 
   expect(await cmd($, 'pokemon-play', 'wild charizard mega x')).toBe('A wild Charizard (Mega X) wanders by.')
 })
 
-const WATER = 'psyduck poliwag seel shellder krabby horsea goldeen staryu magikarp remoraid corphish feebas'.split(' ')
-const GROUND = 'mankey machop cubone slugma makuhita nosepass numel trapinch pansear roggenrola timburr mienfoo'.split(
-  ' ',
-)
+const WATER = 'psyduck poliwag seel shellder krabby horsea goldeen staryu magikarp'.split(' ')
+const GROUND = 'mankey machop cubone sandshrew vulpix growlithe diglett geodude ponyta'.split(' ')
 
 test(
   'the place on screen shapes who comes: at the lake Water types win about 3 times in 4 over equally likely Fire, Ground, Rock and Fighting types',
   { timeoutMs: 300_000 },
   async ($, on) => {
-    // Odds: 4 * 2630 / (4 * 2630 + 2500) = 81% per visitor at first, about 73% overall once the boost for species not
-    // yet seen favours the Ground types left. At least 60 of 100 fails by chance about 1 run in 800 and, with the lake
-    // not counted (about 50%), passes about 1 in 30.
     const w = await begin(
       $,
       on,

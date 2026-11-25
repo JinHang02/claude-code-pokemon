@@ -5,6 +5,7 @@ import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 import { emptySave, level } from '../hooks/save'
+import { walletPill } from '../hooks/shop'
 import { answerTools, bash, begin, cmd, KIT, member, mountBand, until } from './world'
 
 type Band = {
@@ -103,9 +104,9 @@ test(
     await $.tool.call(bash('git commit -m x') as never)
     // The ₽ lands in the background: a command waits for it.
     await cmd($, 'pokemon', 'party')
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 100 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 100 }))
     await w.clock.advance(1500)
-    expect(await clientProps(band, 'shop')).toMatchObject({ balance: 3100, plus: 0 })
+    expect(await clientProps(band, 'shop')).toEqual(walletPill({ balance: 3100, plus: 0 }))
   },
 )
 
@@ -139,7 +140,7 @@ test(
     const together = w.togetherNow()
     const pokedex = async () => (await cmd($, 'pokedex')).split('\n\nYour party')[0]
     const dex = await pokedex()
-    expect(dex).toMatch(/^Pokédex: 3 \/ 32 seen · 2 caught · 1 shiny\n/)
+    expect(dex).toMatch(/\nPokédex: 3 \/ 905 seen · 2 caught · 1 shiny\n/)
     const key = [...w.store.keys()].find(k => k.startsWith('xp:'))
     expect(state.get('ledger')).toBe(key)
 

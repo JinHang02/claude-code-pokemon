@@ -39,18 +39,36 @@ import {
   withTogether,
   xpForLevel,
 } from '../hooks/save'
-import type { Member } from '../hooks/save'
+import type { Member, Save } from '../hooks/save'
+import {
+  dueStarter,
+  keptJourney,
+  newJourney,
+  requiredSeen,
+  TRAVEL_REGIONS,
+  seenIn,
+  speciesIn,
+  unlockedOf,
+} from '../hooks/travel-regions'
 import { FRIENDSHIP_MS } from '../hooks/evolution'
 import type { Stage } from '../hooks/evolution'
 import { itemById } from '../hooks/items'
+import { preFeature } from './world'
 
 const pikachu: Member = { id: 'p1', species: 'pikachu', form: 'regular', isShiny: false, xp: 0, evolutions: 0 }
 
 test('a missing or broken save loads as a fresh one', () => {
-  expect(loadSave(undefined)).toEqual(emptySave())
-  expect(loadSave('garbage')).toEqual(emptySave())
+  expect(loadSave(undefined)).toEqual({ ...emptySave(), journey: newJourney() })
+  expect(loadSave('garbage')).toEqual({ ...emptySave(), journey: newJourney() })
   const broken = loadSave({ party: [pikachu, { species: 3 }, null], size: 'huge', dex: null, recent: ['eevee', 4] })
-  expect(broken).toEqual({ party: [pikachu], size: 'auto', evolution: 'manual', dex: {}, recent: ['eevee'] })
+  expect(broken).toEqual({
+    party: [pikachu],
+    size: 'auto',
+    evolution: 'manual',
+    dex: {},
+    recent: ['eevee'],
+    journey: { ...keptJourney(), isUndecided: true },
+  })
   expect(loadSave({ party: [pikachu, pikachu, pikachu, pikachu] }).party.length).toBe(3)
 })
 
@@ -172,29 +190,158 @@ test('sightings count up, shinies too, and recent ones stay unique', () => {
   expect(save.recent).toEqual(['pikachu', 'eevee'])
 })
 
-test('the Pokédex counts per generation and lists shinies', () => {
-  const names = Array.from({ length: 905 }, (_, i) => (i === 0 ? 'bulbasaur' : i === 151 ? 'chikorita' : `mon-${i}`))
-  let save = recordSeen(emptySave(), 'bulbasaur', true, 1)
+const johtoSave = (): Save => ({
+  ...emptySave(),
+  journey: { current: 'johto', tickets: ['johto'], starters: { johto: { species: 'cyndaquil' } } },
+})
+const regionLine = (text: string, name: string): string =>
+  text.split('\n').find(line => line.slice(2).startsWith(`${name} `)) ?? ''
+
+test('the Pokédex counts per region, from the species table, and lists shinies', () => {
+  let save = recordSeen(johtoSave(), 'bulbasaur', true, 1)
   save = recordSeen(save, 'chikorita', false, 2)
-  const text = formatDex(save, names)
+  const text = formatDex(save)
   expect(text).toContain('Pokédex: 2 / 905 seen · 0 caught · 1 shiny')
-  expect(text).toContain('Gen 1  ░░░░░░░░░░  1/151 seen · 0 caught · 1 shiny')
-  expect(text).toContain('Gen 2  ░░░░░░░░░░  1/100 seen · 0 caught · 0 shiny')
+  expect(regionLine(text, 'Kanto')).toBe('  Kanto   ░░░░░░░░░░  1/151 seen · 0 caught · 1 shiny')
+  expect(regionLine(text, 'Johto')).toBe('▶ Johto   ░░░░░░░░░░  1/100 seen · 0 caught · 0 shiny')
   expect(text).toContain('Shinies: Bulbasaur')
   expect(text).toContain('Recently seen: Chikorita, Bulbasaur')
 })
 
-test("a generation's bar shows its caught cells, then the ones only seen", () => {
-  const names = Array.from({ length: 905 }, (_, i) => `mon-${i}`)
-  let save = emptySave()
-  for (let i = 0; i < 76; i++) save = recordSeen(save, `mon-${i}`, false, i)
-  for (let i = 0; i < 31; i++) save = recordCaught(save, `mon-${i}`, i)
+test("a region's bar shows its caught cells, then the ones only seen", () => {
+  const kanto = speciesIn(TRAVEL_REGIONS[0]!)
+  let save = johtoSave()
+  for (let i = 0; i < 76; i++) save = recordSeen(save, kanto[i]!, false, i)
+  for (let i = 0; i < 31; i++) save = recordCaught(save, kanto[i]!, i)
   // A catch never seen before counts as seen too.
-  save = recordCaught(save, 'mon-151', 1)
-  const text = formatDex(save, names)
-  expect(text).toContain('Gen 1  ██▓▓▓░░░░░  76/151 seen · 31 caught · 0 shiny')
-  expect(text).toContain('Gen 2  ░░░░░░░░░░  1/100 seen · 1 caught · 0 shiny')
-  expect(text).toContain('Gen 3  ░░░░░░░░░░  0/135 seen · 0 caught · 0 shiny')
+  save = recordCaught(save, 'chikorita', 1)
+  const text = formatDex(save)
+  expect(regionLine(text, 'Kanto')).toBe('  Kanto   ██▓▓▓░░░░░  76/151 seen · 31 caught · 0 shiny')
+  expect(regionLine(text, 'Johto')).toBe('▶ Johto   ░░░░░░░░░░  1/100 seen · 1 caught · 0 shiny')
+})
+
+test('the Pokédex names the 8 regions, opens with where the player is, and marks only the current one', () => {
+  const text = formatDex(johtoSave())
+  const lines = text.split('\n')
+  expect(lines[0]).toBe('In Johto · 2 of 8 regions open')
+  expect(lines[1]).toMatch(/^Pokédex: /)
+  expect(lines.slice(2, 10).map(line => line.slice(2).split(' ')[0])).toEqual(TRAVEL_REGIONS.map(r => r.name))
+  expect(text).not.toMatch(/Gen \d/)
+  expect(regionLine(text, 'Johto')).toMatch(/^▶ /)
+  expect(regionLine(text, 'Kanto')).toMatch(/^ {2}Kanto/)
+  expect(text.split('▶')).toHaveLength(2)
+})
+
+test('locked regions show Unavailable and no bar; open ones show bars and counts', () => {
+  const text = formatDex(johtoSave())
+  for (const name of ['Kanto', 'Johto'])
+    expect(regionLine(text, name)).toMatch(/[░▓█]{10}  0\/\d+ seen · 0 caught · 0 shiny$/)
+  for (const name of ['Hoenn', 'Sinnoh', 'Unova', 'Kalos', 'Alola', 'Galar']) {
+    expect(regionLine(text, name)).toBe(`  ${name.padEnd(6)}  Unavailable`)
+    expect(regionLine(text, name)).not.toMatch(/[░▓█]/)
+  }
+})
+
+test('the Pokédex says nothing about how to reach the next region', () => {
+  const kanto = speciesIn(TRAVEL_REGIONS[0]!)
+  let save: Save = emptySave()
+  for (let i = 0; i < 90; i++) save = recordSeen(save, kanto[i]!, false, i)
+  const text = formatDex(save)
+  expect(text).not.toContain('%')
+  expect(text).not.toContain(String(requiredSeen(TRAVEL_REGIONS[0]!)))
+  expect(text).not.toMatch(/threshold|ticket/i)
+  expect(text.split('\n')[0]).toBe('In Kanto · 1 of 8 regions open')
+})
+
+test('every way of seeing counts toward a region: 60 Kanto entries, 10 from summons alone, show 60/151', () => {
+  const kanto = speciesIn(TRAVEL_REGIONS[0]!)
+  let save: Save = emptySave()
+  for (let i = 0; i < 50; i++) save = recordCaught(save, kanto[i]!, i)
+  for (let i = 50; i < 60; i++) save = recordSeen(save, kanto[i]!, false, i)
+  expect(regionLine(formatDex(save), 'Kanto')).toContain('60/151 seen · 50 caught')
+})
+
+test('with all 8 regions open and Galar current, the Pokédex says 8 of 8', () => {
+  const all = TRAVEL_REGIONS.slice(1).map(r => r.id)
+  const save: Save = { ...emptySave(), journey: { current: 'galar', tickets: all, starters: {} } }
+  const text = formatDex(save)
+  expect(text.split('\n')[0]).toBe('In Galar · 8 of 8 regions open')
+  expect(regionLine(text, 'Galar')).toBe('▶ Galar   ░░░░░░░░░░  0/96 seen · 0 caught · 0 shiny')
+  expect(text).not.toContain('Unavailable')
+})
+
+test('species outside the species table neither break the Pokédex nor count', () => {
+  let save = recordSeen(emptySave(), 'missingno', true, 1)
+  save = recordCaught(save, 'mon-9999', 2)
+  save = recordSeen(save, 'pikachu', false, 3)
+  const text = formatDex(save)
+  expect(text).toContain('Pokédex: 1 / 905 seen · 0 caught · 0 shiny')
+  expect(regionLine(text, 'Kanto')).toContain('1/151 seen · 0 caught · 0 shiny')
+  expect(text).toContain('Shinies: none yet')
+})
+
+test('releasing keeps the Pokédex entry, so seen progress stays', () => {
+  const kanto = TRAVEL_REGIONS[0]!
+  const save = {
+    ...recordCaught(emptySave(), 'pikachu', 1),
+    party: [pikachu, { ...pikachu, id: 'p2', species: 'eevee' }],
+  }
+  const released = releaseMember(save, { place: 'party', at: 0 }, 'pikachu')
+  if (typeof released === 'string') throw new Error(released)
+  expect(released.save.party.map(m => m.species)).toEqual(['eevee'])
+  expect(released.save.dex.pikachu).toEqual(save.dex.pikachu)
+  expect(seenIn(released.save.dex, kanto)).toBe(seenIn(save.dex, kanto))
+})
+
+test('a new save starts in Kanto with no ticket and its starter due; an empty save is decided with none due', () => {
+  const fresh = loadSave(undefined).journey
+  expect(fresh).toEqual({ current: 'kanto', tickets: [], starters: { kanto: 'due' } })
+  expect(unlockedOf(fresh).map(r => r.id)).toEqual(['kanto'])
+  expect(emptySave().journey).toEqual({ current: 'kanto', tickets: [], starters: {} })
+  expect(emptySave().journey.isUndecided).toBeUndefined()
+  expect(dueStarter(emptySave().journey)).toBeUndefined()
+})
+
+test('a save from before regions is undecided; one with a journey is not', () => {
+  expect(loadSave({ party: [pikachu] }).journey).toEqual({ ...keptJourney(), isUndecided: true })
+  expect(loadSave({}).journey.isUndecided).toBe(true)
+  expect(preFeature(emptySave())).not.toHaveProperty('journey')
+  expect(loadSave(preFeature({ ...emptySave(), party: [pikachu] })).journey.isUndecided).toBe(true)
+  const decided = loadSave({ party: [pikachu], journey: { current: 'kanto', tickets: [], starters: {} } })
+  expect(decided.journey).toEqual(keptJourney())
+  expect(decided.journey.isUndecided).toBeUndefined()
+})
+
+test('a save without a journey takes the recovery copy when there is one; a save with one ignores the copy', () => {
+  const copy = { current: 'johto', tickets: ['johto'], starters: { johto: 'due' } }
+  expect(loadSave({ party: [pikachu] }, copy).journey).toEqual(copy)
+  expect(loadSave({ party: [pikachu] }, 'junk').journey).toEqual({ ...keptJourney(), isUndecided: true })
+  expect(loadSave({ party: [pikachu], journey: keptJourney() }, copy).journey).toEqual(keptJourney())
+  expect(loadSave(undefined, copy).journey).toEqual(newJourney())
+})
+
+test('a malformed journey loads as Kanto only and the rest of the save loads as before', () => {
+  const rest = {
+    party: [pikachu],
+    size: 'small',
+    evolution: 'auto',
+    dex: { pikachu: { seen: 2, shiny: 1, first: 1, caught: 1 } },
+    recent: ['pikachu'],
+    spent: 500,
+  }
+  const clean = loadSave({ ...rest, journey: keptJourney() })
+  for (const journey of [null, 'johto', 7, [], { current: 'mars', tickets: 'all', starters: 3 }]) {
+    const s = loadSave({ ...rest, journey })
+    expect(s.journey).toEqual(keptJourney())
+    expect(s).toEqual(clean)
+  }
+})
+
+test('a Johto ticket, Johto starter and Johto as current survive a save and load', () => {
+  const save = johtoSave()
+  const again = loadSave(JSON.parse(JSON.stringify(save)))
+  expect(again.journey).toEqual(save.journey)
+  expect(again).toEqual(save)
 })
 
 test('a save from before evolutions counted as caught counts the evolved ones it has, once each', () => {
@@ -280,7 +427,7 @@ test('sprite size: small halves it, auto goes small on a short terminal, all fit
 
 test('a 1.0.0 save loads with no box and no caught counts; box entries that are not Pokémon are dropped', () => {
   const old = { party: [pikachu], size: 'auto', dex: { pikachu: { seen: 1, shiny: 0, first: 1 } }, recent: ['pikachu'] }
-  expect(loadSave(old)).toEqual({ ...old, evolution: 'manual' })
+  expect(loadSave(old)).toEqual({ ...old, evolution: 'manual', journey: { ...keptJourney(), isUndecided: true } })
   const eevee = { ...pikachu, id: 'b1', species: 'eevee', isCaught: true }
   const s = loadSave({
     ...old,
@@ -326,9 +473,8 @@ test('the PC box lists its Pokémon like the party; ◓ marks the ones caught wi
   expect(formatBox(save)).toBe(['Your PC box (1 / 960):', '  #1  Eevee ◓  Lv 4  (24 xp to Lv 5)'].join('\n'))
   expect(formatBox(emptySave())).toBe('Your PC box is empty.')
   expect(withExtra(save, { b1: 24 }).box?.[0]?.xp).toBe(64)
-  const names = ['bulbasaur', 'eevee', ...Array.from({ length: 903 }, (_, i) => `mon-${i}`)]
   const dex = recordCaught(recordSeen(emptySave(), 'eevee', false, 1), 'eevee', 2)
-  expect(formatDex(dex, names)).toContain('Pokédex: 1 / 905 seen · 1 caught · 0 shiny')
+  expect(formatDex(dex)).toContain('Pokédex: 1 / 905 seen · 1 caught · 0 shiny')
 })
 
 const stone = { species: 'raichu', way: { kind: 'item', item: 'thunder-stone' } } as const
@@ -637,7 +783,7 @@ test("names keep the games' punctuation: Farfetch'd, Mr. Mime, Nidoran♀, Type:
   const party = { ...emptySave(), party: [{ ...pikachu, species: 'nidoran-f', gender: 'female' as const }] }
   expect(formatParty(party)).toContain('Lead  Nidoran♀  Lv 1')
   const dex = recordSeen(recordSeen(emptySave(), 'ho-oh', true, 1), 'type-null', false, 2)
-  expect(formatDex(dex, ['ho-oh', 'type-null'])).toContain('Shinies: Ho-Oh\nRecently seen: Type: Null, Ho-Oh')
+  expect(formatDex(dex)).toContain('Shinies: Ho-Oh\nRecently seen: Type: Null, Ho-Oh')
 })
 
 test('in a narrow terminal each row keeps its name and level on one line, the rest wrapped beneath', () => {

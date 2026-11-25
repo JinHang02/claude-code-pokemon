@@ -6,6 +6,61 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 
 ## [Unreleased]
 
+### Added: regions and ferry tickets
+
+- Eight regions: Kanto, Johto, Hoenn, Sinnoh, Unova, Kalos, Alola and Galar. Everyone starts in Kanto, and the wild
+  Pokémon that wander by, the dusk visitors and the full-moon Clefairy too, come from the region you're in only.
+  `/pokemon <name>` still calls any Pokémon, and the ones you own go everywhere and evolve as before.
+- A ferry ticket opens each later region, one at a time: ₽150,000 on the PokéMart's new Tickets tab, or
+  `/pokemon buy johto ticket` (or `johto ferry ticket`, as the Mart names it; `/pokemon-help` and the `buy` typeahead
+  list it). A ticket shows "Unavailable" until you have more experience as a trainer, then its
+  price, then "Owned" with `/pokemon travel johto`. The tab lists Kanto's ticket first, always "Owned". A bought ticket, its ₽ and the region are one save write, so two
+  windows buying at once can't buy it twice.
+- `/pokemon travel <region>` sails there with a ferry crossing over the band ("Sailing to Johto…"), or says "Sailed
+  to Johto." on a band under 10 rows or 40 columns. Kanto needs no ticket, and a ticket is good for every trip. With
+  no region it lists where you can sail; an unknown region lists them all. Travel sends off wild visitors from the
+  region left, and none comes while the ferry sails.
+- The current region's label, `● KANTO` (`● KAN` on a narrow band), sits in the band's top-left corner, opposite the
+  wallet, and in the Mart's title. A click on it opens the Tickets tab. Every window shows the region within about 10
+  seconds of a trip.
+- The first arrival in a region opens its starter choice in the band, after the crossing: three Poké Balls, the
+  Pokémon's picture and types, "Take Cyndaquil?". The choice is caught and joins the party (the PC box when it's
+  full). `x` leaves it for later: it opens again at the next start in any window and on the next trip there.
+- `/pokedex` opens with where you are and how many regions are open, then a line per region, a ▶ on the current one.
+  A region whose ticket you don't own shows "Unavailable".
+- `/pokemon restart` opens a confirmation in the band that says what it wipes; yes starts the journey over from a
+  Kanto starter with ₽3,000. The sprite size, evolution style, evolve setting, `/pokemon region` forms and on/off
+  stay.
+- A save from before regions opens a choice the first time: **Keep my save** (everything stays; you start in Kanto
+  with the later regions locked) or **Start fresh** (asks again in red, then as restart). Until you choose, the save
+  plays as kept and the choice opens again at the next start.
+- The band's screens take a click, then keys: `←` `→`, `Enter`, `n`, and `x` to close. Wiping a save takes a click
+  on Yes or a typed `yes`, never a key. Typing anything else
+  closes the screen and goes to the prompt. Each has a typed answer too, for a terminal that passes no clicks:
+  `/pokemon choose <starter>`, `/pokemon keep`, `/pokemon fresh` (then `/pokemon fresh yes`) and
+  `/pokemon restart yes`; `no` instead of `yes` keeps the save.
+- A save from before regions can't buy a ferry ticket until it is kept or started fresh.
+- `/pokemon help`, `/pokemon-help` and the typeahead offer `travel` (with the region names), `restart`, `choose`
+  (with the starters), `keep` and `fresh`.
+
+### Changed
+
+- **A new player chooses a Kanto starter** (Bulbasaur, Charmander or Squirtle) instead of getting a random first
+  Pokémon.
+- The save is now version 3. A window on 1.8.0 to 1.9.1 refuses to write over it (it says to update and changes
+  nothing) rather than drop your regions. A copy of your regions and tickets is kept in the plugin's store too, for
+  windows older than that.
+
+### Known limitations
+
+- **A window still on an older version (1.7.x or before) can cost a ticket.** It rewrites the save without your
+  regions; the next window on this version puts them back from the copy, with no choice screen. A ticket bought, a
+  trip or a starter chosen in the moment between the save write and the copy write, or when the copy write fails, is
+  lost, and the ₽150,000 stays spent. Nothing repairs it. Restart every window after upgrading.
+- **Restart older windows before starting fresh.** Until a starter is chosen the party is empty, and a window on 1.7.x
+  or before then catches a random Pokémon as its lead and rewrites the save without your regions: you keep that Pokémon as
+  well as your starter, or, with no copy of your regions yet, get asked again whether to keep your save.
+
 ## [1.9.1] - 2026-11-24
 
 ### Changed

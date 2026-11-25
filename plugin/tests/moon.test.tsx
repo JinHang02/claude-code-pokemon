@@ -17,6 +17,8 @@ import {
   SYNODIC_DAYS,
 } from '../hooks/moon'
 import { emptySave, evolvesText } from '../hooks/save'
+import { regionOf } from '../hooks/travel-regions'
+import type { RegionId } from '../hooks/travel-regions'
 import type { Save } from '../hooks/save'
 import { CHAIN_OF, CHAINS, LIST } from './fixtures/evolutions'
 import { begin, cmd, hourAt, KIT, member, mountBand } from './world'
@@ -137,16 +139,17 @@ const seeded = (seed: number) => () => {
   seed = (seed * 1664525 + 1013904223) % 4294967296
   return seed / 4294967296
 }
-const at = (phase: Where['phase'], moon?: number): Where => ({
+const at = (phase: Where['phase'], moon?: number, region: RegionId = 'kanto'): Where => ({
   landscape: 'meadow',
   phase,
   dex: {},
+  region,
   ...(moon === undefined ? {} : { moon }),
 })
 const share = (where: Where, isOne: (species: string) => boolean, n = 20_000) => {
   const rand = seeded(11)
   let hits = 0
-  for (let i = 0; i < n; i++) if (isOne(drawWild(LIST, where, rand).species)) hits++
+  for (let i = 0; i < n; i++) if (isOne(drawWild(LIST, where, rand)?.species ?? '')) hits++
   return hits / n
 }
 const isDusky = (species: string) => DUSK_VISITORS.includes(species)
@@ -157,28 +160,36 @@ test('about one wild visit in four at dusk is a dusk visitor; by day they are ra
   expect(dusk).toBeGreaterThan(0.24)
   expect(dusk).toBeLessThan(0.3)
   expect(share(at('day'), isDusky)).toBeLessThan(0.03)
-  // The injected rand decides: a low first draw brings one, the second picks which.
-  expect(drawWild(LIST, at('dusk'), () => 0).species).toBe(DUSK_VISITORS[0])
+  expect(drawWild(LIST, at('dusk', undefined, 'johto'), () => 0)?.species).toBe('murkrow')
   const picks = [0.1, 0.99]
-  expect(drawWild(LIST, at('dusk'), () => picks.shift() ?? 0).species).toBe(DUSK_VISITORS[DUSK_VISITORS.length - 1])
-  // All eight come.
-  const rand = seeded(12)
+  expect(drawWild(LIST, at('dusk', undefined, 'johto'), () => picks.shift() ?? 0)?.species).toBe('houndour')
   const met = new Set<string>()
-  // One place and time for every draw: the draw caches its table by it.
-  const evening = at('dusk')
-  for (let i = 0; i < 4_000; i++) met.add(drawWild(LIST, evening, rand).species)
+  for (const region of new Set(DUSK_VISITORS.map(name => regionOf(name)?.id ?? 'kanto'))) {
+    const rand = seeded(12)
+    const here = new Set<string>()
+    // One place and time for every draw: the draw caches its table by it.
+    const evening = at('dusk', undefined, region)
+    for (let i = 0; i < 4_000; i++) here.add(drawWild(LIST, evening, rand)?.species ?? '')
+    expect([region, DUSK_VISITORS.filter(name => here.has(name) && regionOf(name)?.id !== region)]).toEqual([
+      region,
+      [],
+    ])
+    for (const name of here) met.add(name)
+  }
   expect(DUSK_VISITORS.filter(name => !met.has(name))).toEqual([])
 })
 
-test('a Clefairy comes about one night visit in ten under a full moon, hardly ever otherwise', () => {
+test('a Clefairy comes about one night visit in ten more under a full moon, seldom otherwise', () => {
   const isClefairy = (species: string) => species === 'clefairy'
+  const other = share(at('night', 2), isClefairy, 20_000)
+  expect(other).toBeLessThan(0.04)
   const full = share(at('night', FULL_MOON), isClefairy, 20_000)
-  expect(full).toBeGreaterThan(0.08)
-  expect(full).toBeLessThan(0.13)
-  expect(share(at('night', 2), isClefairy, 20_000)).toBeLessThan(0.01)
+  expect(full - other).toBeGreaterThan(0.07)
+  expect(full - other).toBeLessThan(0.13)
   // Under a full moon by day, nothing special.
-  expect(share(at('day', FULL_MOON), isClefairy, 20_000)).toBeLessThan(0.01)
-  expect(drawWild(LIST, at('night', FULL_MOON), () => 0).species).toBe('clefairy')
+  expect(share(at('day', FULL_MOON), isClefairy, 20_000)).toBeLessThan(0.04)
+  expect(drawWild(LIST, at('night', FULL_MOON), () => 0)?.species).toBe('clefairy')
+  expect(share(at('night', FULL_MOON, 'johto'), isClefairy, 2_000)).toBe(0)
 })
 
 // How many of the band's cells show the moon's colour, as the terminal got them (three words a cell: the character,

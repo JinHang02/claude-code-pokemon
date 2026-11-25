@@ -334,22 +334,33 @@ test(
   },
 )
 
-test('two retries on a slow network after an offline start catch one first Pokémon only', SLOW, async ($, on) => {
-  const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
-  await w.clock.advance(30_000)
-  let release = () => {}
-  w.net.stall = new Promise<void>(resolve => (release = resolve))
-  w.net.isOnline = true
-  // One retry starts a first catch, which waits on the stalled download; the next comes while it still waits.
-  await w.clock.advance(10_000)
-  await w.clock.advance(10_000)
-  release()
-  w.net.stall = undefined
-  await w.clock.advance(2_000)
-  expect(w.saveNow().party).toHaveLength(1)
-  expect(w.saveNow().box ?? []).toEqual([])
-  expect(Object.keys(w.saveNow().dex)).toHaveLength(1)
-})
+test(
+  'two retries on a slow network after an offline start catch no first Pokémon; the Kanto choice stays open',
+  SLOW,
+  async ($, on) => {
+    const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
+    await w.clock.advance(30_000)
+    let release = () => {}
+    w.net.stall = new Promise<void>(resolve => (release = resolve))
+    w.net.isOnline = true
+    const since = w.fetched.length
+    await w.clock.advance(10_000)
+    await w.clock.advance(10_000)
+    release()
+    w.net.stall = undefined
+    await w.clock.advance(2_000)
+    const fetchedSince = w.fetched.slice(since)
+    for (const species of ['bulbasaur', 'charmander', 'squirtle'])
+      expect(fetchedSince.filter(url => url.endsWith(`/colorscripts/small/regular/${species}`))).toHaveLength(1)
+    const saved = w.store.get('save') as Save | undefined
+    expect(saved?.party ?? []).toEqual([])
+    expect(saved?.box ?? []).toEqual([])
+    expect(Object.keys(saved?.dex ?? {})).toEqual([])
+    const band = await mount($)
+    await band.redraw()
+    expect(findNode(await band.drawn(), n => n.type === 'Client' && n.props?.key === 'dialog')).not.toBeNull()
+  },
+)
 
 test(
   'a command held up by a stalled download answers before Claude Code gives up on it, and tells what it did later',
@@ -415,7 +426,7 @@ test('a command answering late whose evolution plays in place is told once, by t
 })
 
 test(
-  "a retry waiting on a slow first catch doesn't hold up the sync: another window's change is picked up",
+  "a retry waiting on the starters' slow sprites doesn't hold up the sync: another window's change is picked up",
   SLOW,
   async ($, on) => {
     const w = await begin($, on, undefined, ART, undefined, { isOnline: false, list: JSON.stringify(LIST) })
@@ -423,7 +434,6 @@ test(
     let release = () => {}
     w.net.stall = new Promise<void>(resolve => (release = resolve))
     w.net.isOnline = true
-    // A retry starts a first catch, which waits on the stalled download.
     await w.clock.advance(10_000)
     w.store.set('save', { ...emptySave(), evolutionStyle: 'white' })
     await w.clock.advance(10_000)
@@ -432,7 +442,7 @@ test(
     release()
     w.net.stall = undefined
     await w.clock.advance(2_000)
-    expect(w.saveNow().party).toHaveLength(1)
+    expect(w.saveNow().party).toEqual([])
     expect(w.saveNow().evolutionStyle).toBe('white')
   },
 )

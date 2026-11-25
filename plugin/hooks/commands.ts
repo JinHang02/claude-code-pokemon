@@ -8,6 +8,7 @@ import { EVOLUTION_STYLES } from './evolution-style'
 import { forSale, ITEMS } from './items'
 import { slug } from './lookup'
 import { REGION_TEXT, REGION_WORDS } from './region'
+import { TICKET_PRICE, TRAVEL_REGIONS } from './travel-regions'
 import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
@@ -30,6 +31,9 @@ type Arg =
   | 'landscape'
   | 'phase'
   | 'region'
+  | 'travel'
+  | 'starter'
+  | 'answer'
 
 type Sub = {
   // The word typed after the command; `''` for one that is the whole command (`/pokemon` alone, `/pokemon <name>`).
@@ -61,12 +65,18 @@ export const POKEMON: Sub[] = [
   { word: 'evolve', usage: 'evolve manual, auto', about: 'by /pokemon evolve, or by itself', args: ['mode'] },
   { word: 'mart', usage: 'mart', about: 'the PokéMart, by mouse' },
   { word: 'buy', usage: 'buy <item> [count]', about: 'the PokéMart, by typing', args: ['sale'] },
+  { word: 'buy', usage: 'buy <region> ticket', about: 'a ferry ticket, by typing', only: 'help' },
   { word: 'size', usage: 'size <size>', about: 'small, normal or auto', args: ['size'] },
   { word: 'evolution', usage: 'evolution <style>', about: 'rays, white or gradient', args: ['style'] },
   { word: 'region', usage: 'region <region>', about: 'regional forms when evolving', args: ['region'] },
   { word: 'on', usage: 'on, off', about: 'out, or back in their balls', only: 'help' },
   { word: 'on', usage: 'on', about: 'out of their Poké Balls', only: 'typeahead' },
   { word: 'off', usage: 'off', about: 'back in their Poké Balls', only: 'typeahead' },
+  { word: 'travel', usage: 'travel <region>', about: 'sail to a region with a ticket', args: ['travel'] },
+  { word: 'restart', usage: 'restart [yes|no]', about: 'a new journey from scratch', args: ['answer'] },
+  { word: 'choose', usage: 'choose <starter>', about: 'take the starter offered', args: ['starter'] },
+  { word: 'keep', usage: 'keep', about: 'keep a save from before regions' },
+  { word: 'fresh', usage: 'fresh [yes|no]', about: 'wipe a save from before regions', args: ['answer'] },
   { word: 'help', usage: 'help', about: 'this list' },
 ]
 
@@ -192,6 +202,9 @@ export const ALL_HELP = [
   '/pokedex <name>      one species: types, evolutions',
   '/pokemon-help        this list',
   '',
+  'Regions: ferry tickets in the PokéMart open new ones',
+  'as you gain trainer experience.',
+  '',
   'Type /pokemon and a letter: the typeahead previews',
   'each command, then your items and Pokémon.',
 ].join('\n')
@@ -302,13 +315,22 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
       return items(typed, owned)
     case 'sale': {
       const want = slug([...wordsBefore, typed].join(' '))
-      return forSale()
-        .filter(i => i.id.startsWith(want) && i.id.split('-').length > wordsBefore.length)
+      const isOffered = (id: string) => id.startsWith(want) && id.split('-').length > wordsBefore.length
+      const items = forSale()
+        .filter(i => isOffered(i.id))
         .map(i => ({
           text: `${rest(i.id, wordsBefore, '-')} `,
           label: i.id,
           description: `${i.name} · ${formatMoney(i.price)}`,
         }))
+      const tickets = TRAVEL_REGIONS.slice(1)
+        .filter(r => isOffered(`${r.id}-ticket`))
+        .map(r => ({
+          text: `${rest(`${r.id} ticket`, wordsBefore)} `,
+          label: `${r.id} ticket`,
+          description: `${r.name} ferry ticket · ${formatMoney(TICKET_PRICE)}`,
+        }))
+      return [...items, ...tickets]
     }
     case 'size':
       return fixed(lower, [
@@ -341,6 +363,21 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
         lower,
         (Object.keys(PHASE_ABOUT) as Phase[]).map(p => [p, PHASE_ABOUT[p]]),
       )
+    case 'travel':
+      return fixed(
+        lower,
+        TRAVEL_REGIONS.map(r => [r.id, `sail to ${r.name}`]),
+      )
+    case 'starter':
+      return fixed(
+        lower,
+        TRAVEL_REGIONS.flatMap(r => r.starters.map((s): [string, string] => [s, `a ${r.name} starter`])),
+      )
+    case 'answer':
+      return fixed(lower, [
+        ['yes', 'wipe it'],
+        ['no', 'keep it'],
+      ])
   }
 }
 
