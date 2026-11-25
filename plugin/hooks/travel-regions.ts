@@ -78,12 +78,11 @@ export const seenIn = (dex: Record<string, DexEntry>, r: TravelRegion): number =
 export const findRegion = (word: string): TravelRegion | undefined =>
   TRAVEL_REGIONS.find(r => r.name.toLowerCase() === word.toLowerCase())
 
-/** The region of the words `<region> ticket`; undefined for Kanto or any other words. */
+/** The region of the words `<region> ticket`; undefined for any other words. */
 export function readTicketWords(words: readonly string[]): TravelRegion | undefined {
   const [name, ticket, ...rest] = words
   if (name === undefined || ticket?.toLowerCase() !== 'ticket' || rest.length) return undefined
-  const r = findRegion(name)
-  return r === KANTO ? undefined : r
+  return findRegion(name)
 }
 
 // ── Factories ──
@@ -140,9 +139,9 @@ export const unlockedOf = (j: Journey): TravelRegion[] =>
 /** The latest unlocked region. */
 export const newestOf = (j: Journey): TravelRegion => unlockedOf(j).at(-1) ?? KANTO
 
-/** The state of `r`'s ferry ticket for a player with this journey and dex. */
+/** The state of `r`'s ferry ticket for a player with this journey and dex; Kanto's is always owned. */
 export function ticketState(j: Journey, dex: Record<string, DexEntry>, r: TravelRegion): TicketState {
-  if (j.tickets.includes(r.id)) return 'owned'
+  if (r === KANTO || j.tickets.includes(r.id)) return 'owned'
   const newest = newestOf(j)
   const isNext = TRAVEL_REGIONS.indexOf(r) === TRAVEL_REGIONS.indexOf(newest) + 1
   return isNext && seenIn(dex, newest) >= requiredSeen(newest) ? 'buyable' : 'unavailable'

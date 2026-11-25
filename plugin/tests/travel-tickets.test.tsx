@@ -21,7 +21,8 @@ type Band = {
 }
 
 const TICKETS_TAB = 4
-const GALAR_TICKET_INDEX = TRAVEL_REGIONS.length - 2
+const JOHTO_TICKET_INDEX = 1
+const GALAR_TICKET_INDEX = TRAVEL_REGIONS.length - 1
 const KANTO = TRAVEL_REGIONS[0]!
 const JOHTO: TravelRegion = TRAVEL_REGIONS[1]!
 const JOHTO_OWNED: Journey = { current: 'kanto', tickets: ['johto'], starters: {} }
@@ -63,12 +64,13 @@ async function clickMart(band: Band, act: unknown) {
   if (!hit) throw new Error(`no ${JSON.stringify(act)} in the Mart`)
   await band.pointer({ type: 'down', x: hit.x0, y: hit.y, button: 'left', in: 'mart' })
 }
-// The band with the Mart open on its Tickets tab.
+// The band with the Mart open on its Tickets tab, the Johto ticket selected.
 async function ticketsTab($: Parameters<typeof cmd>[0] & Parameters<typeof mountBand>[0]): Promise<Band> {
   await cmd($, 'pokemon', 'party')
   const band = (await mountBand($)) as Band
   expect(await cmd($, 'pokemon', 'mart')).toContain('The PokéMart is open')
   await clickMart(band, { tab: TICKETS_TAB })
+  await clickMart(band, { pick: JOHTO_TICKET_INDEX })
   return band
 }
 const tickets = (p: MartProps | null): MartItem[] => (p?.items ?? []).filter(i => i.tab === 'Tickets')
@@ -76,7 +78,7 @@ const stateOf = (p: MartProps | null, id: string) => tickets(p).find(i => i.id =
 const purchaseState = (s: Save) => ({ spent: s.spent, earned: s.earned, bag: s.bag, journey: s.journey })
 
 test(
-  'the band Mart has a Tickets tab of Johto to Galar, with their states and the ticket picture',
+  'the band Mart has a Tickets tab of Kanto to Galar, Kanto owned, with their states and the ticket picture',
   KIT,
   async ($, on) => {
     await begin($, on, player(160_000))
@@ -84,9 +86,9 @@ test(
     const p = await martOf(band)
     expect(p?.tabs[TICKETS_TAB]).toBe('Tickets')
     expect(p?.state.tab).toBe(TICKETS_TAB)
-    expect(tickets(p).map(i => i.name)).toEqual(TRAVEL_REGIONS.slice(1).map(r => `${r.name} ferry ticket`))
-    expect(tickets(p).map(i => i.ticket?.state)).toEqual(['buyable', ...Array(6).fill('unavailable')])
-    expect(tickets(p).map(i => i.ticket?.hint)).toEqual(TRAVEL_REGIONS.slice(1).map(r => `/pokemon travel ${r.id}`))
+    expect(tickets(p).map(i => i.name)).toEqual(TRAVEL_REGIONS.map(r => `${r.name} ferry ticket`))
+    expect(tickets(p).map(i => i.ticket?.state)).toEqual(['owned', 'buyable', ...Array(6).fill('unavailable')])
+    expect(tickets(p).map(i => i.ticket?.hint)).toEqual(TRAVEL_REGIONS.map(r => `/pokemon travel ${r.id}`))
     expect(p?.region).toEqual({ text: 'KANTO', color: KANTO.color })
     expect(p?.icon?.length).toBeGreaterThan(0)
   },
@@ -219,7 +221,7 @@ for (const money of [10_000_000, 100_000])
       message: 'Looks like you need more experience to access this.',
       isError: true,
     })
-    for (let i = 0; i < GALAR_TICKET_INDEX; i++) await band.key({ key: 'down', in: 'mart' })
+    for (let i = JOHTO_TICKET_INDEX; i < GALAR_TICKET_INDEX; i++) await band.key({ key: 'down', in: 'mart' })
     expect((await martOf(band))?.state.sel).toBe(GALAR_TICKET_INDEX)
     await clickMart(band, 'buy')
     expect((await martOf(band))?.message).toBe('Looks like you need more experience to access this.')
@@ -277,10 +279,24 @@ test('a ticket count other than 1 is no quantity to buy, and buys nothing', KIT,
   expect(purchaseState(w.saveNow())).toEqual(before)
 })
 
-test('no ticket for Kanto, nor for words that only look like one', KIT, async ($, on) => {
+test('the Kanto ticket is owned from the start: a click on it and a typed buy change nothing', KIT, async ($, on) => {
   const w = await begin($, on, player(10_000_000))
   const before = purchaseState(w.saveNow())
-  for (const args of ['kanto ticket', 'ticket', 'johto ferry ticket', 'atlantis ticket'])
+  const band = await ticketsTab($)
+  await clickMart(band, { pick: 0 })
+  expect(stateOf(await martOf(band), 'kanto')).toBe('owned')
+  expect(martRows((await martOf(band))!).hits.some(h => h.act === 'buy')).toBe(false)
+  await clickMart(band, { pick: 0 })
+  expect((await martOf(band))?.message).toBe('')
+  expect(await cmd($, 'pokemon', 'buy kanto ticket')).toBe('You already own the Kanto ferry ticket.')
+  expect(purchaseState(w.saveNow())).toEqual(before)
+  expect(w.saveNow().journey.tickets).toEqual([])
+})
+
+test('no ticket for words that only look like one', KIT, async ($, on) => {
+  const w = await begin($, on, player(10_000_000))
+  const before = purchaseState(w.saveNow())
+  for (const args of ['ticket', 'johto ferry ticket', 'atlantis ticket'])
     expect(await cmd($, 'pokemon', `buy ${args}`)).not.toContain('Bought')
   expect(purchaseState(w.saveNow())).toEqual(before)
 })

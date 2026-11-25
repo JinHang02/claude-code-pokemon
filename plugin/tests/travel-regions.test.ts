@@ -121,14 +121,14 @@ test('a region is found by its exact name, in any case', () => {
     expect(findRegion(word)).toBeUndefined()
 })
 
-test('ticket words are exactly a later region and "ticket"', () => {
+test('ticket words are exactly a region and "ticket"', () => {
+  expect(readTicketWords(['kanto', 'ticket'])?.id).toBe('kanto')
   expect(readTicketWords(['johto', 'ticket'])?.id).toBe('johto')
   expect(readTicketWords(['Galar', 'Ticket'])?.id).toBe('galar')
   for (const words of [
     [],
     ['ticket'],
     ['johto'],
-    ['kanto', 'ticket'],
     ['johto', 'ferry', 'ticket'],
     ['johto', 'ticket', 'x'],
     ['ticket', 'johto'],
@@ -222,10 +222,12 @@ test('the next ticket opens at the newest region’s required seen count', () =>
   expect(ticketState(kanto, dexOf(speciesIn(KANTO).slice(0, 91), 0), JOHTO)).toBe('buyable')
 })
 
-test('later regions stay unavailable whatever the seen count, and Kanto has no ticket', () => {
+test("later regions stay unavailable whatever the seen count, and Kanto's ticket is always owned", () => {
   const all = dexOf(TRAVEL_REGIONS.flatMap(speciesIn))
   for (const r of TRAVEL_REGIONS.slice(2)) expect(ticketState(keptJourney(), all, r)).toBe('unavailable')
-  expect(ticketState(keptJourney(), all, KANTO)).toBe('unavailable')
+  expect(ticketState(keptJourney(), all, KANTO)).toBe('owned')
+  expect(ticketState(keptJourney(), {}, KANTO)).toBe('owned')
+  expect(keptJourney().tickets).toEqual([])
 })
 
 test('an owned ticket shows owned; the gate follows the newest ticket, not the current region', () => {

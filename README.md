@@ -226,7 +226,7 @@ Build a **party of up to three** and they'll travel together. Twins are welcome:
 
 Your journey starts in **Kanto**, and seven more regions lie across the sea: **Johto, Hoenn, Sinnoh, Unova, Kalos, Alola and Galar**. The wild Pokémon that wander by come from the region you're in. The Pokémon you own go everywhere with you, and `/pokemon <name>` still calls any Pokémon, from any region.
 
-To sail on, you need a **ferry ticket** for the next region. They're on the PokéMart's **Tickets tab**, at ₽150,000 each: click the `● KANTO` label in the band's top-left corner to open it, or type `/pokemon buy johto ticket`. A ticket shows _Unavailable_ until you have more experience as a trainer. One ticket is good for as many trips there and back as you like, and Kanto needs none.
+To sail on, you need a **ferry ticket** for the next region. They're on the PokéMart's **Tickets tab**, at ₽150,000 each: click the `● KANTO` label in the band's top-left corner to open it, or type `/pokemon buy johto ticket`. A ticket shows _Unavailable_ until you have more experience as a trainer. One ticket is good for as many trips there and back as you like. The tab lists Kanto first, always _Owned_: everyone starts there with its ticket.
 
 ```text
 /pokemon travel johto      Sailing to Johto…
@@ -346,7 +346,7 @@ Every item has its picture and its description from the games, and a _"Your part
 | Hold items | Metal Coat, King's Rock, Dragon Scale, Up-Grade, Dubious Disc, Protector, Electirizer, Magmarizer, Reaper Cloth, Deep Sea Tooth and Scale, Prism Scale, Sachet, Whipped Dream, Razor Claw and Fang, Oval Stone, Strawberry Sweet | ₽5,000                    |
 | Special    | The Linking Cord, Tart and Sweet Apples, Cracked and Chipped Pots, Black Augurite, Peat Block, the two Scrolls, Galarica Cuff and Wreath                                                                                         | ₽5,000                    |
 | Other      | Rare Candy (one level), Lucky Egg (half as much XP again, rounded down), Soothe Bell (time together counts 1.5 times)                                                                                                            | ₽4,800 / ₽10,000 / ₽4,000 |
-| Tickets    | A ferry ticket for each region after Kanto ([Regions](#regions-and-ferry-tickets))                                                                                                                                               | ₽150,000                  |
+| Tickets    | A ferry ticket for each region, Kanto's always owned ([Regions](#regions-and-ferry-tickets))                                                                                                                                     | ₽150,000                  |
 
 Then hand them out. A stone or trade item evolves on the spot and is used up, a Rare Candy is one level, and a hold item is held: one per Pokémon, as in the games, so giving another puts the old one back in your Bag. An item that would do nothing is refused, and nothing is used up.
 

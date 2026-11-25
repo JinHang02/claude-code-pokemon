@@ -306,8 +306,8 @@ test('the button is just its pill: the wallet, and +₽ right-aligned under it w
 // ── Tickets tab ──
 
 const TICKETS = 4
-const ticketItems = (states: TicketState[]): MartItem[] =>
-  TRAVEL_REGIONS.slice(1).map((r, i) => ({
+const ticketItems = (states: TicketState[], regions = TRAVEL_REGIONS.slice(1)): MartItem[] =>
+  regions.map((r, i) => ({
     id: `ticket-${r.id}`,
     name: `${r.name} ferry ticket`,
     tab: 'Tickets',
@@ -328,15 +328,16 @@ const ticketProps = (johto: TicketState, extra: Partial<MartProps> = {}): MartPr
   })
 const body = (p: MartProps) => lines(p).slice(2, -1)
 
-test('the Tickets tab lists Johto to Galar, no Kanto, and the tab says it sells 7', () => {
-  const p = ticketProps('unavailable')
+test('the Tickets tab lists Kanto, Owned, then Johto to Galar, and the tab says it sells 8', () => {
+  const p = ticketProps('unavailable', {
+    items: [...props().items, ...ticketItems(['owned'], TRAVEL_REGIONS)],
+    rows: 13,
+  })
   const drawn = lines(p)
-  expect(drawn[1]).toContain(' Tickets 7 ')
+  expect(drawn[1]).toContain(' Tickets 8 ')
   const listed = body(p).map(l => l.slice(0, left).trim())
-  expect(listed.slice(0, 7).map(l => /^▶? ?(\w+) ferry ticket/.exec(l)?.[1])).toEqual(
-    TRAVEL_REGIONS.slice(1).map(r => r.name),
-  )
-  expect(drawn.join('\n')).not.toContain('Kanto')
+  expect(listed.slice(0, 8).map(l => /^▶? ?(\w+) ferry ticket/.exec(l)?.[1])).toEqual(TRAVEL_REGIONS.map(r => r.name))
+  expect(listed[0]).toMatch(/^▶ Kanto ferry ticket +Owned$/)
 })
 
 test('unavailable tickets say so, with no count or progress: the only digits are the price; Buy stays a grey hit', () => {

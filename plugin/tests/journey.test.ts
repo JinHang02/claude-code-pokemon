@@ -75,7 +75,15 @@ test('an unavailable ticket is refused before the wallet is checked (A34, A37)',
   expect(buyTicket(rich, 0, JOHTO)).toEqual({ save: rich, ...want })
   expect(buyTicket({ ...rich, dex: ready(0).dex }, 0, HOENN)).toEqual({ save: { ...rich, dex: ready(0).dex }, ...want })
   expect(buyTicket(emptySave(), 0, JOHTO)).toEqual({ save: emptySave(), ...want })
-  expect(buyTicket(rich, 0, KANTO)).toEqual({ save: rich, ...want })
+})
+
+test('the Kanto ticket is always owned: buying it is refused as owned and changes nothing', () => {
+  const rich = { ...emptySave(), earned: 1_000_000 - STARTING_MONEY }
+  expect(buyTicket(rich, 0, KANTO)).toEqual({
+    save: rich,
+    text: 'You already own the Kanto ferry ticket.',
+    isError: true,
+  })
 })
 
 test('an undecided pre-region save is refused a ticket until it is kept or started fresh (R37)', () => {

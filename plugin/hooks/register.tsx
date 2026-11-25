@@ -1213,8 +1213,7 @@ export async function buyItem(
 }
 
 const TICKET_ID = 'ticket-'
-const TICKET_REGIONS: readonly TravelRegion[] = TRAVEL_REGIONS.slice(1)
-const ticketRegion = (id: string): TravelRegion | undefined => TICKET_REGIONS.find(r => `${TICKET_ID}${r.id}` === id)
+const ticketRegion = (id: string): TravelRegion | undefined => TRAVEL_REGIONS.find(r => `${TICKET_ID}${r.id}` === id)
 
 /**
  * @param r undefined for an id that names no ticket.
@@ -2315,7 +2314,7 @@ const MART_TABS: string[] = [...TABS, TICKETS]
 const TICKETS_TAB = MART_TABS.indexOf(TICKETS)
 
 const ticketItems = (s: Save): MartItem[] =>
-  TICKET_REGIONS.map(r => ({
+  TRAVEL_REGIONS.map(r => ({
     id: `${TICKET_ID}${r.id}`,
     name: `${r.name} ferry ticket`,
     tab: TICKETS,
