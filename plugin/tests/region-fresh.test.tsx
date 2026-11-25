@@ -495,6 +495,24 @@ test('y by key on the wipe confirmation, fresh or restart, wipes nothing', SLOW,
   expect(stored(w)).toEqual(afterKeep)
 })
 
+test(
+  'restart with an idle ledger holding ₽5,000: the wallet stays ₽3,000 through the fold rounds',
+  SLOW,
+  async ($, on) => {
+    const ledger = { at: 1, xp: {}, money: 5000 }
+    const w = await play($, on, player(WITH_JOHTO, { earned: 9000 }), net({ keys: { [FRESH_LEDGER]: ledger } }))
+    await cmd($, 'pokemon', 'party')
+    const band = await mount($)
+    await restartIn($, band)
+    await act(band, 'yes')
+    expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,000\n/)
+    // 30 syncs make one fold round; the second removes the folded ledger.
+    for (let i = 0; i < 60; i++) await w.clock.advance(10_000)
+    expect(w.store.has(FRESH_LEDGER)).toBe(false)
+    expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,000\n/)
+  },
+)
+
 test('restart declined or dismissed: nothing changes and the band is back', SLOW, async ($, on) => {
   const w = await play($, on, player(WITH_JOHTO))
   await cmd($, 'pokemon', 'party')
