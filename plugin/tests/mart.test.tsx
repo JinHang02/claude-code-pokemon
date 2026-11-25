@@ -6,7 +6,7 @@ import type { Act, MartItem, MartProps, MartState } from '../hooks/mart'
 import { BAG, ICONS } from '../hooks/item-icons'
 import { forSale, ITEMS, TABS } from '../hooks/items'
 import { TRAVEL_REGIONS, TICKET_PRICE } from '../hooks/travel-regions'
-import type { TicketState } from '../hooks/travel-regions'
+import type { TicketState, TravelRegion } from '../hooks/travel-regions'
 import { shopRows, shopSize, walletLabel, walletPill } from '../hooks/shop'
 import { CLEAR, textRows } from '../hooks/sprite'
 
@@ -306,7 +306,7 @@ test('the button is just its pill: the wallet, and +₽ right-aligned under it w
 // ── Tickets tab ──
 
 const TICKETS = 4
-const ticketItems = (states: TicketState[], regions = TRAVEL_REGIONS.slice(1)): MartItem[] =>
+const ticketItems = (states: TicketState[], regions: readonly TravelRegion[] = TRAVEL_REGIONS.slice(1)): MartItem[] =>
   regions.map((r, i) => ({
     id: `ticket-${r.id}`,
     name: `${r.name} ferry ticket`,

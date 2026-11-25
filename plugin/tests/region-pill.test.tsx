@@ -85,6 +85,8 @@ function mountPill(p: PillProps) {
   const posts: JsonValue[] = []
   let onPointer: ((e: ClientPointerEvent) => void) | null = null
   const s: { -readonly [K in keyof ClientSurface<true>]: ClientSurface<true>[K] } = {
+    // Surface fields from Claude Code 2.1.332 on, spread so the CLI that CI pins (2.1.310) doesn't reject them as unknown.
+    ...{ beneath: [], isWindowFocused: true, isMotionReduced: false },
     elements: ELEMENTS,
     state: undefined,
     setState: next => void (s.state = next),

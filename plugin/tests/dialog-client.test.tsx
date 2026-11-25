@@ -49,6 +49,8 @@ function mount(first: DialogProps = PROPS) {
   let isDirty = false
   let tree: unknown = null
   const s: { -readonly [K in keyof ClientSurface<Typed>]: ClientSurface<Typed>[K] } = {
+    // Surface fields from Claude Code 2.1.332 on, spread so the CLI that CI pins (2.1.310) doesn't reject them as unknown.
+    ...{ beneath: [], isWindowFocused: true, isMotionReduced: false },
     elements: ELEMENTS,
     state: undefined,
     setState: next => {
