@@ -51,7 +51,7 @@ const partyStored = (w: { store: Map<string, unknown> }) => (w.store.get('save')
 test('a first session opens the Kanto starter choice and catches no random lead', KIT, async ($, on) => {
   const w = await begin($, on)
   expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
-  expect(await starterChoiceText($)).toContain('Kanto · choose your partner')
+  expect(await starterChoiceText($)).toContain('KANTO · NEW PARTNER')
   expect(partyStored(w)).toEqual([])
 })
 
@@ -1093,7 +1093,7 @@ test(
     w.net.isOnline = true
     await w.clock.advance(11_000)
     expect(partyStored(w)).toEqual([])
-    expect(await starterChoiceText($)).toContain('Bulbasaur')
+    expect(await starterChoiceText($)).toContain('BULBASAUR')
   },
 )
 

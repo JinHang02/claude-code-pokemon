@@ -4,6 +4,7 @@
 import type { Register } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
+import { STARTER_SCENE_ROWS } from '../hooks/dialogs'
 import type { DialogProps } from '../hooks/dialogs'
 import { FERRY_MS, SAILED_MS } from '../hooks/ferry-screen'
 import { register } from '../hooks/register'
@@ -209,12 +210,12 @@ test(
       shown = await dialogOf(band)
     }
     const text = textOf(shown)
-    expect(text).toContain('Kanto · choose your partner')
-    expect(text).toContain('Bulbasaur')
-    expect(text).toContain('Grass/Poison')
+    expect(text).toContain('KANTO · NEW PARTNER')
+    expect(text).toContain('BULBASAUR')
+    expect(text).toMatch(/Grass +Poison/)
     expect(colorsOf(shown).has(hex(BULBASAUR))).toBe(true)
     expect(picks(shown)).toEqual([0, 1, 2])
-    expect(await heightOf(band)).toBe(14)
+    expect(await heightOf(band)).toBe(STARTER_SCENE_ROWS)
     await w.clock.advance(30_000)
     expect(owned(stored(w))).toEqual([])
     expect(await dialogOf(band)).not.toBeNull()
@@ -235,7 +236,7 @@ test(
     const band = await mount($)
     expect(await dialogOf(band)).toBeNull()
     await w.clock.advance(11_000)
-    expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+    expect(textOf(await dialogOf(band))).toContain('KANTO · NEW PARTNER')
   },
 )
 
@@ -300,11 +301,11 @@ test('the arrow right: the panel shows Charmander, Fire; ← back to Bulbasaur',
   const band = await mount($)
   await act(band, 'right')
   const right = textOf(await dialogOf(band))
-  expect(right).toContain('Charmander')
+  expect(right).toContain('CHARMANDER')
   expect(right).toContain('Fire')
-  expect(right).not.toContain('Bulbasaur')
+  expect(right).not.toContain('BULBASAUR')
   await band.key({ key: 'left', in: 'dialog' })
-  expect(textOf(await dialogOf(band))).toContain('Bulbasaur')
+  expect(textOf(await dialogOf(band))).toContain('BULBASAUR')
 })
 
 test(
@@ -315,7 +316,7 @@ test(
     await cmd($, 'pokemon', 'party')
     const band = await mount($)
     await act(band, { pick: 2 })
-    expect(textOf(await dialogOf(band))).toContain('Take Squirtle?')
+    expect(textOf(await dialogOf(band))).toContain('Take SQUIRTLE as your Kanto partner?')
     expect(owned(stored(w))).toEqual([])
     await act(band, 'yes')
     expect(await dialogOf(band)).toBeNull()
@@ -336,8 +337,8 @@ test('asked about Squirtle, No: back to the balls with Squirtle highlighted, not
   await act(band, { pick: 2 })
   await act(band, 'no')
   const back = await dialogOf(band)
-  expect(textOf(back)).not.toContain('Take Squirtle?')
-  expect(textOf(back)).toContain('Squirtle')
+  expect(textOf(back)).not.toContain('Take SQUIRTLE as your Kanto partner?')
+  expect(textOf(back)).toContain('SQUIRTLE')
   expect(textOf(back)).toContain('Water')
   expect(picks(back)).toEqual([0, 1, 2])
   expect(owned(stored(w))).toEqual([])
@@ -349,7 +350,7 @@ test('Enter then y by key: the highlighted starter is chosen', SLOW, async ($, o
   const band = await mount($)
   await band.key({ key: 'right', in: 'dialog' })
   await band.key({ key: 'return', in: 'dialog' })
-  expect(textOf(await dialogOf(band))).toContain('Take Charmander?')
+  expect(textOf(await dialogOf(band))).toContain('Take CHARMANDER as your Kanto partner?')
   await band.key({ key: 'y', in: 'dialog' })
   expect(w.saveNow().party.map(m => m.species)).toEqual(['charmander'])
 })
@@ -370,7 +371,7 @@ test(
     expect(colorsOf(await dialogOf(band)).has(hex(BULBASAUR))).toBe(true)
     await act(band, 'right')
     const shown = await dialogOf(band)
-    expect(textOf(shown)).toContain('Charmander')
+    expect(textOf(shown)).toContain('CHARMANDER')
     expect(textOf(shown)).toContain('Fire')
     for (const color of [hex(BULBASAUR), ...ART_COLORS]) expect(colorsOf(shown).has(color)).toBe(false)
     await act(band, 'enter')
@@ -393,7 +394,7 @@ test(
     expect(owned(stored(w))).toEqual([])
     await restart($)
     await cmd($, 'pokemon', 'party')
-    expect(textOf(await dialogOf(await mount($)))).toContain('Kanto · choose your partner')
+    expect(textOf(await dialogOf(await mount($)))).toContain('KANTO · NEW PARTNER')
     expect(owned(stored(w))).toEqual([])
   },
 )
@@ -427,8 +428,8 @@ test(
     const names: string[] = []
     for (const _ of [0, 1, 2]) {
       const t = textOf(await dialogOf(band))
-      expect(t).toContain('Johto · choose your partner')
-      names.push(['Chikorita', 'Cyndaquil', 'Totodile'].find(n => t.includes(n)) ?? '')
+      expect(t).toContain('JOHTO · NEW PARTNER')
+      names.push(['Chikorita', 'Cyndaquil', 'Totodile'].find(n => t.includes(n.toUpperCase())) ?? '')
       await act(band, 'right')
     }
     expect(names).toEqual(['Chikorita', 'Cyndaquil', 'Totodile'])
@@ -444,7 +445,7 @@ test('on a short band: the Johto choice opens after Sailed to Johto.', SLOW, asy
   const { before, ms } = await untilDialog(w, band, SAILED_MS + 2000)
   expect(ms).toBeGreaterThanOrEqual(SAILED_MS - 300)
   expect(before.some(t => t.includes('Sailed to Johto.'))).toBe(true)
-  expect(textOf(await dialogOf(band))).toContain('Chikorita')
+  expect(textOf(await dialogOf(band))).toContain('▶ Chikorita')
   expect(await heightOf(band)).toBe(9)
 })
 
@@ -497,7 +498,7 @@ test('a Galar arrival offers Grookey, Scorbunny, Sobble', SLOW, async ($, on) =>
   for (const _ of [0, 1, 2]) {
     const t = textOf(await dialogOf(band))
     expect(t).toContain('Galar · choose your partner')
-    names.push(['Grookey', 'Scorbunny', 'Sobble'].find(n => t.includes(n)) ?? '')
+    names.push(['Grookey', 'Scorbunny', 'Sobble'].find(n => t.includes(`▶ ${n}`)) ?? '')
     await act(band, 'right')
   }
   expect(names).toEqual(['Grookey', 'Scorbunny', 'Sobble'])
@@ -554,7 +555,7 @@ test(
     expect(startersOwned(s).map(m => m.species)).toEqual([])
     await restart($)
     await cmd($, 'pokemon', 'party')
-    expect(textOf(await dialogOf(await mount($)))).toContain('Johto · choose your partner')
+    expect(textOf(await dialogOf(await mount($)))).toContain('JOHTO · NEW PARTNER')
   },
 )
 
@@ -742,7 +743,7 @@ test(
     const w = await play($, on, player(JOHTO_DUE), net())
     await cmd($, 'pokemon', 'party')
     const band = await mount($)
-    expect(textOf(await dialogOf(band))).toContain('Johto')
+    expect(textOf(await dialogOf(band))).toContain('JOHTO')
     expect(await cmd($, 'pokemon', 'choose Cyndaquil')).toBe('Cyndaquil joined your party!')
     expect(w.saveNow().journey.starters.johto).toEqual({ species: 'cyndaquil' })
     expect(w.saveNow().party.map(m => m.species)).toEqual(['pikachu', 'cyndaquil'])

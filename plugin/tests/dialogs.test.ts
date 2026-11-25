@@ -6,6 +6,8 @@ import {
   isDialogAct,
   STARTER_MIN_ROWS,
   STARTER_ROWS,
+  STARTER_SCENE_ROWS,
+  starterLayout,
   starterPicture,
   wipeWarning,
 } from '../hooks/dialogs'
@@ -18,9 +20,11 @@ import type { Pixels, TextRun } from '../hooks/sprite'
 const KANTO = TRAVEL_REGIONS[0] as TravelRegion
 const KANTO_STARTERS = KANTO.starters
 const BALL_RED = '#e3350d'
+const BALL_WHITE = '#f6f8fb'
+const BLUE = '#3a6ea5'
+const PAPER = '#f4f1e6'
+const PANEL_BG = '#f8f8f0'
 const RED_BG = '#b3261e'
-const ARROW_CELL_ROWS = 1
-const BALL_CELL_ROWS = 4
 
 const sprite = (color: number, width = 20, height = 20): Pixels => ({
   pixels: Array<number>(width * height).fill(color),
@@ -196,10 +200,10 @@ test('isDialogAct takes every act and rejects junk', () => {
 test('the starter screen shows the region, three balls, the arrow on ball 1 and Bulbasaur (A84)', () => {
   const p = dialogView(starter(), data())
   expect(p.lines).toHaveLength(STARTER_ROWS)
-  expect(all(p)).toContain('Kanto')
-  expect(all(p)).toContain('Bulbasaur')
-  expect(all(p)).toContain('Grass/Poison')
-  expect(all(p)).not.toContain('Charmander')
+  expect(all(p)).toContain('KANTO · NEW PARTNER')
+  expect(all(p)).toContain('BULBASAUR')
+  expect(all(p)).toMatch(/ Grass +Poison /)
+  expect(all(p)).not.toContain('CHARMANDER')
   const balls = [0, 1, 2].map(n => hitFor(p, { pick: n }))
   for (const hits of balls) expect(hits.length).toBeGreaterThan(0)
   const ballXs = balls.map(hits => hits[0]!)
@@ -207,33 +211,94 @@ test('the starter screen shows the region, three balls, the arrow on ball 1 and 
   expect(ballXs[1]!.x1).toBeLessThanOrEqual(ballXs[2]!.x0)
 })
 
+test('the scene is the mockup: title bar, sky over grass, a centred panel, a paper strip', () => {
+  const columns = 197
+  const p = dialogView(starter(), data({ columns, rows: STARTER_SCENE_ROWS }))
+  const bgs = p.lines.map(line => cells(line).map(([, , bg]) => bg))
+  expect(new Set(bgs[0])).toEqual(new Set([BLUE]))
+  expect(text(p.lines[0]!)).toMatch(/^ KANTO · NEW PARTNER  Three Poké Balls! .* ✕ $/)
+  expect(hitFor(p, 'close')).toEqual([{ y: 0, x0: columns - 3, x1: columns, act: 'close' }])
+  expect(new Set(bgs[STARTER_SCENE_ROWS - 1]!.slice(8))).toEqual(new Set([PAPER]))
+  expect(bgs[1]![0]).toBe('#1f4f80')
+  expect(bgs[STARTER_SCENE_ROWS - 2]![0]).toBe('#35703f')
+  const nameRow = p.lines.findIndex(l => text(l).includes('BULBASAUR'))
+  const panel = bgs[nameRow]!.flatMap((bg, x) => (bg === PANEL_BG ? [x] : []))
+  const [left, right] = [panel[0]!, panel[panel.length - 1]!]
+  expect(Math.abs(left - (columns - 1 - right))).toBeLessThanOrEqual(1)
+  expect(right - left).toBeGreaterThan(70)
+})
+
+test('the panel holds a sprite as tall as the panel allows, at most its own size', () => {
+  const at = starterLayout(197, STARTER_SCENE_ROWS - 2)
+  const inner = at.panel.end - at.panel.top - 2
+  expect(inner).toBe(18)
+  const tallness = (height: number) => {
+    const card = { ...CARDS[0]!, sprite: sprite(0x00aa00, 15, height) }
+    const img = starterPicture([card, ...CARDS.slice(1)], 0, 197, STARTER_SCENE_ROWS - 2)
+    return Array.from({ length: img.height }, (_, y) => img.pixels.slice(y * img.width, (y + 1) * img.width)).filter(
+      r => r.includes(0x00aa00),
+    ).length
+  }
+  expect(tallness(19)).toBe(inner)
+  expect(tallness(12)).toBe(12)
+})
+
+test('the balls sit at a quarter, a half and three quarters of the band, 10 pixels wide', () => {
+  const columns = 197
+  const p = dialogView(starter(), data({ columns, rows: STARTER_SCENE_ROWS }))
+  for (const n of [0, 1, 2]) {
+    const h = hitFor(p, { pick: n })[0]!
+    expect(h.x1 - h.x0).toBe(12)
+    expect((h.x0 + h.x1) / 2).toBe(Math.round((columns * (n + 1)) / 4))
+  }
+})
+
+test('a click in the middle of each ball picks that ball', () => {
+  for (const columns of [80, 197])
+    for (const rows of [STARTER_ROWS, STARTER_SCENE_ROWS]) {
+      const p = dialogView(starter(), data({ columns, rows }))
+      for (const n of [0, 1, 2] as const) {
+        const hits = hitFor(p, { pick: n })
+        const mid = hits[Math.floor(hits.length / 2)]!
+        const x = Math.floor((mid.x0 + mid.x1) / 2)
+        const clicked = p.hits.find(c => c.y === mid.y && c.x0 <= x && x < c.x1)
+        expect(clicked?.act).toEqual({ pick: n })
+        expect(run(starter(), clicked!.act).dialog).toEqual(starter({ sel: n, isAsking: true }))
+      }
+    }
+})
+
+test('◀ and ▶ on the paper strip move the highlight', () => {
+  const p = dialogView(starter({ sel: 1 }), data({ columns: 197, rows: STARTER_SCENE_ROWS }))
+  expect(shown(p, hitFor(p, 'left')[0]!)).toBe(' ◀ ')
+  expect(shown(p, hitFor(p, 'right')[0]!)).toBe(' ▶ ')
+})
+
 test('the arrow and the glow sit over the highlighted ball only', () => {
   const columns = 80
-  const rows = STARTER_ROWS - 1
-  const at = (sel: 0 | 1 | 2) => starterPicture(CARDS, sel, columns, rows)
-  expect(at(0).width).toBe(columns)
-  expect(at(0).height).toBe(rows * 2)
-  const p = dialogView(starter(), data({ columns, rows: STARTER_ROWS }))
-  const span = (n: number): [number, number] => {
-    const h = hitFor(p, { pick: n })[0]!
-    return [h.x0, h.x1]
-  }
-  // The pixels of rows y0 to y1 (exclusive) in the columns of ball `n`.
+  const rows = STARTER_SCENE_ROWS - 2
+  const at = starterLayout(columns, rows)
+  const pic = (sel: 0 | 1 | 2) => starterPicture(CARDS, sel, columns, rows)
+  // The pixels of rows y0 to y1 (exclusive) around ball `n`.
   const area = (img: Pixels, n: number, y0: number, y1: number) => {
-    const [x0, x1] = span(n)
-    return Array.from({ length: y1 - y0 }, (_, i) => img.pixels.slice((y0 + i) * columns + x0, (y0 + i) * columns + x1))
+    const x0 = at.ballLefts[n]! - 3
+    return Array.from({ length: y1 - y0 }, (_, i) =>
+      img.pixels.slice((y0 + i) * columns + x0, (y0 + i) * columns + x0 + 16),
+    )
   }
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
-  const ballTop = rows - BALL_CELL_ROWS
-  const arrowTop = ballTop - ARROW_CELL_ROWS
-  const arrow = (img: Pixels, n: number) => area(img, n, arrowTop * 2, ballTop * 2)
-  const ball = (img: Pixels, n: number) => area(img, n, ballTop * 2, rows * 2)
-  expect(same(arrow(at(0), 0), arrow(at(2), 0))).toBe(false)
-  expect(same(arrow(at(0), 1), arrow(at(2), 1))).toBe(true)
-  expect(same(ball(at(0), 0), ball(at(2), 0))).toBe(false)
-  expect(same(ball(at(0), 1), ball(at(2), 1))).toBe(true)
-  const areUnhighlightedAlike = same(ball(at(2), 0), ball(at(2), 1))
-  expect(areUnhighlightedAlike).toBe(true)
+  const arrow = (img: Pixels, n: number) => area(img, n, at.arrowTop, at.ballTop)
+  const ball = (img: Pixels, n: number) => area(img, n, at.ballTop, at.ballTop + 10)
+  expect(same(arrow(pic(0), 0), arrow(pic(2), 0))).toBe(false)
+  expect(same(arrow(pic(0), 1), arrow(pic(2), 1))).toBe(true)
+  expect(same(ball(pic(0), 0), ball(pic(2), 0))).toBe(false)
+  expect(same(ball(pic(0), 1), ball(pic(2), 1))).toBe(true)
+})
+
+test('asking turns the panel border red', () => {
+  const colors = (isAsking: boolean) => new Set(starterPicture(CARDS, 0, 197, STARTER_SCENE_ROWS - 2, isAsking).pixels)
+  expect(colors(false).has(0x3a4a78)).toBe(true)
+  expect(colors(true).has(0x3a4a78)).toBe(false)
 })
 
 test('the picture is grass under the balls and leaves no pixel clear', () => {
@@ -244,25 +309,25 @@ test('the picture is grass under the balls and leaves no pixel clear', () => {
 
 test('right moves the panel to Charmander and Fire (A85)', () => {
   const p = dialogView(run(starter(), 'right').dialog!, data())
-  expect(all(p)).toContain('Charmander')
+  expect(all(p)).toContain('CHARMANDER')
   expect(all(p)).toContain('Fire')
-  expect(all(p)).not.toContain('Bulbasaur')
+  expect(all(p)).not.toContain('BULBASAUR')
 })
 
 test('a card without a sprite still shows its name and types, and can be chosen (A88)', () => {
   const cards = CARDS.map(({ species, name, types }) => ({ species, name, types }))
   const p = dialogView(starter(), data({ cards }))
-  expect(all(p)).toContain('Bulbasaur')
-  expect(all(p)).toContain('Grass/Poison')
+  expect(all(p)).toContain('BULBASAUR')
+  expect(all(p)).toContain('Grass')
   expect(hitFor(p, { pick: 0 }).length).toBeGreaterThan(0)
-  const img = starterPicture(cards, 0, 80, STARTER_ROWS - 1)
+  const img = starterPicture(cards, 0, 80, STARTER_ROWS - 2)
   expect(img.pixels).not.toContain(0x00aa00)
-  expect(starterPicture(CARDS, 0, 80, STARTER_ROWS - 1).pixels).toContain(0x00aa00)
+  expect(starterPicture(CARDS, 0, 80, STARTER_ROWS - 2).pixels).toContain(0x00aa00)
 })
 
 test('missing cards fall back to the species name, so the screen still draws', () => {
   const p = dialogView(starter({ sel: 2 }), data({ cards: [] }))
-  expect(all(p)).toContain('Squirtle')
+  expect(all(p)).toContain('SQUIRTLE')
   expect(hitFor(p, { pick: 2 }).length).toBeGreaterThan(0)
 })
 
@@ -276,7 +341,7 @@ test('every line is exactly the band wide, one per row, at 40, 80 and 200 column
       }
 })
 
-test('below 8 rows the starters are a text list that still has 3 pick hits', () => {
+test('below STARTER_MIN_ROWS the starters are a text list that still has 3 pick hits', () => {
   for (const rows of [STARTER_MIN_ROWS - 1, 5, 4, 3, 2, 1]) {
     const p = dialogView(starter(), data({ rows }))
     expect(p.lines).toHaveLength(rows)
@@ -298,7 +363,7 @@ test('a Unicode name keeps the lines their width, composed or not', () => {
       const cards = [{ species: 'flabebe', name, types: ['fairy'] }, ...CARDS.slice(1)]
       const p = dialogView(starter({ isAsking: true }), data({ cards, rows, columns: 40 }))
       for (const line of p.lines) expect(width(text(line))).toBe(40)
-      expect(all(p).normalize('NFC')).toContain(name.normalize('NFC'))
+      expect(all(p).normalize('NFC').toUpperCase()).toContain(name.normalize('NFC').toUpperCase())
     }
 })
 
@@ -318,7 +383,7 @@ test('the hint row names the typed answer for a terminal that passes no clicks (
 
 test('asking names the starter and offers Yes and No hits, and no ball hits', () => {
   const p = dialogView(starter({ sel: 2, isAsking: true }), data())
-  expect(all(p)).toContain('Squirtle?')
+  expect(all(p)).toContain('Take SQUIRTLE as your Kanto partner?')
   expect(hitFor(p, 'yes')).toHaveLength(1)
   expect(hitFor(p, 'no')).toHaveLength(1)
   for (const n of [0, 1, 2]) expect(hitFor(p, { pick: n })).toHaveLength(0)
@@ -453,10 +518,10 @@ test('hits land on the drawn text, or on the ball they pick, in every view', () 
           expect(h.x0).toBeGreaterThanOrEqual(0)
           expect(h.x1).toBeLessThanOrEqual(columns)
           expect(h.x1).toBeGreaterThan(h.x0)
-          const isBall = d.kind === 'starter' && !d.isAsking && rows >= STARTER_MIN_ROWS
+          const isBall = typeof h.act === 'object' && d.kind === 'starter' && rows >= STARTER_MIN_ROWS
           if (isBall) {
             const drawn = cells(p.lines[h.y] ?? []).slice(h.x0, h.x1)
-            expect(drawn.some(([, fg, bg]) => [fg, bg].some(c => c === BALL_RED || c === '#f4f4f4'))).toBe(true)
+            expect(drawn.some(([, fg, bg]) => [fg, bg].some(c => c === BALL_RED || c === BALL_WHITE))).toBe(true)
           } else expect(shown(p, h).trim().length).toBeGreaterThan(0)
         }
       }

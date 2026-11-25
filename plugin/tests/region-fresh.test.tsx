@@ -228,7 +228,7 @@ test('no save: the Kanto starter choice, never the fresh-or-keep screen', SLOW, 
   await play($, on, undefined)
   await cmd($, 'pokemon', 'party')
   const shown = textOf(await dialogOf(await mount($)))
-  expect(shown).toContain('Kanto · choose your partner')
+  expect(shown).toContain('KANTO · NEW PARTNER')
   expect(shown).not.toContain('Keep my save')
 })
 
@@ -329,7 +329,7 @@ test(
     expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,000\n/)
     expect(await cmd($, 'pokemon', 'party')).toBe('Your party is empty. /pokemon <name> picks a lead.')
     expect(w.toasts).toContain('Started fresh with ₽3,000.')
-    expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+    expect(textOf(await dialogOf(band))).toContain('KANTO · NEW PARTNER')
     await act(band, { pick: 0 })
     await act(band, 'yes')
     expect(w.saveNow().party.map(m => m.species)).toEqual(['bulbasaur'])
@@ -474,7 +474,7 @@ test(
     expect([s.party, s.box ?? [], s.dex, s.bag ?? {}]).toEqual([[], [], {}, {}])
     expect(s.journey).toEqual(NEW)
     expect(await cmd($, 'pokemon', 'bag')).toMatch(/^Bag · ₽3,000\n/)
-    expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+    expect(textOf(await dialogOf(band))).toContain('KANTO · NEW PARTNER')
   },
 )
 
@@ -528,7 +528,7 @@ test('restart while the fresh-or-keep screen is open: confirmed, the save starts
   await act(band, 'yes')
   expect(w.saveNow().journey).toEqual(NEW)
   expect(w.saveNow().party).toEqual([])
-  expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+  expect(textOf(await dialogOf(band))).toContain('KANTO · NEW PARTNER')
 })
 
 test('restart with the Mart open: the Mart closes for the confirmation', SLOW, async ($, on) => {
@@ -648,7 +648,7 @@ test(
     expect(await cmd($, 'pokemon', 'fresh yes')).toBe('Started fresh with ₽3,000.')
     expect(w.saveNow().journey).toEqual(NEW)
     expect(w.saveNow().party).toEqual([])
-    expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+    expect(textOf(await dialogOf(band))).toContain('KANTO · NEW PARTNER')
   },
 )
 
@@ -695,7 +695,7 @@ test('/pokemon restart yes confirms the open restart; no closes it; with none op
   expect(asked).not.toContain('ctrl+x')
   expect(await cmd($, 'pokemon', 'restart yes')).toBe('Started fresh with ₽3,000.')
   expect(w.saveNow().journey).toEqual(NEW)
-  expect(textOf(await dialogOf(band))).toContain('Kanto · choose your partner')
+  expect(textOf(await dialogOf(band))).toContain('KANTO · NEW PARTNER')
 })
 
 test('keep, fresh and choose are never read as names, even with the species list stalled', SLOW, async ($, on) => {

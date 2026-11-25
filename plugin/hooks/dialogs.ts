@@ -1,6 +1,6 @@
 // The band dialogs: Dialog, DialogAct, DialogPost, DialogHit, DialogProps, StarterCard, DialogData; STARTER_ROWS,
-// STARTER_MIN_ROWS, WIPED; isDialogAct, dialogAct (the reducer), dialogView (the lines and hits), wipeWarning and
-// starterPicture.
+// STARTER_MIN_ROWS, WIPED; isDialogAct, dialogAct (the reducer), dialogView (the lines and hits), wipeWarning,
+// starterPicture and starterLayout.
 import type { TravelRegion, RegionId } from './travel-regions'
 import { CLEAR, resample, textRows } from './sprite'
 import type { Pixels, TextRun } from './sprite'
@@ -25,7 +25,9 @@ export type DialogData = {
 }
 
 export const STARTER_ROWS = 14
-export const STARTER_MIN_ROWS = 8
+const MOCK_HEIGHT_ROWS = 20
+export const STARTER_MIN_ROWS = 14
+export const STARTER_SCENE_ROWS = 2 + MOCK_HEIGHT_ROWS
 
 const NAMES: readonly string[] = ['left', 'right', 'enter', 'yes', 'no', 'close']
 const PAPER = '#f4f1e6'
@@ -37,25 +39,78 @@ const BUTTON = '#d8d4c8'
 const RED = '#b3261e'
 const PINK = '#ffd0c8'
 
-const SKY = 0x9ad0f5
-const GRASS = 0x5cb85c
-const BLADE = 0x3f8f3f
+// The approved mockup, on its 5 px grid: one grid square per band pixel, so the picture between its title and hint
+// rows is 192 by 40 pixels, 192 columns by 20 rows.
+const MOCK_WIDTH = 192
+const MOCK_HEIGHT = 40
+// [the grid row where the band ends, colour], top to bottom.
+const BACKDROP: [number, number][] = [
+  [4, 0x1f4f80],
+  [8, 0x2a5d90],
+  [12, 0x366ca2],
+  [18, 0x4581b8],
+  [26, 0x5b9bd0],
+  [28, 0x4fa845],
+  [Infinity, 0x35703f],
+]
+const TUFT = 0x4fa845
+const TUFT_DARK = 0x2f7a2d
 const BALL_RED = 0xe3350d
-const BALL_WHITE = 0xf4f4f4
-const BALL_LINE = 0x222222
-const GLOW = 0xfff27a
-const ARROW = 0x20232f
+const BALL_WHITE = 0xf6f8fb
+const BALL_LINE = 0x24262e
+const GLOW = 0xffe28a
 const PANEL = 0xf8f8f0
 const PANEL_EDGE = 0x3a4a78
+const PANEL_TEXT = '#20232f'
+const TITLE_MESSAGE = '#d8ffd8'
+const HINT_GREY = '#6f6a60'
+const YES_RED = '#e3350d'
+const PANEL_BG = '#f8f8f0'
+const CHIP_NORMAL: [string, string] = ['#e8e6dc', '#3d3a30']
+// [background, text] of each type's chip; grass, fire and water from the mockup.
+const CHIPS: Record<string, [string, string]> = {
+  grass: ['#cfeec0', '#173d12'],
+  fire: ['#ffd9b8', '#7a2410'],
+  water: ['#cfe4fa', '#10284a'],
+  normal: CHIP_NORMAL,
+  electric: ['#fff2b0', '#5c4a00'],
+  ice: ['#d6f4f4', '#124848'],
+  fighting: ['#f6c9c0', '#5c1a10'],
+  poison: ['#ead0f0', '#4a1856'],
+  ground: ['#f0e0b8', '#4d3a10'],
+  flying: ['#dcdcf8', '#262a5c'],
+  psychic: ['#fbd0e0', '#5c1030'],
+  bug: ['#e4efb8', '#3a4a0c'],
+  rock: ['#e6dcc0', '#463a1a'],
+  ghost: ['#ddd4ee', '#33244f'],
+  dragon: ['#d6ccfa', '#271a5c'],
+  dark: ['#ddd6d0', '#2e2620'],
+  steel: ['#e0e4ec', '#2c3440'],
+  fairy: ['#fbd8ec', '#5c1a3c'],
+}
 
-const BALL = ['.RRRR.', 'RRRRRR', 'KKWWKK', 'WWWWWW', 'WWWWWW', '.WWWW.']
-const BALL_SIZE = 6
-const ARROW_ROWS = ['.XXXX.', '..XX..']
-const ARROW_CELL_ROWS = 1
-const BALL_CELL_ROWS = 4
-const BALL_ZONE_ROWS = ARROW_CELL_ROWS + BALL_CELL_ROWS
-const SPRITE_COLUMN = 3
+const BALL = [
+  '...kkkk...',
+  '.kkrrrrkk.',
+  '.krrrrrwrk',
+  'krrrrrrrrk',
+  'krrrkkrrrk',
+  'kkkkwwkkkk',
+  'kwwwkkwwwk',
+  '.kwwwwwwwk',
+  '.kkwwwwkk.',
+  '...kkkk...',
+]
+const BALL_SIZE = 10
+const BALL_COLORS: Record<string, number> = { k: BALL_LINE, r: BALL_RED, w: BALL_WHITE }
+const ARROW_ROWS = ['yyyyyyy', '.yyyyy.', '..yyy..', '...y...']
+const GLOW_SIZE = 16
+const GLOW_RING: [number, number] = [6.2, 7.6]
 
+const LOOK_HINT = '  ← → or hover to look · click or Enter on a ball to choose it'
+const TYPED_HINT = ' · /pokemon choose <name>'
+const SHORT_LOOK_HINT = '  click or Enter on a ball'
+const LOOK_MESSAGE = 'Three Poké Balls! Look at each, then choose one.'
 const CHOOSE_HINT = 'click, or /pokemon choose <name>'
 const KEEP_HINT = 'click, or /pokemon keep or fresh'
 const ANSWER_HINT = 'y Yes · n No'
@@ -223,60 +278,131 @@ const cardAt = (data: DialogData, n: number): StarterCard => {
 }
 const typesOf = (card: StarterCard) => card.types.map(capital).join('/')
 const regionLine = (r: TravelRegion) => `${r.name} · choose your partner`
+const shout = (card: StarterCard) => card.name.toUpperCase()
+const takeLine = (card: StarterCard, r: TravelRegion) => `Take ${shout(card)} as your ${r.name} partner?`
 
-// The panel's sprite: fitted to the panel's height and a third of the band's width; null with no sprite.
-function panelSprite(card: StarterCard | undefined, panelRows: number, columns: number): Pixels | null {
-  const img = card?.sprite
-  if (!img || panelRows <= 0 || img.width <= 0 || img.height <= 0) return null
-  return resample(img, Math.min(1, (panelRows * 2) / img.height, Math.max(1, Math.floor(columns / 3)) / img.width))
+// The panel's lines: the name, the type chips, the hint; each a run of segments.
+function panelLines(card: StarterCard, sel: 0 | 1 | 2, isAsking: boolean): Line[] {
+  const chips = card.types.flatMap((t, i): Line => {
+    const [bg, fg] = CHIPS[t] ?? CHIP_NORMAL
+    return [...(i ? [{ text: ' ', fg: PANEL_TEXT, bg: PANEL_BG }] : []), { text: ` ${capital(t)} `, fg, bg }]
+  })
+  const hint = isAsking ? 'Yes or No below' : `Ball ${sel + 1} of 3 · click to choose`
+  return [[{ text: shout(card), fg: PANEL_TEXT, bg: PANEL_BG }], chips, [{ text: hint, fg: HINT_GREY, bg: PANEL_BG }]]
 }
 
-// Left column of ball `n` (0 to 2).
-const ballLeft = (columns: number, n: number) => Math.round((columns * (n + 1)) / 4) - BALL_SIZE / 2
-
 /**
- * The starter picture: a panel with the highlighted starter's sprite, three Poké Balls on grass, the arrow and glow
- * on ball `sel`.
+ * Where the starter picture's parts go: the mockup's grid one to one, the sky and the panel squeezed when the band
+ * is shorter than the mockup, more sky on top when it is taller.
  * @param columns, rows the picture's size in cells; it is `rows * 2` pixels high.
- * @returns every pixel set.
+ * @param textWidth the widest panel line, in cells.
+ * @returns pixel positions: `ballTop` and `ballLefts` of the three balls, `arrowTop`, the `panel` (left, width, top,
+ *   end exclusive), its sprite box (`spriteLeft`, `spriteWidth`), the panel's text column `textLeft`, and `skyEnd`,
+ *   the row where the squeezed sky meets the grid one to one.
  */
-export function starterPicture(cards: readonly StarterCard[], sel: 0 | 1 | 2, columns: number, rows: number): Pixels {
+export function starterLayout(columns: number, rows: number, textWidth = 0) {
   const w = Math.max(0, Math.floor(columns))
   const h = Math.max(0, Math.floor(rows)) * 2
-  const pixels = Array<number>(w * h).fill(SKY)
+  const sx = w / MOCK_WIDTH
+  const arrowTop = Math.max(PANEL_MIN_END, h - (MOCK_HEIGHT - MOCK_ARROW_TOP))
+  const pad = Math.max(1, Math.round(3 * sx))
+  const spriteWidth = Math.max(1, Math.round(18 * sx))
+  const textOffset = 1 + pad + spriteWidth + pad
+  const width = Math.min(w, Math.max(Math.round(76 * sx), textOffset + textWidth + pad + 1))
+  const left = Math.floor((w - width) / 2)
+  return {
+    ballTop: arrowTop + MOCK_BALL_TOP - MOCK_ARROW_TOP,
+    ballLefts: [0, 1, 2].map(n => Math.round((w * (n + 1)) / 4) - BALL_SIZE / 2),
+    arrowTop,
+    panel: { left, width, top: Math.max(1, arrowTop - MOCK_ARROW_TOP + 1), end: arrowTop },
+    spriteLeft: left + 1 + pad,
+    spriteWidth,
+    textLeft: left + textOffset,
+    skyEnd: arrowTop,
+  }
+}
+
+// The mockup's grid rows: the arrow's top, the balls' top; a panel shorter than PANEL_MIN_END has no room for its text.
+const MOCK_ARROW_TOP = 21
+const MOCK_BALL_TOP = 26
+const PANEL_MIN_END = 9
+
+// The picture rows whose both pixels are inside the panel's border.
+function panelTextRows(panel: { top: number; end: number }): number[] {
+  const first = Math.ceil((panel.top + 1) / 2)
+  const last = Math.floor((panel.end - 2 - 1) / 2)
+  return Array.from({ length: Math.max(0, last - first + 1) }, (_, i) => first + i)
+}
+
+// The mockup's grid row and column for pixel (x, y): one to one from `skyEnd` down, the sky above squeezed or grown.
+function backdrop(x: number, y: number, sx: number, skyEnd: number): number {
+  const gx = (x + 0.5) / sx
+  const gy = y >= skyEnd ? MOCK_ARROW_TOP + y - skyEnd : ((y + 0.5) * MOCK_ARROW_TOP) / skyEnd
+  if (gy >= 30 && gy < 32 && gx % 8 < 2) return TUFT
+  if (gy >= 34 && gy < 36 && gx >= 4 && (gx - 4) % 10 < 2) return TUFT_DARK
+  return (BACKDROP.find(([end]) => gy < end) ?? BACKDROP[BACKDROP.length - 1]!)[1]
+}
+
+/**
+ * The starter picture: sky and grass, the panel with the highlighted starter's sprite, three Poké Balls on the grass,
+ * the arrow and glow on ball `sel`.
+ * @param columns, rows the picture's size in cells; it is `rows * 2` pixels high.
+ * @param isAsking the panel's border red, as when asking.
+ * @returns every pixel set.
+ */
+export function starterPicture(
+  cards: readonly StarterCard[],
+  sel: 0 | 1 | 2,
+  columns: number,
+  rows: number,
+  isAsking = false,
+): Pixels {
+  const card = cards[sel]
+  const textWidth = card ? Math.max(...panelLines(card, sel, isAsking).map(lineWidth)) : 0
+  const at = starterLayout(columns, rows, textWidth)
+  const w = Math.max(0, Math.floor(columns))
+  const h = Math.max(0, Math.floor(rows)) * 2
+  const sx = w / MOCK_WIDTH
+  const pixels = Array.from({ length: w * h }, (_, i) => backdrop(i % w, Math.floor(i / w), sx, at.skyEnd))
   const set = (x: number, y: number, c: number) => {
     if (x >= 0 && x < w && y >= 0 && y < h) pixels[y * w + x] = c
   }
-  for (let y = Math.max(0, h - 6); y < h; y++)
-    for (let x = 0; x < w; x++) set(x, y, (x * 7 + y * 3) % 5 ? GRASS : BLADE)
 
-  const panelRows = Math.max(0, rows - BALL_ZONE_ROWS)
-  for (let y = 0; y < panelRows * 2; y++)
-    for (let x = 1; x < w - 1; x++) set(x, y, x === 1 || x === w - 2 ? PANEL_EDGE : PANEL)
-  const img = panelSprite(cards[sel], panelRows, w)
-  if (img) {
-    const top = Math.floor((panelRows * 2 - img.height) / 2)
-    for (let y = 0; y < img.height; y++)
-      for (let x = 0; x < img.width; x++) {
-        const c = img.pixels[y * img.width + x] ?? CLEAR
-        if (c !== CLEAR && SPRITE_COLUMN + x < w - 2) set(SPRITE_COLUMN + x, top + y, c)
+  const { left, width: pw, top, end } = at.panel
+  for (let y = top; y < end; y++)
+    for (let x = left; x < left + pw; x++) {
+      const isEdge = x === left || x === left + pw - 1 || y === top || y === end - 1
+      set(x, y, isEdge ? (isAsking ? BALL_RED : PANEL_EDGE) : PANEL)
+    }
+  const img = card?.sprite
+  const inner = end - top - 2
+  if (img && inner > 0 && img.width > 0 && img.height > 0) {
+    const fit = resample(img, Math.min(1, inner / img.height, at.spriteWidth / img.width))
+    const x0 = at.spriteLeft + Math.floor((at.spriteWidth - fit.width) / 2)
+    const y0 = top + 1 + Math.ceil((inner - fit.height) / 2)
+    for (let y = 0; y < fit.height; y++)
+      for (let x = 0; x < fit.width; x++) {
+        const c = fit.pixels[y * fit.width + x] ?? CLEAR
+        if (c !== CLEAR && x0 + x < left + pw - 1) set(x0 + x, y0 + y, c)
       }
   }
 
-  const ballTop = h - 7
+  const glowOff = (GLOW_SIZE - BALL_SIZE) / 2
+  const c = (GLOW_SIZE - 1) / 2
   for (let n = 0; n < 3; n++) {
-    const left = ballLeft(w, n)
+    const bx = at.ballLefts[n] ?? 0
     if (n === sel) {
-      for (let y = -1; y <= BALL_SIZE; y++)
-        for (let x = -1; x <= BALL_SIZE; x++) {
-          const isCorner = (x === -1 || x === BALL_SIZE) && (y === -1 || y === BALL_SIZE)
-          if (!isCorner) set(left + x, ballTop + y, GLOW)
+      for (let y = 0; y < GLOW_SIZE; y++)
+        for (let x = 0; x < GLOW_SIZE; x++) {
+          const d = Math.hypot(x - c, y - c)
+          if (d >= GLOW_RING[0] && d < GLOW_RING[1]) set(bx - glowOff + x, at.ballTop - glowOff + y, GLOW)
         }
-      ARROW_ROWS.forEach((row, y) => [...row].forEach((ch, x) => ch === 'X' && set(left + x, ballTop - 3 + y, ARROW)))
+      ARROW_ROWS.forEach((row, y) => [...row].forEach((ch, x) => ch === 'y' && set(bx + 1 + x, at.arrowTop + y, GLOW)))
     }
     BALL.forEach((row, y) =>
       [...row].forEach((ch, x) => {
-        if (ch !== '.') set(left + x, ballTop + y, ch === 'R' ? BALL_RED : ch === 'W' ? BALL_WHITE : BALL_LINE)
+        const color = BALL_COLORS[ch]
+        if (color !== undefined) set(bx + x, at.ballTop + y, color)
       }),
     )
   }
@@ -298,15 +424,17 @@ function segsOf(cells: TextRun[]): Line {
 const clip = (text: string, w: number) =>
   width(text) <= w ? text : [...text].slice(0, Math.max(0, w - 1)).join('') + (w > 0 ? '…' : '')
 
-function overlay(cells: TextRun[], x: number, text: string, fg: string, limit: number): void {
-  ;[...text].forEach((ch, i) => {
-    const at = x + i
-    const under = cells[at]
-    if (under && at < limit) cells[at] = [ch, fg, under[2]]
-  })
+// `line` drawn over `cells` from column `x`, cut at `limit`.
+function overlay(cells: TextRun[], x: number, line: Line, limit: number): void {
+  let at = x
+  for (const { text, fg, bg } of line)
+    for (const ch of text) {
+      if (cells[at] && at < limit) cells[at] = [ch, fg, bg]
+      at++
+    }
 }
 
-// The question or the keys, on the last row.
+// The question or the keys, for the list layout's last row.
 function starterFooter(d: Extract<Dialog, { kind: 'starter' }>, data: DialogData): Line {
   if (!d.isAsking) return [{ text: clip(` ${CHOOSE_HINT} · x later`, data.columns), fg: GREY, bg: PAPER }]
   const answers: Line = [
@@ -353,43 +481,79 @@ function starterList(d: Extract<Dialog, { kind: 'starter' }>, data: DialogData, 
   return render(lines, columns, rows, PAPER)
 }
 
+// The title bar: the region, the message, and ✕ at the right.
+function starterTitle(d: Extract<Dialog, { kind: 'starter' }>, data: DialogData, columns: number): Line {
+  const close: Seg = { text: ' ✕ ', fg: WHITE, bg: BLUE, act: 'close' }
+  const room = Math.max(0, columns - width(close.text))
+  const head = clip(` ${data.region.name.toUpperCase()} · NEW PARTNER `, room)
+  const message = d.isAsking ? takeLine(cardAt(data, d.sel), data.region) : LOOK_MESSAGE
+  const said = clip(` ${message}`, room - width(head))
+  return [
+    { text: head, fg: WHITE, bg: BLUE },
+    { text: said, fg: TITLE_MESSAGE, bg: BLUE },
+    { text: ' '.repeat(Math.max(0, room - width(head) - width(said))), fg: WHITE, bg: BLUE },
+    close,
+  ]
+}
+
+// The paper strip: the look keys and hint, or the question with Yes and No at the right.
+function starterStrip(d: Extract<Dialog, { kind: 'starter' }>, data: DialogData, columns: number): Line {
+  const gap: Seg = { text: ' ', fg: INK, bg: PAPER }
+  if (!d.isAsking) {
+    const keys: Line = [
+      { text: ' ◀ ', fg: WHITE, bg: BLUE, act: 'left' },
+      gap,
+      { text: ' ▶ ', fg: WHITE, bg: BLUE, act: 'right' },
+    ]
+    const room = columns - lineWidth(keys)
+    const hint = [LOOK_HINT + TYPED_HINT, SHORT_LOOK_HINT + TYPED_HINT].find(h => width(h) <= room) ?? LOOK_HINT
+    return [...keys, { text: clip(hint, room), fg: HINT_GREY, bg: PAPER }]
+  }
+  const answers: Line = [
+    { text: ' Yes, take it ', fg: WHITE, bg: YES_RED, act: 'yes' },
+    gap,
+    { text: ' No ', fg: WHITE, bg: BLUE, act: 'no' },
+    gap,
+  ]
+  const room = Math.max(0, columns - lineWidth(answers))
+  const question = clip(` ${takeLine(cardAt(data, d.sel), data.region)} `, room)
+  return [
+    { text: question, fg: INK, bg: PAPER },
+    { text: ' '.repeat(room - width(question)), fg: INK, bg: PAPER },
+    ...answers,
+  ]
+}
+
 function starterView(d: Extract<Dialog, { kind: 'starter' }>, data: DialogData, columns: number, rows: number) {
   if (rows < STARTER_MIN_ROWS) return starterList(d, data, columns, rows)
-  const picRows = rows - 1
+  const picRows = rows - 2
   const cards = [0, 1, 2].map(n => cardAt(data, n))
-  const pic = textRows(starterPicture(cards, d.sel, columns, picRows)).map(cellsOf)
-
-  const panelRows = picRows - BALL_ZONE_ROWS
   const card = cardAt(data, d.sel)
-  const img = panelSprite(card, panelRows, columns)
-  const x = SPRITE_COLUMN + (img ? img.width + 2 : 0)
-  const name = card.name
-  const texts: [string, string][] =
-    panelRows >= 3
-      ? [
-          [regionLine(data.region), BLUE],
-          [name, INK],
-          [typesOf(card), GREY],
-        ]
-      : [
-          [regionLine(data.region), BLUE],
-          [`${name} · ${typesOf(card)}`, INK],
-        ]
-  const top = Math.floor((panelRows - texts.length) / 2)
-  texts.forEach(([text, fg], i) => {
-    const row = pic[top + i]
-    if (row) overlay(row, x, text, fg, columns - 2)
+  const panel = panelLines(card, d.sel, d.isAsking)
+  const at = starterLayout(columns, picRows, Math.max(...panel.map(lineWidth)))
+  const pic = textRows(starterPicture(cards, d.sel, columns, picRows, d.isAsking)).map(cellsOf)
+
+  const slots = panelTextRows(at.panel)
+  const shown = panel.slice(0, slots.length)
+  const first = (slots[0] ?? 0) + Math.floor((slots.length - shown.length) / 2)
+  const limit = at.panel.left + at.panel.width - 1
+  shown.forEach((line, i) => {
+    const row = pic[first + i]
+    if (row) overlay(row, at.textLeft, line, limit)
   })
 
-  const lines: Line[] = [...pic.map(segsOf), []]
-  lines[rows - 1] = starterFooter(d, data)
+  const lines: Line[] = [starterTitle(d, data, columns), ...pic.map(segsOf), starterStrip(d, data, columns)]
+  const ballRows = Array.from(
+    { length: Math.floor((at.ballTop + BALL_SIZE - 1) / 2) - Math.floor(at.ballTop / 2) + 1 },
+    (_, i) => 1 + Math.floor(at.ballTop / 2) + i,
+  )
   const ballHits: DialogHit[] = d.isAsking
     ? []
     : [0, 1, 2].flatMap(n =>
-        Array.from({ length: BALL_CELL_ROWS }, (_, i) => picRows - BALL_CELL_ROWS + i).map((y): DialogHit => ({
+        ballRows.map((y): DialogHit => ({
           y,
-          x0: Math.max(0, ballLeft(columns, n) - 1),
-          x1: Math.min(columns, ballLeft(columns, n) + BALL_SIZE + 1),
+          x0: Math.max(0, (at.ballLefts[n] ?? 0) - 1),
+          x1: Math.min(columns, (at.ballLefts[n] ?? 0) + BALL_SIZE + 1),
           act: { pick: n },
         })),
       )

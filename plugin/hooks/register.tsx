@@ -108,7 +108,7 @@ import type { Evolution, Ledger, Member, Save, Size, Together } from './save'
 import { EVOLUTION_STYLES, isEvolutionStyle } from './evolution-style'
 import type { EvolutionStyle } from './evolution-style'
 import { BOX, evolutionFrame, SCREEN_MIN_ROWS, SCREEN_MS, TEXT_COLUMN } from './evolution-screen'
-import { dialogAct, dialogView, isDialogAct, STARTER_ROWS, wipeWarning, WIPED } from './dialogs'
+import { dialogAct, dialogView, isDialogAct, STARTER_ROWS, STARTER_SCENE_ROWS, wipeWarning, WIPED } from './dialogs'
 import type { Dialog, DialogAct, DialogProps, StarterCard } from './dialogs'
 import {
   FERRY_MIN_COLUMNS,
@@ -3620,7 +3620,7 @@ export const register: Register = on => {
       voyage && !voyage.isShort
         ? Math.min(e.props.maxRows, FERRY_ROWS)
         : dialog && !voyage
-          ? Math.min(e.props.maxRows, STARTER_ROWS)
+          ? Math.min(e.props.maxRows, dialog.kind === 'starter' ? STARTER_SCENE_ROWS : STARTER_ROWS)
           : screen
             ? Math.min(e.props.maxRows, Math.max(fits, screen.rows))
             : fits
