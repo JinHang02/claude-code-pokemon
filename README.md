@@ -238,7 +238,7 @@ A ferry carries your party across the band, and the region's name in the corner 
 
 **Your first arrival in a region** brings its starters: Chikorita, Cyndaquil and Totodile wait in their Poké Balls in Johto. Pick one and it joins you, caught. Press `x` to decide later: the choice comes back the next time Claude Code starts, or the next time you sail there.
 
-The starter choice and the other screens in the band take a click; once you've clicked one, `←` `→` choose, `Enter` picks, `y` and `n` answer and `x` closes. No mouse? Each one has a typed answer too:
+The starter choice and the other screens in the band take a click; once you've clicked one, `←` `→` choose, `Enter` picks and takes it, `n` answers no and `x` closes. Wiping a save needs a click on Yes or a typed `yes`. No mouse? Each one has a typed answer too:
 
 ```text
 /pokemon choose cyndaquil  take one of the starters on offer

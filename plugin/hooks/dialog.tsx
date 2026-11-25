@@ -8,7 +8,6 @@ export const KEYS: Record<string, DialogAct> = {
   left: 'left',
   right: 'right',
   return: 'enter',
-  y: 'yes',
   n: 'no',
   x: 'close',
 }

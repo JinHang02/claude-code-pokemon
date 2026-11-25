@@ -152,7 +152,7 @@ export function dialogAct(
     if (d.isAsking) {
       if (a === 'no') return { dialog: { ...d, isAsking: false } }
       const species = starters[d.sel]
-      return a === 'yes' && species ? { dialog: d, post: { choose: species } } : same
+      return (a === 'yes' || a === 'enter') && species ? { dialog: d, post: { choose: species } } : same
     }
     if (a === 'left' || a === 'right') {
       const sel = Math.max(0, Math.min(2, d.sel + (a === 'left' ? -1 : 1)))

@@ -181,17 +181,16 @@ test('a click is judged on the props drawn last', () => {
 
 // ── Keys ──
 
-test('← → Enter y n x post left, right, enter, yes, no and close', () => {
+test('← → Enter n x post left, right, enter, no and close', () => {
   const d = mount()
-  for (const key of ['left', 'right', 'return', 'y', 'n', 'x']) d.key({ key })
-  expect(d.posts).toEqual([
-    { act: 'left' },
-    { act: 'right' },
-    { act: 'enter' },
-    { act: 'yes' },
-    { act: 'no' },
-    { act: 'close' },
-  ])
+  for (const key of ['left', 'right', 'return', 'n', 'x']) d.key({ key })
+  expect(d.posts).toEqual([{ act: 'left' }, { act: 'right' }, { act: 'enter' }, { act: 'no' }, { act: 'close' }])
+})
+
+test('y alone is typed, never a yes', () => {
+  const d = mount()
+  d.key({ key: 'y' })
+  expect(d.posts).toEqual([{ typed: 'y' }])
 })
 
 test('x with shift held types a capital X, not a close', () => {

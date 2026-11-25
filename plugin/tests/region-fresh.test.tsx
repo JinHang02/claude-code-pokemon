@@ -478,6 +478,23 @@ test(
   },
 )
 
+test('y by key on the wipe confirmation, fresh or restart, wipes nothing', SLOW, async ($, on) => {
+  on('prompt.fill', async () => ({ isFilled: true }))
+  const w = await play($, on, veteran())
+  await cmd($, 'pokemon', 'party')
+  const before = stored(w)
+  const band = await mount($)
+  await act(band, { pick: 0 })
+  expect(textOf(await dialogOf(band))).toContain('Start fresh?')
+  await band.key({ key: 'y', in: 'dialog' })
+  expect(stored(w)).toEqual(before)
+  expect(await cmd($, 'pokemon', 'keep')).toBe('Kept your save.')
+  const afterKeep = stored(w)
+  await restartIn($, band)
+  await band.key({ key: 'y', in: 'dialog' })
+  expect(stored(w)).toEqual(afterKeep)
+})
+
 test('restart declined or dismissed: nothing changes and the band is back', SLOW, async ($, on) => {
   const w = await play($, on, player(WITH_JOHTO))
   await cmd($, 'pokemon', 'party')
@@ -718,10 +735,11 @@ test('a confirmation too small to show what it wipes takes no yes, by key or pos
   await restartIn($, await mount($))
   const small = await mount($, 1, 40)
   expect(flat(await dialogOf(small))).toMatch(/too small/i)
-  await small.key({ key: 'y', in: 'dialog' })
   await act(small, 'yes')
   expect(stored(w)).toEqual(before)
   expect(flat(await dialogOf(small))).toMatch(/too small/i)
+  await small.key({ key: 'y', in: 'dialog' })
+  expect(stored(w)).toEqual(before)
 })
 
 test(

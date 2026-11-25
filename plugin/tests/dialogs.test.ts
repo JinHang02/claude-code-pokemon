@@ -119,9 +119,14 @@ test('yes posts the asked starter; no goes back with its ball still highlighted 
   expect(run(starter(), { pick: 2 }, 'no')).toEqual({ dialog: starter({ sel: 2 }), posts: [] })
 })
 
-test('while asking, moves, picks and enter change nothing; yes and no before asking do nothing', () => {
+test('enter while asking takes the asked starter, as yes does', () => {
+  expect(run(starter(), { pick: 2 }, 'enter').posts).toEqual([{ choose: 'squirtle' }])
+  expect(run(starter({ sel: 1 }), 'enter', 'enter').posts).toEqual([{ choose: 'charmander' }])
+})
+
+test('while asking, moves and picks change nothing; yes and no before asking do nothing', () => {
   const asking = starter({ sel: 2, isAsking: true })
-  for (const a of ['left', 'right', 'enter', { hover: 0 }, { pick: 0 }] as DialogAct[])
+  for (const a of ['left', 'right', { hover: 0 }, { pick: 0 }] as DialogAct[])
     expect(run(asking, a)).toEqual({ dialog: asking, posts: [] })
   expect(run(starter(), 'yes')).toEqual({ dialog: starter(), posts: [] })
   expect(run(starter(), 'no')).toEqual({ dialog: starter(), posts: [] })

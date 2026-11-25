@@ -33,7 +33,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
 - A save from before regions opens a choice the first time: **Keep my save** (everything stays; you start in Kanto
   with the later regions locked) or **Start fresh** (asks again in red, then as restart). Until you choose, the save
   plays as kept and the choice opens again at the next start.
-- The band's screens take a click, then keys: `←` `→`, `Enter`, `y`, `n`, and `x` to close. Typing anything else
+- The band's screens take a click, then keys: `←` `→`, `Enter`, `n`, and `x` to close. Wiping a save takes a click
+  on Yes or a typed `yes`, never a key. Typing anything else
   closes the screen and goes to the prompt. Each has a typed answer too, for a terminal that passes no clicks:
   `/pokemon choose <starter>`, `/pokemon keep`, `/pokemon fresh` (then `/pokemon fresh yes`) and
   `/pokemon restart yes`; `no` instead of `yes` keeps the save.

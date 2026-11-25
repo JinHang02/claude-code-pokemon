@@ -344,14 +344,14 @@ test('asked about Squirtle, No: back to the balls with Squirtle highlighted, not
   expect(owned(stored(w))).toEqual([])
 })
 
-test('Enter then y by key: the highlighted starter is chosen', SLOW, async ($, on) => {
+test('Enter then Enter by key: the highlighted starter is chosen', SLOW, async ($, on) => {
   const w = await play($, on, undefined, net())
   await cmd($, 'pokemon', 'party')
   const band = await mount($)
   await band.key({ key: 'right', in: 'dialog' })
   await band.key({ key: 'return', in: 'dialog' })
   expect(textOf(await dialogOf(band))).toContain('Take CHARMANDER as your Kanto partner?')
-  await band.key({ key: 'y', in: 'dialog' })
+  await band.key({ key: 'return', in: 'dialog' })
   expect(w.saveNow().party.map(m => m.species)).toEqual(['charmander'])
 })
 
