@@ -238,7 +238,7 @@ test('/pokemon buy johto ticket with exactly ₽150,000: owned, ₽0, Kanto stil
   expect(await cmd($, 'pokemon', 'bag')).toContain('₽0')
 })
 
-for (const args of ['Johto Ticket 1', '1 johto TICKET'])
+for (const args of ['Johto Ticket 1', '1 johto TICKET', 'johto ferry ticket'])
   test(`typed buys any case and with the count 1 first or last: buy ${args}`, KIT, async ($, on) => {
     const w = await begin($, on, player(400_000))
     expect(await cmd($, 'pokemon', `buy ${args}`)).toContain('Bought the Johto ferry ticket.')
@@ -296,7 +296,7 @@ test('the Kanto ticket is owned from the start: a click on it and a typed buy ch
 test('no ticket for words that only look like one', KIT, async ($, on) => {
   const w = await begin($, on, player(10_000_000))
   const before = purchaseState(w.saveNow())
-  for (const args of ['ticket', 'johto ferry ticket', 'atlantis ticket'])
+  for (const args of ['ticket', 'johto ferry', 'atlantis ticket'])
     expect(await cmd($, 'pokemon', `buy ${args}`)).not.toContain('Bought')
   expect(purchaseState(w.saveNow())).toEqual(before)
 })

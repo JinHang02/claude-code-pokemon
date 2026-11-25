@@ -121,15 +121,18 @@ test('a region is found by its exact name, in any case', () => {
     expect(findRegion(word)).toBeUndefined()
 })
 
-test('ticket words are exactly a region and "ticket"', () => {
+test('ticket words are exactly a region and "ticket", with "ferry" between or not', () => {
   expect(readTicketWords(['kanto', 'ticket'])?.id).toBe('kanto')
   expect(readTicketWords(['johto', 'ticket'])?.id).toBe('johto')
   expect(readTicketWords(['Galar', 'Ticket'])?.id).toBe('galar')
+  expect(readTicketWords(['johto', 'ferry', 'ticket'])?.id).toBe('johto')
+  expect(readTicketWords(['Johto', 'Ferry', 'Ticket'])?.id).toBe('johto')
   for (const words of [
     [],
     ['ticket'],
     ['johto'],
-    ['johto', 'ferry', 'ticket'],
+    ['johto', 'ferry'],
+    ['ferry', 'ticket'],
     ['johto', 'ticket', 'x'],
     ['ticket', 'johto'],
     ['atlantis', 'ticket'],

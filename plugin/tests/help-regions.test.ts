@@ -26,6 +26,7 @@ test('/pokemon help and /pokemon-help list travel, restart and the typed answers
     expect(help).toMatch(/^ {2}choose <starter> /m)
     expect(help).toMatch(/^ {2}keep /m)
     expect(help).toMatch(/^ {2}fresh \[yes\|no\] /m)
+    expect(help).toMatch(/^ {2}buy <region> ticket /m)
     expect(Math.max(...columns(help))).toBeLessThanOrEqual(60)
   }
 })
@@ -68,4 +69,13 @@ test('the typeahead offers choose, keep and fresh; choose takes a starter, resta
   expect(texts('/pokemon choose zz')).toEqual([])
   expect(texts('/pokemon restart ')).toEqual(['yes', 'no'])
   expect(texts('/pokemon fresh y')).toEqual(['yes'])
+})
+
+test("buy's typeahead offers a later region's ticket by name, word by word, and never Kanto's", () => {
+  expect(texts('/pokemon buy jo')).toEqual(['johto ticket '])
+  expect(texts('/pokemon buy JO')).toEqual(['johto ticket '])
+  expect(texts('/pokemon buy johto t')).toEqual(['ticket '])
+  expect(texts('/pokemon buy ga')).toContain('galar ticket ')
+  expect(texts('/pokemon buy ka')).not.toContain('kanto ticket ')
+  expect(texts('/pokemon buy johto x')).toEqual([])
 })

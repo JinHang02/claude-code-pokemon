@@ -12,7 +12,8 @@ This file is the source of truth for what the plugin does. Every feature, fix an
   Pokémon that wander by, the dusk visitors and the full-moon Clefairy too, come from the region you're in only.
   `/pokemon <name>` still calls any Pokémon, and the ones you own go everywhere and evolve as before.
 - A ferry ticket opens each later region, one at a time: ₽150,000 on the PokéMart's new Tickets tab, or
-  `/pokemon buy johto ticket`. A ticket shows "Unavailable" until you have more experience as a trainer, then its
+  `/pokemon buy johto ticket` (or `johto ferry ticket`, as the Mart names it; `/pokemon-help` and the `buy` typeahead
+  list it). A ticket shows "Unavailable" until you have more experience as a trainer, then its
   price, then "Owned" with `/pokemon travel johto`. The tab lists Kanto's ticket first, always "Owned". A bought ticket, its ₽ and the region are one save write, so two
   windows buying at once can't buy it twice.
 - `/pokemon travel <region>` sails there with a ferry crossing over the band ("Sailing to Johto…"), or says "Sailed

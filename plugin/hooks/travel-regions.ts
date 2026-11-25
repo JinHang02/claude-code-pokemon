@@ -78,9 +78,9 @@ export const seenIn = (dex: Record<string, DexEntry>, r: TravelRegion): number =
 export const findRegion = (word: string): TravelRegion | undefined =>
   TRAVEL_REGIONS.find(r => r.name.toLowerCase() === word.toLowerCase())
 
-/** The region of the words `<region> ticket`; undefined for any other words. */
+/** The region of the words `<region> ticket` or `<region> ferry ticket`; undefined for any other words. */
 export function readTicketWords(words: readonly string[]): TravelRegion | undefined {
-  const [name, ticket, ...rest] = words
+  const [name, ticket, ...rest] = words.filter(w => w.toLowerCase() !== 'ferry')
   if (name === undefined || ticket?.toLowerCase() !== 'ticket' || rest.length) return undefined
   return findRegion(name)
 }

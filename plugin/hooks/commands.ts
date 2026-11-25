@@ -8,7 +8,7 @@ import { EVOLUTION_STYLES } from './evolution-style'
 import { forSale, ITEMS } from './items'
 import { slug } from './lookup'
 import { REGION_TEXT, REGION_WORDS } from './region'
-import { TRAVEL_REGIONS } from './travel-regions'
+import { TICKET_PRICE, TRAVEL_REGIONS } from './travel-regions'
 import { displayName, formatMoney, nameOf } from './save'
 import type { Member, Save } from './save'
 import { SPECIES } from './species-data'
@@ -65,6 +65,7 @@ export const POKEMON: Sub[] = [
   { word: 'evolve', usage: 'evolve manual, auto', about: 'by /pokemon evolve, or by itself', args: ['mode'] },
   { word: 'mart', usage: 'mart', about: 'the PokéMart, by mouse' },
   { word: 'buy', usage: 'buy <item> [count]', about: 'the PokéMart, by typing', args: ['sale'] },
+  { word: 'buy', usage: 'buy <region> ticket', about: 'a ferry ticket, by typing', only: 'help' },
   { word: 'size', usage: 'size <size>', about: 'small, normal or auto', args: ['size'] },
   { word: 'evolution', usage: 'evolution <style>', about: 'rays, white or gradient', args: ['style'] },
   { word: 'region', usage: 'region <region>', about: 'regional forms when evolving', args: ['region'] },
@@ -314,13 +315,22 @@ function rowsFor(kind: Arg, typed: string, owned: Owned, wordsBefore: string[] =
       return items(typed, owned)
     case 'sale': {
       const want = slug([...wordsBefore, typed].join(' '))
-      return forSale()
-        .filter(i => i.id.startsWith(want) && i.id.split('-').length > wordsBefore.length)
+      const isOffered = (id: string) => id.startsWith(want) && id.split('-').length > wordsBefore.length
+      const items = forSale()
+        .filter(i => isOffered(i.id))
         .map(i => ({
           text: `${rest(i.id, wordsBefore, '-')} `,
           label: i.id,
           description: `${i.name} · ${formatMoney(i.price)}`,
         }))
+      const tickets = TRAVEL_REGIONS.slice(1)
+        .filter(r => isOffered(`${r.id}-ticket`))
+        .map(r => ({
+          text: `${rest(`${r.id} ticket`, wordsBefore)} `,
+          label: `${r.id} ticket`,
+          description: `${r.name} ferry ticket · ${formatMoney(TICKET_PRICE)}`,
+        }))
+      return [...items, ...tickets]
     }
     case 'size':
       return fixed(lower, [
